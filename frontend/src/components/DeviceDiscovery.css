@@ -1,0 +1,171 @@
+.device-discovery {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 12px;
+  padding: 2rem;
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.discovery-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 2rem;
+  flex-wrap: wrap;
+  gap: 1rem;
+}
+
+.discovery-header h2 {
+  margin: 0;
+  color: white;
+  font-size: 1.5rem;
+}
+
+.discover-btn {
+  padding: 0.75rem 1.5rem;
+  background: #4ade80;
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-size: 1rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.discover-btn:hover:not(:disabled) {
+  background: #22c55e;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(74, 222, 128, 0.3);
+}
+
+.discover-btn:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+}
+
+.devices-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 1.5rem;
+}
+
+.device-card {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 12px;
+  padding: 1.5rem;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.device-card:hover {
+  background: rgba(255, 255, 255, 0.15);
+  border-color: rgba(255, 255, 255, 0.4);
+  transform: translateY(-4px);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
+}
+
+.device-icon {
+  font-size: 2.5rem;
+  min-width: 3rem;
+  text-align: center;
+}
+
+.device-info {
+  flex: 1;
+}
+
+.device-info h3 {
+  margin: 0 0 0.5rem 0;
+  color: white;
+  font-size: 1.1rem;
+}
+
+.device-type {
+  margin: 0.25rem 0;
+  color: rgba(255, 255, 255, 0.7);
+  font-size: 0.9rem;
+}
+
+.device-address {
+  margin: 0.25rem 0;
+  color: rgba(255, 255, 255, 0.6);
+  font-size: 0.85rem;
+  font-family: monospace;
+}
+
+.device-arrow {
+  color: rgba(255, 255, 255, 0.5);
+  font-size: 1.5rem;
+  transition: transform 0.3s ease;
+}
+
+.device-card:hover .device-arrow {
+  transform: translateX(4px);
+  color: white;
+}
+
+.empty-state {
+  text-align: center;
+  color: white;
+  padding: 3rem 2rem;
+}
+
+.empty-icon {
+  font-size: 4rem;
+  margin-bottom: 1rem;
+}
+
+.empty-state h3 {
+  margin: 0 0 0.5rem 0;
+  font-size: 1.5rem;
+}
+
+.empty-state p {
+  margin: 0;
+  opacity: 0.8;
+  font-size: 1rem;
+}
+
+@media (max-width: 768px) {
+  .device-discovery {
+    padding: 1.5rem;
+  }
+
+  .discovery-header {
+    flex-direction: column-reverse;
+  }
+
+  .discovery-header h2 {
+    width: 100%;
+  }
+
+  .discover-btn {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .devices-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .device-card {
+    flex-direction: column;
+    text-align: center;
+  }
+
+  .device-info {
+    flex: 0;
+  }
+
+  .device-arrow {
+    display: none;
+  }
+}
