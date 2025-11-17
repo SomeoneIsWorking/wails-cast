@@ -1,12 +1,16 @@
 import { GetMediaURL, CastToDevice, GetMediaFiles } from '../../wailsjs/go/main/App'
+import type { main } from '../../wailsjs/go/models'
 
 export const mediaService = {
   async getMediaURL(filePath: string): Promise<string> {
     return await GetMediaURL(filePath)
   },
 
-  async castToDevice(deviceURL: string, mediaPath: string): Promise<void> {
-    return await CastToDevice(deviceURL, mediaPath)
+  async castToDevice(deviceURL: string, mediaPath: string, subtitlePath?: string): Promise<void> {
+    const options: main.CastOptions = {
+      subtitlePath: subtitlePath || ''
+    }
+    return await CastToDevice(deviceURL, mediaPath, options)
   },
 
   async getMediaFiles(dirPath: string): Promise<string[]> {

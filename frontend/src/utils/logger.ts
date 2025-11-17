@@ -5,19 +5,19 @@ type LogLevel = 'info' | 'warn' | 'error'
 class Logger {
   private async log(level: LogLevel, message: string, data?: unknown) {
     const timestamp = new Date().toISOString()
-    const formattedMessage = data 
-      ? `${message} ${JSON.stringify(data)}` 
-      : message
+    const fullMessage = data 
+      ? `[${timestamp}] ${message} ${JSON.stringify(data)}`
+      : `[${timestamp}] ${message}`
 
     switch (level) {
       case 'info':
-        await LogInfo(`[${timestamp}] ${formattedMessage}`)
+        await LogInfo(fullMessage, [])
         break
       case 'warn':
-        await LogWarn(`[${timestamp}] ${formattedMessage}`)
+        await LogWarn(fullMessage, [])
         break
       case 'error':
-        await LogError(`[${timestamp}] ${formattedMessage}`)
+        await LogError(fullMessage, [])
         break
     }
   }

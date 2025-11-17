@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import { ref, computed } from "vue";
+import { ref, computed, onMounted } from "vue";
 import { useCastStore } from "../stores/cast";
 import { mediaService } from "../services/media";
+import { FindSubtitleFile } from "../../wailsjs/go/main/App";
 import type { Device } from "../stores/cast";
 import "./MediaPlayer.css";
 import "./common.css";
@@ -23,8 +24,24 @@ const store = useCastStore();
 const isCasting = ref(false);
 const castResult = ref<string | null>(null);
 const mediaURL = ref<string>("");
+const subtitlePath = ref<string>("");
 
 const fileName = computed(() => store.selectedMedia?.split("/").pop() || "");
+
+// Auto-detect subtitle file on mount
+onMounted(async () => {
+  if (store.selectedMedia) {
+    try {
+      const foundSub = await FindSubtitleFile(store.selectedMedia);
+      if (foundSub) {
+        subtitlePath.value = foundSub;
+      }
+    } catch (err) {
+      console.error("Failed to find subtitle:", err);
+    }
+  }
+  generateMediaURL();
+});
 
 const handleCast = async () => {
   isCasting.value = true;
@@ -33,7 +50,8 @@ const handleCast = async () => {
   try {
     await mediaService.castToDevice(
       store.selectedDevice!.url,
-      store.selectedMedia!
+      store.selectedMedia!,
+      subtitlePath.value
     );
     castResult.value = "Cast successful!";
     store.clearError();
@@ -85,6 +103,17 @@ generateMediaURL();
           <p class="device-type">{{ device.type }}</p>
           <p class="device-address">{{ device.address }}</p>
         </div>
+      </div>
+
+      <div class="subtitle-section">
+        <h3>Subtitles (optional)</h3>
+        <input 
+          v-model="subtitlePath" 
+          type="text" 
+          placeholder="Path to subtitle file (.srt, .vtt, .ass)" 
+          class="subtitle-input"
+        />
+        <p v-if="subtitlePath" class="subtitle-hint">✓ Subtitles will be burned into video</p>
       </div>
 
       <div v-if="mediaURL" class="url-section">

@@ -1,11 +1,25 @@
 export namespace main {
 	
+	export class CastOptions {
+	    SubtitlePath: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new CastOptions(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.SubtitlePath = source["SubtitlePath"];
+	    }
+	}
 	export class Device {
 	    name: string;
 	    type: string;
 	    url: string;
 	    address: string;
-	    manufacturerUrl: string;
+	    host: string;
+	    port: number;
+	    uuid: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new Device(source);
@@ -17,7 +31,35 @@ export namespace main {
 	        this.type = source["type"];
 	        this.url = source["url"];
 	        this.address = source["address"];
-	        this.manufacturerUrl = source["manufacturerUrl"];
+	        this.host = source["host"];
+	        this.port = source["port"];
+	        this.uuid = source["uuid"];
+	    }
+	}
+	export class PlaybackState {
+	    isPlaying: boolean;
+	    mediaPath: string;
+	    mediaName: string;
+	    deviceUrl: string;
+	    deviceName: string;
+	    currentTime: number;
+	    duration: number;
+	    canSeek: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new PlaybackState(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.isPlaying = source["isPlaying"];
+	        this.mediaPath = source["mediaPath"];
+	        this.mediaName = source["mediaName"];
+	        this.deviceUrl = source["deviceUrl"];
+	        this.deviceName = source["deviceName"];
+	        this.currentTime = source["currentTime"];
+	        this.duration = source["duration"];
+	        this.canSeek = source["canSeek"];
 	    }
 	}
 
