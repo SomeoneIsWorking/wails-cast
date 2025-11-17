@@ -26,10 +26,10 @@ type HLSSessionManual struct {
 	VideoPath    string
 	SubtitlePath string
 	OutputDir    string
-	Duration     float64 // Total video duration in seconds
-	SegmentSize  int     // Segment duration in seconds
-	mu           sync.RWMutex
+	Duration     float64      // Total video duration in seconds
+	SegmentSize  int          // Segment duration in seconds
 	segments     map[int]bool // Track which segments have been transcoded
+	segmentsMu   sync.Mutex   // Protects segments map
 }
 
 // NewHLSManagerManual creates a new HLS manager (manual mode)
@@ -45,8 +45,8 @@ func NewHLSManagerManual(localIP string) *HLSManagerManual {
 }
 
 // GetOrCreateSession gets existing session or creates new one
-func (m *HLSManagerManual) GetOrCreateSession(videoPath, subtitlePath string, seekTime int) *HLSSessionManual {
-	sessionID := fmt.Sprintf("%s_%d", filepath.Base(videoPath), seekTime)
+func (m *HLSManagerManual) GetOrCreateSession(videoPath, subtitlePath string) interface{} {
+	sessionID := fmt.Sprintf("%s", filepath.Base(videoPath))
 
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -81,31 +81,32 @@ func (m *HLSManagerManual) GetOrCreateSession(videoPath, subtitlePath string, se
 }
 
 // ServePlaylist generates and serves the HLS playlist dynamically
-func (m *HLSManagerManual) ServePlaylist(w http.ResponseWriter, r *http.Request, session *HLSSessionManual) {
+func (m *HLSManagerManual) ServePlaylist(w http.ResponseWriter, r *http.Request, session interface{}) {
+	s := session.(*HLSSessionManual)
 	// Generate complete playlist with all segments
 	var playlist strings.Builder
 
 	playlist.WriteString("#EXTM3U\n")
 	playlist.WriteString("#EXT-X-VERSION:3\n")
-	playlist.WriteString(fmt.Sprintf("#EXT-X-TARGETDURATION:%d\n", session.SegmentSize+1))
+	playlist.WriteString(fmt.Sprintf("#EXT-X-TARGETDURATION:%d\n", s.SegmentSize+1))
 	playlist.WriteString("#EXT-X-MEDIA-SEQUENCE:0\n")
 	playlist.WriteString("#EXT-X-PLAYLIST-TYPE:VOD\n")
 
 	// Calculate number of segments
-	numSegments := int(session.Duration / float64(session.SegmentSize))
-	if float64(numSegments*session.SegmentSize) < session.Duration {
+	numSegments := int(s.Duration / float64(s.SegmentSize))
+	if float64(numSegments*s.SegmentSize) < s.Duration {
 		numSegments++
 	}
 
-	logger.Info("Generating playlist", "duration", session.Duration, "segmentSize", session.SegmentSize, "numSegments", numSegments)
+	logger.Info("Generating playlist", "duration", s.Duration, "segmentSize", s.SegmentSize, "numSegments", numSegments)
 
 	// Add all segments with proper durations
 	for i := 0; i < numSegments; i++ {
-		segmentDuration := float64(session.SegmentSize)
+		segmentDuration := float64(s.SegmentSize)
 		// Last segment might be shorter
 		if i == numSegments-1 {
-			remaining := session.Duration - float64(i*session.SegmentSize)
-			if remaining < float64(session.SegmentSize) {
+			remaining := s.Duration - float64(i*s.SegmentSize)
+			if remaining < float64(s.SegmentSize) {
 				segmentDuration = remaining
 			}
 		}
@@ -127,7 +128,8 @@ func (m *HLSManagerManual) ServePlaylist(w http.ResponseWriter, r *http.Request,
 }
 
 // ServeSegment transcodes and serves a specific segment on-demand
-func (m *HLSManagerManual) ServeSegment(w http.ResponseWriter, r *http.Request, session *HLSSessionManual, segmentName string) {
+func (m *HLSManagerManual) ServeSegment(w http.ResponseWriter, r *http.Request, session interface{}, segmentName string) {
+	s := session.(*HLSSessionManual)
 	// Extract segment number from name (e.g., "segment123.ts" -> 123)
 	segmentNum, err := strconv.Atoi(strings.TrimSuffix(strings.TrimPrefix(segmentName, "segment"), ".ts"))
 	if err != nil {
@@ -136,11 +138,11 @@ func (m *HLSManagerManual) ServeSegment(w http.ResponseWriter, r *http.Request, 
 	}
 
 	// Check if already transcoded
-	session.mu.RLock()
-	exists := session.segments[segmentNum]
-	session.mu.RUnlock()
+	s.segmentsMu.Lock()
+	exists := s.segments[segmentNum]
+	s.segmentsMu.Unlock()
 
-	segmentPath := filepath.Join(session.OutputDir, segmentName)
+	segmentPath := filepath.Join(s.OutputDir, segmentName)
 
 	if !exists {
 		// Wait briefly to see if connection stays alive (avoid transcoding if seeking rapidly)
@@ -154,16 +156,16 @@ func (m *HLSManagerManual) ServeSegment(w http.ResponseWriter, r *http.Request, 
 		}
 
 		// Transcode this segment on-demand
-		logger.Info("Transcoding segment on-demand", "session", session.ID, "segment", segmentNum)
+		logger.Info("Transcoding segment on-demand", "session", s.ID, "segment", segmentNum)
 
 		// Calculate start time for this segment
-		startTime := float64(segmentNum * session.SegmentSize)
+		startTime := float64(segmentNum * s.SegmentSize)
 
 		// Build FFmpeg command to extract just this segment
 		args := []string{
 			"-ss", fmt.Sprintf("%.2f", startTime),
-			"-t", fmt.Sprintf("%d", session.SegmentSize),
-			"-i", session.VideoPath,
+			"-t", fmt.Sprintf("%d", s.SegmentSize),
+			"-i", s.VideoPath,
 		}
 
 		// Video encoding
@@ -176,9 +178,9 @@ func (m *HLSManagerManual) ServeSegment(w http.ResponseWriter, r *http.Request, 
 		)
 
 		// Add subtitles if provided
-		if session.SubtitlePath != "" {
-			if _, err := os.Stat(session.SubtitlePath); err == nil {
-				escapedPath := strings.ReplaceAll(session.SubtitlePath, "\\", "/")
+		if s.SubtitlePath != "" {
+			if _, err := os.Stat(s.SubtitlePath); err == nil {
+				escapedPath := strings.ReplaceAll(s.SubtitlePath, "\\", "/")
 				escapedPath = strings.ReplaceAll(escapedPath, ":", "\\\\:")
 				args = append(args, "-vf", fmt.Sprintf("subtitles=%s:force_style='FontSize=24'", escapedPath))
 			}
@@ -210,11 +212,11 @@ func (m *HLSManagerManual) ServeSegment(w http.ResponseWriter, r *http.Request, 
 		}
 
 		// Mark as transcoded
-		session.mu.Lock()
-		session.segments[segmentNum] = true
-		session.mu.Unlock()
+		s.segmentsMu.Lock()
+		s.segments[segmentNum] = true
+		s.segmentsMu.Unlock()
 
-		logger.Info("Segment transcoded", "session", session.ID, "segment", segmentNum)
+		logger.Info("Segment transcoded", "session", s.ID, "segment", segmentNum)
 	}
 
 	// Serve the segment

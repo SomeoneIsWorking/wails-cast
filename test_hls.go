@@ -12,7 +12,7 @@ func main() {
 	// Setup
 	discovery := NewDeviceDiscovery()
 	localIP := discovery.GetLocalIP()
-	server := NewServer(8888, localIP)
+	server := NewServer(8888, localIP, HLSModeManual)
 
 	// Start server
 	go server.Start()
@@ -41,7 +41,7 @@ func main() {
 
 	// Cast
 	deviceURL := "http://192.168.1.21:8009"
-	err = CastToChromeCastWithSeek(nil, deviceURL, mediaURL, duration, 0)
+	_, err = CastToChrome(nil, deviceURL, mediaURL, duration)
 	if err != nil {
 		fmt.Printf("Cast failed: %v\n", err)
 		return
