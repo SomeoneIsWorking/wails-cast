@@ -112,12 +112,6 @@ func GetVideoDuration(videoPath string) (float64, error) {
 	return duration, nil
 }
 
-// openBrowser opens a URL in the default browser
-func openBrowser(url string) error {
-	// Simplified - can be implemented with exec.Command
-	return nil
-}
-
 // CastToDevice casts media to a device
 func (a *App) CastToDevice(deviceURL, mediaPath string, options CastOptions) error {
 	// Set media on server
@@ -311,13 +305,6 @@ func (a *App) StopPlayback() {
 	a.playbackState.IsPaused = false
 	a.playbackState.CurrentTime = 0
 	a.mu.Unlock()
-}
-
-// PlayLocally opens media in default browser
-func (a *App) PlayLocally(mediaPath string) error {
-	a.mediaServer.SetCurrentMedia(mediaPath)
-	mediaURL := a.GetMediaURL(mediaPath)
-	return openBrowser(mediaURL)
 }
 
 // OpenFileDialog opens a file picker dialog

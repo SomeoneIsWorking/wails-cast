@@ -99,7 +99,7 @@ const selectDevice = (device: Device) => {
               <p class="text-xs text-gray-500 truncate">{{ device.address }}</p>
             </div>
           </div>
-          <div v-if="store.selectedDevice?.url === device.url" class="flex-shrink-0">
+          <div v-if="store.selectedDevice?.url === device.url" class="shrink-0">
             <Check :size="24" class="text-blue-400" />
           </div>
         </div>

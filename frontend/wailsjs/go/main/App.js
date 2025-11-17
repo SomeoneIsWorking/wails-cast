@@ -54,10 +54,6 @@ export function Pause() {
   return window['go']['main']['App']['Pause']();
 }
 
-export function PlayLocally(arg1) {
-  return window['go']['main']['App']['PlayLocally'](arg1);
-}
-
 export function SeekTo(arg1, arg2, arg3) {
   return window['go']['main']['App']['SeekTo'](arg1, arg2, arg3);
 }
