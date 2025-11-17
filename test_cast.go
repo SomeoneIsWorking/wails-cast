@@ -8,7 +8,7 @@ import (
 	"os"
 )
 
-func main() {
+func testCastMain() {
 	// Initialize components
 	discovery := NewDeviceDiscovery()
 

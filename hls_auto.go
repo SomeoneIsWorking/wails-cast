@@ -14,7 +14,7 @@ import (
 
 // HLSManagerAuto manages HLS streaming sessions (auto mode - FFmpeg generates all segments upfront)
 type HLSManagerAuto struct {
-	sessions map[string]*HLSSession
+	sessions map[string]*HLSSessionAuto
 	mu       sync.RWMutex
 	baseDir  string
 	localIP  string
@@ -26,10 +26,14 @@ type HLSSessionAuto struct {
 	VideoPath    string
 	SubtitlePath string
 	OutputDir    string
+	PlaylistPath string
 	Duration     float64 // Total video duration in seconds
 	SegmentSize  int     // Segment duration in seconds
 	mu           sync.RWMutex
-	segments     map[int]bool // Track which segments have been transcoded
+	segments     map[int]bool  // Track which segments have been transcoded
+	ready        chan struct{} // Signal when first segment is ready
+	cmd          *exec.Cmd
+	cancel       context.CancelFunc
 }
 
 // NewHLSManagerAuto creates a new HLS manager (auto mode)
@@ -43,7 +47,7 @@ func NewHLSManagerAuto(localIP string) *HLSManagerAuto {
 		localIP:  localIP,
 	}
 } // GetOrCreateSession gets existing session or creates new one
-func (m *HLSManagerAuto) GetOrCreateSession(videoPath, subtitlePath string, seekTime int) *HLSSession {
+func (m *HLSManagerAuto) GetOrCreateSession(videoPath, subtitlePath string, seekTime int) *HLSSessionAuto {
 	// Use video path + seek time as session key
 	sessionID := fmt.Sprintf("%s_%d", filepath.Base(videoPath), seekTime)
 
@@ -65,14 +69,16 @@ func (m *HLSManagerAuto) GetOrCreateSession(videoPath, subtitlePath string, seek
 	outputDir := filepath.Join(m.baseDir, sessionID)
 	os.MkdirAll(outputDir, 0755)
 
-	session := &HLSSession{
+	session := &HLSSessionAuto{
 		ID:           sessionID,
 		VideoPath:    videoPath,
 		SubtitlePath: subtitlePath,
 		OutputDir:    outputDir,
+		PlaylistPath: filepath.Join(outputDir, "playlist.m3u8"),
 		Duration:     duration,
 		SegmentSize:  4, // 4-second segments
 		segments:     make(map[int]bool),
+		ready:        make(chan struct{}),
 	}
 
 	m.sessions[sessionID] = session
@@ -81,7 +87,7 @@ func (m *HLSManagerAuto) GetOrCreateSession(videoPath, subtitlePath string, seek
 }
 
 // startTranscode starts FFmpeg to generate HLS segments
-func (m *HLSManagerAuto) startTranscode(session *HLSSession, seekTime int) {
+func (m *HLSManagerAuto) startTranscode(session *HLSSessionAuto, seekTime int) {
 	logger.Info("Starting HLS transcode", "session", session.ID, "video", session.VideoPath, "seek", seekTime)
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -207,7 +213,7 @@ func (m *HLSManagerAuto) ServePlaylist(w http.ResponseWriter, r *http.Request, s
 
 	w.Write([]byte(playlistContent))
 } // ServeSegment serves an HLS segment
-func (m *HLSManagerAuto) ServeSegment(w http.ResponseWriter, r *http.Request, session *HLSSession, segmentName string) {
+func (m *HLSManagerAuto) ServeSegment(w http.ResponseWriter, r *http.Request, session *HLSSessionAuto, segmentName string) {
 	segmentPath := filepath.Join(session.OutputDir, segmentName)
 
 	// Wait for segment file

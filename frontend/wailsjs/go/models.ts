@@ -38,6 +38,7 @@ export namespace main {
 	}
 	export class PlaybackState {
 	    isPlaying: boolean;
+	    isPaused: boolean;
 	    mediaPath: string;
 	    mediaName: string;
 	    deviceUrl: string;
@@ -53,6 +54,7 @@ export namespace main {
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.isPlaying = source["isPlaying"];
+	        this.isPaused = source["isPaused"];
 	        this.mediaPath = source["mediaPath"];
 	        this.mediaName = source["mediaName"];
 	        this.deviceUrl = source["deviceUrl"];

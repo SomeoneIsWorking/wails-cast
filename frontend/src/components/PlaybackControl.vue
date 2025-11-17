@@ -2,12 +2,15 @@
   <div v-if="playbackState.isPlaying" class="playback-control">
     <div class="playback-header">
       <h3>{{ playbackState.mediaName }}</h3>
-      <button @click="stopPlayback" class="stop-btn">Stop</button>
+      <div class="header-controls">
+        <span v-if="playbackState.isPaused" class="pause-indicator">⏸ Paused</span>
+        <button @click="stopPlayback" class="stop-btn">Stop</button>
+      </div>
     </div>
     
     <div class="playback-info">
       <span class="device-name">{{ playbackState.deviceName }}</span>
-      <span class="time-display">{{ formatTime(currentTime) }} / {{ formatTime(playbackState.duration) }}</span>
+      <span class="time-display">{{ formatTime(playbackState.currentTime) }} / {{ formatTime(playbackState.duration) }}</span>
     </div>
 
     <div class="seek-controls">
@@ -38,6 +41,9 @@
     <div class="playback-controls">
       <button @click="seekRelative(-30)" class="control-btn">-30s</button>
       <button @click="seekRelative(-10)" class="control-btn">-10s</button>
+      <button @click="togglePause" class="control-btn play-pause-btn">
+        {{ playbackState.isPaused ? '▶️ Play' : '⏸️ Pause' }}
+      </button>
       <button @click="seekRelative(10)" class="control-btn">+10s</button>
       <button @click="seekRelative(30)" class="control-btn">+30s</button>
     </div>
@@ -45,11 +51,12 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch, onMounted, onUnmounted } from 'vue'
-import { GetPlaybackState, SeekTo, StopPlayback } from '../../wailsjs/go/main/App'
+import { ref, onMounted, onUnmounted } from 'vue'
+import { mediaService } from '../services/media'
 
 const playbackState = ref({
   isPlaying: false,
+  isPaused: false,
   mediaPath: '',
   mediaName: '',
   deviceUrl: '',
@@ -60,7 +67,6 @@ const playbackState = ref({
 })
 
 const seekPosition = ref(0)
-const currentTime = ref(0)
 const showTooltip = ref(false)
 const tooltipPosition = ref(0)
 const seekPreviewTime = ref(0)
@@ -84,38 +90,29 @@ const updateSeekPreview = () => {
   seekPreviewTime.value = seekPosition.value
 }
 
-// Watch currentTime and update seekPosition to sync with playback
-watch(currentTime, (newTime) => {
-  seekPosition.value = newTime
-})
-
 // Load playback state
 const loadPlaybackState = async () => {
   try {
-    const state = await GetPlaybackState()
+    const state = await mediaService.getPlaybackState()
     playbackState.value = state
-    // Initialize position from the state's current time (which includes seek offset)
-    seekPosition.value = state.currentTime
-    currentTime.value = state.currentTime
+    // Sync seek position with current time from server
+    seekPosition.value = Math.floor(state.currentTime)
   } catch (err) {
     console.error('Failed to load playback state:', err)
   }
 }
 
-// Update current time (simulate playback progress)
-const startTimeUpdate = () => {
-  if (updateInterval) clearInterval(updateInterval)
-  
-  updateInterval = setInterval(() => {
-    if (playbackState.value.isPlaying) {
-      currentTime.value++
-      if (currentTime.value >= playbackState.value.duration) {
-        currentTime.value = playbackState.value.duration
-        playbackState.value.isPlaying = false
-        if (updateInterval) clearInterval(updateInterval)
-      }
+// Toggle pause/play
+const togglePause = async () => {
+  try {
+    if (playbackState.value.isPaused) {
+      await mediaService.unpause()
+    } else {
+      await mediaService.pause()
     }
-  }, 1000)
+  } catch (err) {
+    console.error('Toggle pause failed:', err)
+  }
 }
 
 // Seek to position
@@ -123,12 +120,11 @@ const onSeek = async () => {
   if (!playbackState.value.canSeek) return
   
   try {
-    await SeekTo(
+    await mediaService.seekTo(
       playbackState.value.deviceUrl,
       playbackState.value.mediaPath,
       seekPosition.value
     )
-    currentTime.value = seekPosition.value
   } catch (err) {
     console.error('Seek failed:', err)
   }
@@ -136,7 +132,7 @@ const onSeek = async () => {
 
 // Seek relative
 const seekRelative = async (seconds: number) => {
-  const newTime = Math.max(0, Math.min(playbackState.value.duration, currentTime.value + seconds))
+  const newTime = Math.max(0, Math.min(playbackState.value.duration, playbackState.value.currentTime + seconds))
   seekPosition.value = newTime
   await onSeek()
 }
@@ -144,7 +140,7 @@ const seekRelative = async (seconds: number) => {
 // Stop playback
 const stopPlayback = async () => {
   try {
-    await StopPlayback()
+    await mediaService.stopPlayback()
     playbackState.value.isPlaying = false
     if (updateInterval) clearInterval(updateInterval)
   } catch (err) {
@@ -164,24 +160,13 @@ const formatTime = (seconds: number) => {
   return `${m}:${s.toString().padStart(2, '0')}`
 }
 
-// Watch for playback state changes
-watch(() => playbackState.value.isPlaying, (isPlaying) => {
-  if (isPlaying) {
-    startTimeUpdate()
-  } else if (updateInterval) {
-    clearInterval(updateInterval)
-  }
-})
-
 onMounted(() => {
   loadPlaybackState()
-  startTimeUpdate()
   
   // Poll for state updates every 2 seconds
   const pollInterval = setInterval(loadPlaybackState, 2000)
   
   onUnmounted(() => {
-    if (updateInterval) clearInterval(updateInterval)
     clearInterval(pollInterval)
   })
 })
@@ -207,6 +192,18 @@ onMounted(() => {
   margin: 0;
   font-size: 18px;
   font-weight: 600;
+}
+
+.header-controls {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.pause-indicator {
+  color: #f39c12;
+  font-size: 14px;
+  font-weight: 500;
 }
 
 .stop-btn {
@@ -324,5 +321,15 @@ onMounted(() => {
 
 .control-btn:active {
   transform: scale(0.95);
+}
+
+.play-pause-btn {
+  background: #2ecc71;
+  font-size: 15px;
+  padding: 10px 20px;
+}
+
+.play-pause-btn:hover {
+  background: #27ae60;
 }
 </style>

@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
@@ -24,16 +25,18 @@ type App struct {
 	mediaServer     *Server
 	playbackState   PlaybackState
 	currentSubtitle string
+	chromecastApp   *ChromecastApp
 	mu              sync.RWMutex
 }
 
 type PlaybackState struct {
 	IsPlaying   bool    `json:"isPlaying"`
+	IsPaused    bool    `json:"isPaused"`
 	MediaPath   string  `json:"mediaPath"`
 	MediaName   string  `json:"mediaName"`
 	DeviceURL   string  `json:"deviceUrl"`
 	DeviceName  string  `json:"deviceName"`
-	CurrentTime int     `json:"currentTime"`
+	CurrentTime float64 `json:"currentTime"`
 	Duration    float64 `json:"duration"`
 	CanSeek     bool    `json:"canSeek"`
 }
@@ -149,14 +152,22 @@ func (a *App) CastToDevice(deviceURL, mediaPath string, options CastOptions) err
 	// Get media URL
 	mediaURL := a.GetMediaURL(mediaPath)
 
-	// Cast to device
-	err = CastToChromeCastWithSeek(a.ctx, deviceURL, mediaURL, duration, seekTime)
+	// Cast to device and get chromecast app
+	ccApp, err := CastToChromeCastWithSeek(a.ctx, deviceURL, mediaURL, duration, int(seekTime))
 	if err != nil {
 		a.mu.Lock()
 		a.playbackState.IsPlaying = false
 		a.mu.Unlock()
 		return err
 	}
+
+	// Store the chromecast app
+	a.mu.Lock()
+	a.chromecastApp = ccApp
+	a.mu.Unlock()
+
+	// Start polling status
+	go a.pollChromecastStatus()
 
 	logger.Info("Cast successful",
 		"message", fmt.Sprintf("Casting %s to %s via %s", filepath.Base(mediaPath), deviceURL, mediaURL),
@@ -211,20 +222,31 @@ func (a *App) FindSubtitleFile(videoPath string) string {
 }
 
 // SeekTo seeks to a specific time
-func (a *App) SeekTo(deviceURL, mediaPath string, seekTime int) error {
+func (a *App) SeekTo(deviceURL, mediaPath string, seekTime float64) error {
 	logger.Info("Seeking", "device", deviceURL, "media", mediaPath, "seekTime", seekTime)
 
-	// Update seek time in server
-	a.mediaServer.SetSeekTime(seekTime)
+	a.mu.Lock()
+	ccApp := a.chromecastApp
+	a.mu.Unlock()
+
+	if ccApp == nil {
+		return fmt.Errorf("no active chromecast connection")
+	}
+
+	// Send seek command to Chromecast
+	err := ccApp.App.SeekToTime(float32(seekTime))
+	if err != nil {
+		logger.Error("Seek failed", "error", err)
+		return err
+	}
 
 	// Update playback state
 	a.mu.Lock()
 	a.playbackState.CurrentTime = seekTime
 	a.mu.Unlock()
 
-	// Re-cast with new position
-	options := CastOptions{SubtitlePath: a.currentSubtitle}
-	return a.CastToDevice(deviceURL, mediaPath, options)
+	logger.Info("Seek successful", "time", seekTime)
+	return nil
 }
 
 // GetPlaybackState returns current playback state
@@ -234,10 +256,59 @@ func (a *App) GetPlaybackState() PlaybackState {
 	return a.playbackState
 }
 
+// Pause pauses current playback
+func (a *App) Pause() error {
+	a.mu.Lock()
+	ccApp := a.chromecastApp
+	a.mu.Unlock()
+
+	if ccApp == nil {
+		return fmt.Errorf("no active chromecast connection")
+	}
+
+	err := ccApp.App.Pause()
+	if err != nil {
+		return err
+	}
+
+	a.mu.Lock()
+	a.playbackState.IsPaused = true
+	a.mu.Unlock()
+
+	return nil
+}
+
+// Unpause resumes current playback
+func (a *App) Unpause() error {
+	a.mu.Lock()
+	ccApp := a.chromecastApp
+	a.mu.Unlock()
+
+	if ccApp == nil {
+		return fmt.Errorf("no active chromecast connection")
+	}
+
+	err := ccApp.App.Unpause()
+	if err != nil {
+		return err
+	}
+
+	a.mu.Lock()
+	a.playbackState.IsPaused = false
+	a.mu.Unlock()
+
+	return nil
+}
+
 // StopPlayback stops current playback
 func (a *App) StopPlayback() {
 	a.mu.Lock()
+	if a.chromecastApp != nil {
+		a.chromecastApp.App.Close(true)
+		a.chromecastApp = nil
+	}
 	a.playbackState.IsPlaying = false
+	a.playbackState.IsPaused = false
 	a.playbackState.CurrentTime = 0
 	a.mu.Unlock()
 }
@@ -282,6 +353,47 @@ func (a *App) LogWarn(message string) {
 // LogError logs an error message from frontend
 func (a *App) LogError(message string) {
 	logger.Error(message)
+}
+
+// pollChromecastStatus polls Chromecast for status updates
+func (a *App) pollChromecastStatus() {
+	for {
+		a.mu.RLock()
+		ccApp := a.chromecastApp
+		isPlaying := a.playbackState.IsPlaying
+		a.mu.RUnlock()
+
+		if ccApp == nil || !isPlaying {
+			return
+		}
+
+		// Update status from Chromecast
+		err := ccApp.App.Update()
+		if err != nil {
+			logger.Warn("Failed to update Chromecast status", "error", err)
+			continue
+		}
+
+		// Get current media status
+		_, media, _ := ccApp.App.Status()
+		if media != nil {
+			a.mu.Lock()
+			a.playbackState.CurrentTime = float64(media.CurrentTime)
+			// Update pause state based on PlayerState
+			if media.PlayerState == "PAUSED" {
+				a.playbackState.IsPaused = true
+			} else if media.PlayerState == "PLAYING" {
+				a.playbackState.IsPaused = false
+			} else if media.PlayerState == "IDLE" {
+				a.playbackState.IsPlaying = false
+				a.playbackState.IsPaused = false
+			}
+			a.mu.Unlock()
+		}
+
+		// Poll every 2 seconds
+		time.Sleep(2 * time.Second)
+	}
 }
 
 // Helper functions

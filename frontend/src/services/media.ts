@@ -1,4 +1,4 @@
-import { GetMediaURL, CastToDevice, GetMediaFiles } from '../../wailsjs/go/main/App'
+import { GetMediaURL, CastToDevice, GetMediaFiles, SeekTo, GetPlaybackState, StopPlayback, Pause, Unpause } from '../../wailsjs/go/main/App'
 import type { main } from '../../wailsjs/go/models'
 
 export const mediaService = {
@@ -15,6 +15,26 @@ export const mediaService = {
 
   async getMediaFiles(dirPath: string): Promise<string[]> {
     return await GetMediaFiles(dirPath)
+  },
+
+  async seekTo(deviceURL: string, mediaPath: string, seekTime: number): Promise<void> {
+    return await SeekTo(deviceURL, mediaPath, seekTime)
+  },
+
+  async getPlaybackState(): Promise<main.PlaybackState> {
+    return await GetPlaybackState()
+  },
+
+  async stopPlayback(): Promise<void> {
+    return await StopPlayback()
+  },
+
+  async pause(): Promise<void> {
+    return await Pause()
+  },
+
+  async unpause(): Promise<void> {
+    return await Unpause()
   },
 
   isMediaFile(filePath: string): boolean {

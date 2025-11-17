@@ -10,13 +10,20 @@ import (
 	"github.com/vishen/go-chromecast/application"
 )
 
+// ChromecastApp wraps the chromecast application
+type ChromecastApp struct {
+	App  *application.Application
+	Host string
+	Port int
+}
+
 // CastToChromeCast casts media to a Chromecast device
-func CastToChromeCast(ctx any, deviceAddr string, mediaURL string, duration float64) error {
+func CastToChromeCast(ctx any, deviceAddr string, mediaURL string, duration float64) (*ChromecastApp, error) {
 	return CastToChromeCastWithSeek(ctx, deviceAddr, mediaURL, duration, 0)
 }
 
 // CastToChromeCastWithSeek casts media with duration and seek time
-func CastToChromeCastWithSeek(ctx any, deviceAddr string, mediaURL string, duration float64, seekTime int) error {
+func CastToChromeCastWithSeek(ctx any, deviceAddr string, mediaURL string, duration float64, seekTime int) (*ChromecastApp, error) {
 	logger.Info("Attempting Chromecast cast", "device", deviceAddr, "media", mediaURL, "duration", duration, "seekTime", seekTime)
 
 	// Extract host from device URL if it's a full URL
@@ -52,13 +59,13 @@ func CastToChromeCastWithSeek(ctx any, deviceAddr string, mediaURL string, durat
 	err := app.Start(host, port)
 	if err != nil {
 		logger.Error("Failed to start app", "error", err)
-		return err
+		return nil, err
 	}
 
 	// Update to ensure receiver is ready
 	if err := app.Update(); err != nil {
 		logger.Error("Failed to update app status", "error", err)
-		return err
+		return nil, err
 	}
 
 	logger.Info("Sending load command with duration and seek", "url", mediaURL, "duration", duration, "seekTime", seekTime)
@@ -75,11 +82,15 @@ func CastToChromeCastWithSeek(ctx any, deviceAddr string, mediaURL string, durat
 	})
 	if err != nil {
 		logger.Error("Load failed", "error", err)
-		return err
+		return nil, err
 	}
 
 	logger.Info("Load succeeded!")
 	logger.Info("Media should now be playing on device", "device", host)
 
-	return nil
+	return &ChromecastApp{
+		App:  app,
+		Host: host,
+		Port: port,
+	}, nil
 }
