@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"time"
 )
 
 // Server handles HTTP media streaming
@@ -39,8 +40,13 @@ func NewServer(port int, localIP string, hlsMode HLSMode) *Server {
 	mux.HandleFunc("/", s.handleRequest)
 
 	s.httpServer = &http.Server{
-		Addr:    fmt.Sprintf(":%d", port),
-		Handler: mux,
+		Addr:              fmt.Sprintf(":%d", port),
+		Handler:           mux,
+		ReadTimeout:       60 * time.Second,
+		WriteTimeout:      0, // No write timeout for streaming
+		IdleTimeout:       120 * time.Second,
+		MaxHeaderBytes:    1 << 20,
+		ReadHeaderTimeout: 10 * time.Second,
 	}
 
 	return s

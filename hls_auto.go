@@ -90,9 +90,8 @@ func (m *HLSManagerAuto) startTranscode(session *HLSSessionAuto) {
 	args = append(args,
 		"-c:v", "libx264",
 		"-preset", "veryfast",
+		"-tune", "zerolatency",
 		"-pix_fmt", "yuv420p",
-		"-profile:v", "main",
-		"-g", "48",
 	)
 
 	// Add subtitles if provided
@@ -202,7 +201,8 @@ func (m *HLSManagerAuto) ServeSegment(w http.ResponseWriter, r *http.Request, se
 	w.Header().Set("Access-Control-Allow-Methods", "GET, OPTIONS")
 	w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
 	w.Header().Set("Content-Type", "video/mp2t")
-	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Accept-Ranges", "bytes")
+	w.Header().Set("Cache-Control", "public, max-age=3600")
 
 	http.ServeFile(w, r, segmentPath)
 }

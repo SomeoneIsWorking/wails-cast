@@ -17,6 +17,7 @@ func main() {
 	// Start server
 	go server.Start()
 	time.Sleep(1 * time.Second) // Set media
+
 	videoPath := "-"
 	subtitlePath := "-"
 
