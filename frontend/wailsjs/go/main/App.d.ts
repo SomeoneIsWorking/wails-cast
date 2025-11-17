@@ -28,8 +28,6 @@ export function OpenFileDialog():Promise<string>;
 
 export function Pause():Promise<void>;
 
-export function PlayLocally(arg1:string):Promise<void>;
-
 export function SeekTo(arg1:string,arg2:string,arg3:number):Promise<void>;
 
 export function StopPlayback():Promise<void>;

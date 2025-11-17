@@ -66,11 +66,12 @@
   }
   
   .drop-zone {
-    @apply border-2 border-dashed border-gray-600 rounded-xl p-8 text-center transition-colors duration-200;
+    @apply border-2 border-dashed border-gray-600 rounded-xl p-8 text-center transition-all duration-200;
   }
   
-  .drop-zone-active {
-    @apply border-blue-500 bg-blue-900/20;
+  /* Wails automatically adds this class when dragging over an element with --wails-drop-target */
+  .drop-zone.wails-drop-target-active {
+    @apply border-blue-500 bg-blue-900/30 scale-[1.02] shadow-lg shadow-blue-500/20;
   }
 }
 

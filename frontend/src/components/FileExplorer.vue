@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted } from "vue";
+import { ref, onMounted } from "vue";
 import { useCastStore } from "../stores/cast";
 import { mediaService } from "../services/media";
 import { fileService } from "../services/file";
@@ -16,7 +16,6 @@ const currentPath = ref("/");
 const files = ref<string[]>([]);
 const isLoading = ref(false);
 const manualPath = ref("");
-const isDragging = ref(false);
 
 const loadMediaFiles = async (path: string) => {
   isLoading.value = true;
@@ -69,50 +68,22 @@ const openFolderDialog = async () => {
   }
 };
 
-// Drag and drop handlers
-const handleDragOver = (e: DragEvent) => {
-  e.preventDefault();
-  isDragging.value = true;
-  console.log('Drag over');
-};
-
-const handleDragLeave = (e: DragEvent) => {
-  isDragging.value = false;
-  console.log('Drag leave');
-};
-
-const handleDrop = async (e: DragEvent) => {
-  // Don't prevent default - let Wails handle it
-  // e.preventDefault();
-  isDragging.value = false;
-  console.log('Drop event triggered (HTML5)', e.dataTransfer?.files);
-};
-
 // Setup Wails file drop handler
-let cleanupFileDrop: (() => void) | undefined;
-
 onMounted(() => {
-  console.log('Setting up Wails OnFileDrop handler');
   // Use Wails OnFileDrop API to get actual file paths
-  cleanupFileDrop = OnFileDrop((x: number, y: number, paths: string[]) => {
-    console.log('Wails OnFileDrop triggered:', { x, y, paths });
+  // useDropTarget: true enables the wails-drop-target-active class on elements with --wails-drop-target CSS property
+  OnFileDrop((_x: number, _y: number, paths: string[]) => {
     if (paths && paths.length > 0) {
       const filePath = paths[0];
-      console.log('Processing dropped file:', filePath);
       if (mediaService.isMediaFile(filePath)) {
         selectMedia(filePath);
       } else {
         store.setError("Unsupported file type. Please drop a video file.");
       }
     }
-  }, false); // Don't require drop target - accept drops anywhere
+  }, true);
 });
 
-onUnmounted(() => {
-  if (cleanupFileDrop) {
-    cleanupFileDrop();
-  }
-});
 </script>
 
 <template>
@@ -146,15 +117,12 @@ onUnmounted(() => {
 
       <!-- Drag and Drop Zone -->
       <div
-        :class="['drop-zone', { 'drop-zone-active': isDragging }]"
-        @dragover="handleDragOver"
-        @dragleave="handleDragLeave"
-        @drop="handleDrop"
+        class="drop-zone"
         style="--wails-drop-target: drop"
       >
         <Upload :size="48" class="text-gray-500 mb-3" />
         <p class="text-lg font-medium text-gray-300 mb-1">
-          {{ isDragging ? 'Drop your video here' : 'Drag & drop a video file' }}
+          Drag & drop a video file
         </p>
         <p class="text-sm text-gray-500">
           or use the buttons above to browse

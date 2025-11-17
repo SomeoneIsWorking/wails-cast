@@ -48,11 +48,11 @@ const handleCast = () => {
 </script>
 
 <template>
-  <div class="min-h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 text-white">
+  <div class="min-h-screen bg-linear-to-br from-gray-900 via-gray-800 to-gray-900 text-white">
     <div class="container mx-auto px-4 py-6 max-w-6xl">
       <!-- Header -->
       <header class="mb-6">
-        <h1 class="text-4xl font-bold bg-gradient-to-r from-blue-400 to-purple-500 bg-clip-text text-transparent">
+        <h1 class="text-4xl font-bold bg-linear-to-r from-blue-400 to-purple-500 bg-clip-text text-transparent">
           Wails Cast
         </h1>
         <p class="text-gray-400 mt-1">Cast your local videos to any device</p>
