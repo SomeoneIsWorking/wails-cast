@@ -1,20 +1,38 @@
 <template>
-  <div v-if="playbackState.isPlaying" class="playback-control">
-    <div class="playback-header">
-      <h3>{{ playbackState.mediaName }}</h3>
-      <div class="header-controls">
-        <span v-if="playbackState.isPaused" class="pause-indicator">⏸ Paused</span>
-        <button @click="stopPlayback" class="stop-btn">Stop</button>
+  <div v-if="playbackState.isPlaying" class="card mb-6">
+    <div class="card-body">
+      <!-- Header -->
+      <div class="flex items-center justify-between mb-4">
+        <div class="flex-1 min-w-0">
+          <h3 class="text-xl font-bold truncate flex items-center gap-2">
+            <Video :size="24" class="text-purple-400" />
+            {{ playbackState.mediaName }}
+          </h3>
+          <p class="text-sm text-gray-400 truncate">
+            <Cast :size="14" class="inline" />
+            {{ playbackState.deviceName }}
+          </p>
+        </div>
+        <div class="flex items-center gap-3">
+          <span v-if="playbackState.isPaused" class="px-3 py-1 bg-yellow-900/30 border border-yellow-700 rounded-full text-yellow-400 text-sm font-medium flex items-center gap-1">
+            <Pause :size="14" />
+            Paused
+          </span>
+          <button @click="stopPlayback" class="btn-danger flex items-center gap-2">
+            <Square :size="18" />
+            Stop
+          </button>
+        </div>
       </div>
-    </div>
-    
-    <div class="playback-info">
-      <span class="device-name">{{ playbackState.deviceName }}</span>
-      <span class="time-display">{{ formatTime(playbackState.currentTime) }} / {{ formatTime(playbackState.duration) }}</span>
-    </div>
 
-    <div class="seek-controls">
-      <div class="seek-container">
+      <!-- Time Display -->
+      <div class="flex items-center justify-between mb-2 text-sm font-mono">
+        <span class="text-gray-300">{{ formatTime(playbackState.currentTime) }}</span>
+        <span class="text-gray-500">{{ formatTime(playbackState.duration) }}</span>
+      </div>
+
+      <!-- Seek Bar -->
+      <div class="relative mb-4">
         <input 
           type="range" 
           :min="0" 
@@ -30,22 +48,36 @@
         />
         <div 
           v-if="showTooltip" 
-          class="seek-tooltip"
-          :style="{ left: tooltipPosition + 'px' }"
+          class="absolute bottom-full left-0 mb-2 px-2 py-1 bg-black/90 text-white text-xs rounded pointer-events-none whitespace-nowrap z-10"
+          :style="{ left: tooltipPosition + 'px', transform: 'translateX(-50%)' }"
         >
           {{ formatTime(seekPreviewTime) }}
         </div>
       </div>
-    </div>
 
-    <div class="playback-controls">
-      <button @click="seekRelative(-30)" class="control-btn">-30s</button>
-      <button @click="seekRelative(-10)" class="control-btn">-10s</button>
-      <button @click="togglePause" class="control-btn play-pause-btn">
-        {{ playbackState.isPaused ? '▶️ Play' : '⏸️ Pause' }}
-      </button>
-      <button @click="seekRelative(10)" class="control-btn">+10s</button>
-      <button @click="seekRelative(30)" class="control-btn">+30s</button>
+      <!-- Controls -->
+      <div class="flex items-center justify-center gap-2">
+        <button @click="seekRelative(-30)" class="btn-icon" title="Rewind 30s">
+          <Rewind :size="20" />
+        </button>
+        <button @click="seekRelative(-10)" class="btn-icon" title="Rewind 10s">
+          <SkipBack :size="20" />
+        </button>
+        <button 
+          @click="togglePause" 
+          class="btn-success px-6 py-3 flex items-center gap-2 text-lg"
+        >
+          <Play v-if="playbackState.isPaused" :size="20" />
+          <Pause v-else :size="20" />
+          {{ playbackState.isPaused ? 'Play' : 'Pause' }}
+        </button>
+        <button @click="seekRelative(10)" class="btn-icon" title="Forward 10s">
+          <SkipForward :size="20" />
+        </button>
+        <button @click="seekRelative(30)" class="btn-icon" title="Forward 30s">
+          <FastForward :size="20" />
+        </button>
+      </div>
     </div>
   </div>
 </template>
@@ -53,6 +85,7 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted } from 'vue'
 import { mediaService } from '../services/media'
+import { Video, Cast, Pause, Play, Square, Rewind, FastForward, SkipBack, SkipForward } from 'lucide-vue-next'
 
 const playbackState = ref({
   isPlaying: false,
@@ -171,165 +204,3 @@ onMounted(() => {
   })
 })
 </script>
-
-<style scoped>
-.playback-control {
-  background: #2a2a2a;
-  border-radius: 8px;
-  padding: 20px;
-  margin: 20px 0;
-  color: #ffffff;
-}
-
-.playback-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 15px;
-}
-
-.playback-header h3 {
-  margin: 0;
-  font-size: 18px;
-  font-weight: 600;
-}
-
-.header-controls {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-
-.pause-indicator {
-  color: #f39c12;
-  font-size: 14px;
-  font-weight: 500;
-}
-
-.stop-btn {
-  background: #e74c3c;
-  color: white;
-  border: none;
-  padding: 8px 16px;
-  border-radius: 4px;
-  cursor: pointer;
-  font-size: 14px;
-}
-
-.stop-btn:hover {
-  background: #c0392b;
-}
-
-.playback-info {
-  display: flex;
-  justify-content: space-between;
-  margin-bottom: 15px;
-  font-size: 14px;
-  color: #aaa;
-}
-
-.device-name {
-  font-weight: 500;
-}
-
-.time-display {
-  font-family: monospace;
-}
-
-.seek-controls {
-  margin-bottom: 15px;
-}
-
-.seek-container {
-  position: relative;
-  width: 100%;
-}
-
-.seek-tooltip {
-  position: absolute;
-  bottom: 25px;
-  transform: translateX(-50%);
-  background: rgba(0, 0, 0, 0.9);
-  color: white;
-  padding: 4px 8px;
-  border-radius: 4px;
-  font-size: 12px;
-  font-family: monospace;
-  pointer-events: none;
-  white-space: nowrap;
-  z-index: 10;
-}
-
-.seek-tooltip::after {
-  content: '';
-  position: absolute;
-  top: 100%;
-  left: 50%;
-  transform: translateX(-50%);
-  border: 4px solid transparent;
-  border-top-color: rgba(0, 0, 0, 0.9);
-}
-
-.seek-bar {
-  width: 100%;
-  height: 6px;
-  border-radius: 3px;
-  background: #444;
-  outline: none;
-  -webkit-appearance: none;
-  cursor: pointer;
-}
-
-.seek-bar::-webkit-slider-thumb {
-  -webkit-appearance: none;
-  width: 16px;
-  height: 16px;
-  border-radius: 50%;
-  background: #3498db;
-  cursor: pointer;
-}
-
-.seek-bar::-moz-range-thumb {
-  width: 16px;
-  height: 16px;
-  border-radius: 50%;
-  background: #3498db;
-  cursor: pointer;
-  border: none;
-}
-
-.playback-controls {
-  display: flex;
-  gap: 10px;
-  justify-content: center;
-}
-
-.control-btn {
-  background: #3498db;
-  color: white;
-  border: none;
-  padding: 8px 16px;
-  border-radius: 4px;
-  cursor: pointer;
-  font-size: 14px;
-  font-weight: 500;
-}
-
-.control-btn:hover {
-  background: #2980b9;
-}
-
-.control-btn:active {
-  transform: scale(0.95);
-}
-
-.play-pause-btn {
-  background: #2ecc71;
-  font-size: 15px;
-  padding: 10px 20px;
-}
-
-.play-pause-btn:hover {
-  background: #27ae60;
-}
-</style>

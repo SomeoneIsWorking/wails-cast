@@ -4,8 +4,7 @@ import { useCastStore } from "../stores/cast";
 import { mediaService } from "../services/media";
 import { FindSubtitleFile } from "../../wailsjs/go/main/App";
 import type { Device } from "../stores/cast";
-import "./MediaPlayer.css";
-import "./common.css";
+import { ArrowLeft, Cast, Video, Loader2, Check, FileText } from 'lucide-vue-next';
 
 interface Props {
   device: Device;
@@ -25,10 +24,11 @@ const isCasting = ref(false);
 const castResult = ref<string | null>(null);
 const mediaURL = ref<string>("");
 const subtitlePath = ref<string>("");
+const autoCastDone = ref(false);
 
 const fileName = computed(() => store.selectedMedia?.split("/").pop() || "");
 
-// Auto-detect subtitle file on mount
+// Auto-detect subtitle file and auto-cast on mount
 onMounted(async () => {
   if (store.selectedMedia) {
     try {
@@ -40,7 +40,13 @@ onMounted(async () => {
       console.error("Failed to find subtitle:", err);
     }
   }
-  generateMediaURL();
+  await generateMediaURL();
+  
+  // Auto-cast if not already done
+  if (!autoCastDone.value) {
+    autoCastDone.value = true;
+    await handleCast();
+  }
 });
 
 const handleCast = async () => {
@@ -53,11 +59,13 @@ const handleCast = async () => {
       store.selectedMedia!,
       subtitlePath.value
     );
-    castResult.value = "Cast successful!";
+    castResult.value = "Casting to " + store.selectedDevice!.name;
     store.clearError();
+    emit('cast');
   } catch (error: unknown) {
     const errorMsg = error instanceof Error ? error.message : String(error);
     store.setError(errorMsg);
+    castResult.value = null;
   } finally {
     isCasting.value = false;
   }
@@ -75,73 +83,112 @@ const generateMediaURL = async () => {
 const copyToClipboard = () => {
   navigator.clipboard.writeText(mediaURL.value);
 };
-
-generateMediaURL();
 </script>
 
 <template>
-  <div class="media-player">
-    <div class="player-header">
-      <button @click="$emit('back')" class="back-btn">← Back</button>
-      <h2>▶️ Cast Media</h2>
-      <div style="width: 60px"></div>
+  <div class="card">
+    <div class="card-header">
+      <div class="flex items-center justify-between">
+        <button @click="$emit('back')" class="btn-secondary flex items-center gap-2">
+          <ArrowLeft :size="18" />
+          Back
+        </button>
+        <h2 class="text-2xl font-bold flex items-center gap-2">
+          <Cast :size="28" class="text-green-400" />
+          Cast Media
+        </h2>
+        <div class="w-20"></div>
+      </div>
     </div>
 
-    <div class="player-content">
-      <div class="media-info">
-        <div class="media-icon">🎬</div>
-        <div class="media-details">
-          <h3>{{ fileName }}</h3>
-          <p class="media-path">{{ mediaPath }}</p>
+    <div class="card-body space-y-6">
+      <!-- Casting Status -->
+      <div v-if="isCasting || isLoading" class="flex flex-col items-center justify-center py-8 bg-blue-900/20 rounded-lg border border-blue-700">
+        <Loader2 :size="56" class="text-blue-400 mb-4 animate-spin" />
+        <p class="text-lg font-medium text-blue-400">Starting playback...</p>
+        <p class="text-sm text-gray-400 mt-1">Initializing stream</p>
+      </div>
+
+      <div v-else-if="castResult" class="flex items-center gap-3 p-4 bg-green-900/30 border border-green-700 rounded-lg">
+        <Check :size="24" class="text-green-400" />
+        <div>
+          <p class="font-medium text-green-400">{{ castResult }}</p>
+          <p class="text-sm text-gray-400">Use the playback controls below to control playback</p>
         </div>
       </div>
 
-      <div class="device-info">
-        <div class="device-icon">📺</div>
-        <div class="device-details">
-          <h3>{{ device.name }}</h3>
-          <p class="device-type">{{ device.type }}</p>
-          <p class="device-address">{{ device.address }}</p>
+      <!-- Media Info -->
+      <div class="flex items-center gap-4 p-4 bg-gray-700 rounded-lg">
+        <div class="p-3 bg-purple-600 rounded-lg">
+          <Video :size="32" />
+        </div>
+        <div class="flex-1 min-w-0">
+          <h3 class="font-semibold text-lg truncate">{{ fileName }}</h3>
+          <p class="text-sm text-gray-400 truncate">{{ mediaPath }}</p>
         </div>
       </div>
 
-      <div class="subtitle-section">
-        <h3>Subtitles (optional)</h3>
+      <!-- Device Info -->
+      <div class="flex items-center gap-4 p-4 bg-gray-700 rounded-lg">
+        <div class="p-3 bg-blue-600 rounded-lg">
+          <Cast :size="32" />
+        </div>
+        <div class="flex-1 min-w-0">
+          <h3 class="font-semibold text-lg truncate">{{ device.name }}</h3>
+          <p class="text-sm text-gray-400">{{ device.type }}</p>
+          <p class="text-xs text-gray-500">{{ device.address }}</p>
+        </div>
+      </div>
+
+      <!-- Subtitles Section -->
+      <div class="space-y-2">
+        <label class="flex items-center gap-2 text-sm font-medium text-gray-300">
+          <FileText :size="20" />
+          Subtitles (optional)
+        </label>
         <input 
           v-model="subtitlePath" 
           type="text" 
           placeholder="Path to subtitle file (.srt, .vtt, .ass)" 
-          class="subtitle-input"
+          class="input-field"
         />
-        <p v-if="subtitlePath" class="subtitle-hint">✓ Subtitles will be burned into video</p>
+        <p v-if="subtitlePath" class="text-xs text-green-400 flex items-center gap-1">
+          <Check :size="14" />
+          Subtitles will be burned into video
+        </p>
       </div>
 
-      <div v-if="mediaURL" class="url-section">
-        <h3>Media URL</h3>
-        <div class="url-display">
-          <code>{{ mediaURL }}</code>
-          <button @click="copyToClipboard" class="copy-btn">📋 Copy</button>
+      <!-- Media URL Section -->
+      <div v-if="mediaURL" class="space-y-2">
+        <label class="text-sm font-medium text-gray-300">Stream URL</label>
+        <div class="flex gap-2">
+          <input 
+            :value="mediaURL" 
+            readonly 
+            class="input-field flex-1 font-mono text-sm"
+          />
+          <button @click="copyToClipboard" class="btn-secondary flex items-center gap-2">
+            <Check :size="18" />
+            Copy
+          </button>
         </div>
       </div>
 
-      <div
-        v-if="castResult"
-        :class="['cast-result', { success: castResult.includes('Casting') }]"
-      >
-        <p>{{ castResult }}</p>
+      <!-- Recast Button -->
+      <div class="flex justify-end gap-3 pt-4">
+        <button @click="$emit('back')" class="btn-secondary">
+          Cancel
+        </button>
+        <button
+          @click="handleCast"
+          :disabled="isCasting || isLoading"
+          class="btn-success flex items-center gap-2"
+        >
+          <Loader2 v-if="isCasting || isLoading" :size="18" class="animate-spin" />
+          <Cast v-else :size="18" />
+          {{ isCasting || isLoading ? "Casting..." : "Recast" }}
+        </button>
       </div>
-    </div>
-
-    <div class="player-footer">
-      <button @click="$emit('back')" class="cancel-btn">Cancel</button>
-      <button
-        @click="handleCast"
-        :disabled="isCasting || isLoading"
-        class="cast-btn"
-      >
-        <span v-if="isCasting || isLoading" class="spinner"></span>
-        {{ isCasting || isLoading ? "Casting..." : "Cast Now" }}
-      </button>
     </div>
   </div>
 </template>
