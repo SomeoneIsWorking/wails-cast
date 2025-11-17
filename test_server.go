@@ -7,7 +7,7 @@ import (
 	"log"
 )
 
-func main() {
+func testServerMain() {
 	// Initialize components
 	discovery := NewDeviceDiscovery()
 
