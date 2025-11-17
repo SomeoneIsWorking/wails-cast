@@ -3,25 +3,33 @@ package main
 import (
 	"fmt"
 	"net/http"
-	"net/url"
 	"path/filepath"
 	"strings"
+	"sync"
 )
 
+// Server handles HTTP media streaming
 type Server struct {
 	port         int
 	httpServer   *http.Server
-	mediaManager *MediaManager
+	hlsManager   *HLSManagerManual
+	currentMedia string
+	subtitlePath string
+	seekTime     int
+	localIP      string
+	mu           sync.RWMutex
 }
 
-func NewServer(port int, mediaManager *MediaManager) *Server {
+// NewServer creates a new media server
+func NewServer(port int, localIP string) *Server {
 	s := &Server{
-		port:         port,
-		mediaManager: mediaManager,
+		port:       port,
+		localIP:    localIP,
+		hlsManager: NewHLSManagerManual(localIP), // Using manual mode by default
 	}
 
 	mux := http.NewServeMux()
-	mux.HandleFunc("/", s.handleMediaRequest)
+	mux.HandleFunc("/", s.handleRequest)
 
 	s.httpServer = &http.Server{
 		Addr:    fmt.Sprintf(":%d", port),
@@ -31,39 +39,87 @@ func NewServer(port int, mediaManager *MediaManager) *Server {
 	return s
 }
 
-// Start begins listening for media requests
-func (s *Server) Start() error {
-	go func() {
-		if err := s.httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			println("Media server error:", err.Error())
-		}
-	}()
-	return nil
+// SetCurrentMedia sets the media file to serve
+func (s *Server) SetCurrentMedia(filePath string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.currentMedia = filePath
+	logger.Info("Server now serving", "file", filePath)
 }
 
-// Stop gracefully shuts down the server
+// SetSubtitlePath sets the subtitle file
+func (s *Server) SetSubtitlePath(path string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.subtitlePath = path
+	if path != "" {
+		logger.Info("Subtitle path set", "path", path)
+	}
+}
+
+// SetSeekTime sets the seek position
+func (s *Server) SetSeekTime(seconds int) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.seekTime = seconds
+}
+
+// Start starts the HTTP server
+func (s *Server) Start() error {
+	logger.Info("Starting media server", "port", s.port)
+	return s.httpServer.ListenAndServe()
+}
+
+// Stop stops the HTTP server
 func (s *Server) Stop() error {
+	s.hlsManager.Cleanup()
 	if s.httpServer != nil {
 		return s.httpServer.Close()
 	}
 	return nil
 }
 
-// handleMediaRequest serves media files with proper headers
-func (s *Server) handleMediaRequest(w http.ResponseWriter, r *http.Request) {
-	filePath, err := url.QueryUnescape(r.URL.Path)
-	if err != nil {
-		http.Error(w, "Invalid path", http.StatusBadRequest)
+// handleRequest routes requests to appropriate handlers
+func (s *Server) handleRequest(w http.ResponseWriter, r *http.Request) {
+	s.mu.RLock()
+	videoPath := s.currentMedia
+	subtitlePath := s.subtitlePath
+	seekTime := s.seekTime
+	s.mu.RUnlock()
+
+	logger.Info("HTTP request", "path", r.URL.Path, "method", r.Method)
+
+	if videoPath == "" {
+		http.Error(w, "No media file set", http.StatusNotFound)
 		return
 	}
 
-	filePath = strings.TrimPrefix(filePath, "/")
-	filePath = filepath.Clean(filePath)
+	path := r.URL.Path
 
-	// Set appropriate content type
-	contentType := s.mediaManager.GetContentType(filePath)
-	w.Header().Set("Content-Type", contentType)
-	w.Header().Set("Accept-Ranges", "bytes")
+	// Handle HLS playlist request
+	if strings.HasSuffix(path, ".m3u8") || path == "/media.mp4" {
+		session := s.hlsManager.GetOrCreateSession(videoPath, subtitlePath, seekTime)
+		s.hlsManager.ServePlaylist(w, r, session)
+		return
+	}
 
-	http.ServeFile(w, r, filePath)
+	// Handle HLS segment request
+	if strings.HasSuffix(path, ".ts") {
+		segmentName := filepath.Base(path)
+		session := s.hlsManager.GetOrCreateSession(videoPath, subtitlePath, seekTime)
+		s.hlsManager.ServeSegment(w, r, session, segmentName)
+		return
+	}
+
+	// Direct file serving (no transcoding needed)
+	ext := strings.ToLower(filepath.Ext(videoPath))
+	if ext == ".mp4" && subtitlePath == "" {
+		w.Header().Set("Content-Type", "video/mp4")
+		w.Header().Set("Accept-Ranges", "bytes")
+		http.ServeFile(w, r, videoPath)
+		return
+	}
+
+	// Default to HLS for everything else
+	http.Redirect(w, r, "/media.m3u8", http.StatusFound)
 }

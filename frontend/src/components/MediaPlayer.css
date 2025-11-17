@@ -202,6 +202,40 @@
   cursor: not-allowed;
 }
 
+.subtitle-section {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 8px;
+  padding: 1.5rem;
+}
+
+.subtitle-section h3 {
+  margin: 0 0 1rem 0;
+  color: white;
+  font-size: 1rem;
+}
+
+.subtitle-input {
+  width: 100%;
+  padding: 0.75rem;
+  background: rgba(0, 0, 0, 0.3);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 6px;
+  color: white;
+  font-size: 0.9rem;
+  font-family: monospace;
+}
+
+.subtitle-input::placeholder {
+  color: rgba(255, 255, 255, 0.4);
+}
+
+.subtitle-hint {
+  margin: 0.5rem 0 0 0;
+  color: rgba(74, 222, 128, 0.8);
+  font-size: 0.85rem;
+}
+
 @media (max-width: 768px) {
   .media-player {
     padding: 1.5rem;

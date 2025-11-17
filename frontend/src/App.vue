@@ -5,6 +5,7 @@ import { deviceService } from './services/device'
 import DeviceDiscovery from './components/DeviceDiscovery.vue'
 import MediaPlayer from './components/MediaPlayer.vue'
 import FileExplorer from './components/FileExplorer.vue'
+import PlaybackControl from './components/PlaybackControl.vue'
 import './App.css'
 
 const store = useCastStore()
@@ -52,6 +53,9 @@ const handleCast = () => {
       <h1>🎬 Wails Cast</h1>
       <p class="subtitle">Cast your local videos to any device</p>
     </header>
+
+    <!-- Playback Control (shown when something is playing) -->
+    <PlaybackControl />
 
     <main class="app-main">
       <!-- Tab Navigation -->

@@ -1,20 +1,23 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"net"
-	"strings"
+	"time"
 
-	"github.com/koron/go-ssdp"
+	castdns "github.com/vishen/go-chromecast/dns"
 )
 
 // Device represents a cast device
 type Device struct {
-	Name        string `json:"name"`
-	Type        string `json:"type"`
-	URL         string `json:"url"`
-	Address     string `json:"address"`
-	ManufactURL string `json:"manufacturerUrl"`
+	Name    string `json:"name"`
+	Type    string `json:"type"`
+	URL     string `json:"url"`
+	Address string `json:"address"`
+	Host    string `json:"host"`
+	Port    int    `json:"port"`
+	UUID    string `json:"uuid"`
 }
 
 type DeviceDiscovery struct{}
@@ -23,52 +26,37 @@ func NewDeviceDiscovery() *DeviceDiscovery {
 	return &DeviceDiscovery{}
 }
 
-// Discover finds available cast devices on the network
+// Discover finds available cast devices using go-chromecast's built-in discovery
 func (dd *DeviceDiscovery) Discover() ([]Device, error) {
-	devices := []Device{}
-	deviceMap := make(map[string]Device)
+	logger.Info("Starting device discovery using go-chromecast")
 
-	results, err := ssdp.Search(ssdp.All, 3, "")
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	// Use go-chromecast's cast DNS discovery
+	castEntryChan, err := castdns.DiscoverCastDNSEntries(ctx, nil)
 	if err != nil {
-		return devices, fmt.Errorf("SSDP search failed: %w", err)
+		logger.Error("Failed to start discovery", "error", err)
+		return nil, err
 	}
 
-	for _, result := range results {
-		if strings.Contains(result.Type, "upnp:rootdevice") ||
-			strings.Contains(result.Type, "urn:dial-multiscreen-org") {
-			device := Device{
-				Name:    dd.extractName(result.USN),
-				Type:    "Chromecast/DLNA",
-				URL:     result.Location,
-				Address: dd.extractAddress(result.Location),
-			}
-			deviceMap[device.URL] = device
+	var devices []Device
+	for entry := range castEntryChan {
+		device := Device{
+			Name:    entry.DeviceName,
+			Type:    "Chromecast",
+			Host:    entry.AddrV4.String(),
+			Port:    entry.Port,
+			Address: entry.AddrV4.String(),
+			URL:     fmt.Sprintf("http://%s:%d", entry.AddrV4.String(), entry.Port),
+			UUID:    entry.UUID,
 		}
-	}
-
-	for _, device := range deviceMap {
 		devices = append(devices, device)
+		logger.Info("Found device", "name", device.Name, "host", device.Host, "port", device.Port, "uuid", device.UUID)
 	}
 
+	logger.Info("Discovery complete", "count", len(devices))
 	return devices, nil
-}
-
-// extractName extracts device name from USN
-func (dd *DeviceDiscovery) extractName(usn string) string {
-	parts := strings.Split(usn, "::")
-	if len(parts) > 0 {
-		return parts[0]
-	}
-	return "Unknown Device"
-}
-
-// extractAddress extracts IP address from URL
-func (dd *DeviceDiscovery) extractAddress(urlStr string) string {
-	parts := strings.Split(urlStr, "//")
-	if len(parts) > 1 {
-		return strings.Split(parts[1], ":")[0]
-	}
-	return ""
 }
 
 // GetLocalIP returns the local IP address
