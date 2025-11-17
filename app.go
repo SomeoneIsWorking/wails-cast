@@ -44,7 +44,7 @@ type PlaybackState struct {
 func NewApp() *App {
 	discovery := NewDeviceDiscovery()
 	localIP := discovery.GetLocalIP()
-	server := NewServer(8888, localIP)
+	server := NewServer(8888, localIP, HLSModeManual)
 
 	return &App{
 		discovery:   discovery,
@@ -128,11 +128,6 @@ func (a *App) CastToDevice(deviceURL, mediaPath string, options CastOptions) err
 		duration = 0
 	}
 
-	// Get seek time from server
-	a.mu.RLock()
-	seekTime := a.playbackState.CurrentTime
-	a.mu.RUnlock()
-
 	// Update playback state
 	a.mu.Lock()
 	a.playbackState.IsPlaying = true
@@ -147,7 +142,7 @@ func (a *App) CastToDevice(deviceURL, mediaPath string, options CastOptions) err
 	mediaURL := a.GetMediaURL(mediaPath)
 
 	// Cast to device and get chromecast app
-	ccApp, err := CastToChromeCastWithSeek(a.ctx, deviceURL, mediaURL, duration, int(seekTime))
+	ccApp, err := CastToChromeCast(a.ctx, deviceURL, mediaURL, duration)
 	if err != nil {
 		a.mu.Lock()
 		a.playbackState.IsPlaying = false
@@ -168,7 +163,6 @@ func (a *App) CastToDevice(deviceURL, mediaPath string, options CastOptions) err
 		"device", deviceURL,
 		"media", mediaPath,
 		"subtitle", options.SubtitlePath,
-		"seekTime", seekTime,
 	)
 
 	return nil

@@ -27,10 +27,6 @@ type HLSSessionAuto struct {
 	SubtitlePath string
 	OutputDir    string
 	PlaylistPath string
-	Duration     float64 // Total video duration in seconds
-	SegmentSize  int     // Segment duration in seconds
-	mu           sync.RWMutex
-	segments     map[int]bool  // Track which segments have been transcoded
 	ready        chan struct{} // Signal when first segment is ready
 	cmd          *exec.Cmd
 	cancel       context.CancelFunc
@@ -47,22 +43,15 @@ func NewHLSManagerAuto(localIP string) *HLSManagerAuto {
 		localIP:  localIP,
 	}
 } // GetOrCreateSession gets existing session or creates new one
-func (m *HLSManagerAuto) GetOrCreateSession(videoPath, subtitlePath string, seekTime int) *HLSSessionAuto {
+func (m *HLSManagerAuto) GetOrCreateSession(videoPath, subtitlePath string) interface{} {
 	// Use video path + seek time as session key
-	sessionID := fmt.Sprintf("%s_%d", filepath.Base(videoPath), seekTime)
+	sessionID := fmt.Sprintf("%s", filepath.Base(videoPath))
 
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
 	if session, exists := m.sessions[sessionID]; exists {
 		return session
-	}
-
-	// Get video duration
-	duration, err := GetVideoDuration(videoPath)
-	if err != nil {
-		logger.Warn("Failed to get video duration", "error", err)
-		duration = 0
 	}
 
 	// Create new session
@@ -75,30 +64,25 @@ func (m *HLSManagerAuto) GetOrCreateSession(videoPath, subtitlePath string, seek
 		SubtitlePath: subtitlePath,
 		OutputDir:    outputDir,
 		PlaylistPath: filepath.Join(outputDir, "playlist.m3u8"),
-		Duration:     duration,
-		SegmentSize:  4, // 4-second segments
-		segments:     make(map[int]bool),
 		ready:        make(chan struct{}),
 	}
 
 	m.sessions[sessionID] = session
 
+	// Start transcoding
+	go m.startTranscode(session)
+
 	return session
 }
 
 // startTranscode starts FFmpeg to generate HLS segments
-func (m *HLSManagerAuto) startTranscode(session *HLSSessionAuto, seekTime int) {
-	logger.Info("Starting HLS transcode", "session", session.ID, "video", session.VideoPath, "seek", seekTime)
+func (m *HLSManagerAuto) startTranscode(session *HLSSessionAuto) {
+	logger.Info("Starting HLS transcode", "session", session.ID, "video", session.VideoPath)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	session.cancel = cancel
 
 	args := []string{}
-
-	// Seek if needed
-	if seekTime > 0 {
-		args = append(args, "-ss", fmt.Sprintf("%d", seekTime))
-	}
 
 	args = append(args, "-i", session.VideoPath)
 
@@ -167,42 +151,25 @@ func (m *HLSManagerAuto) startTranscode(session *HLSSessionAuto, seekTime int) {
 }
 
 // ServePlaylist serves the HLS playlist
-func (m *HLSManagerAuto) ServePlaylist(w http.ResponseWriter, r *http.Request, session *HLSSessionAuto) {
+func (m *HLSManagerAuto) ServePlaylist(w http.ResponseWriter, r *http.Request, session interface{}) {
+	s := session.(*HLSSessionAuto)
 	// Wait for session to be ready
-	<-session.ready
+	<-s.ready
 
-	if _, err := os.Stat(session.PlaylistPath); err != nil {
+	if _, err := os.Stat(s.PlaylistPath); err != nil {
 		http.Error(w, "Playlist not ready", http.StatusNotFound)
 		return
 	}
 
 	// Read FFmpeg's playlist
-	content, err := os.ReadFile(session.PlaylistPath)
+	content, err := os.ReadFile(s.PlaylistPath)
 	if err != nil {
 		http.Error(w, "Failed to read playlist", http.StatusInternalServerError)
 		return
 	}
 
-	// Convert to string
+	// Convert to string and remove VOD markers to make it appear as live stream (no duration)
 	playlistContent := string(content)
-
-	// Add VOD type if not present
-	if !strings.Contains(playlistContent, "#EXT-X-PLAYLIST-TYPE") {
-		// Insert after #EXT-X-VERSION line
-		lines := strings.Split(playlistContent, "\n")
-		for i, line := range lines {
-			if strings.HasPrefix(line, "#EXT-X-VERSION") {
-				lines = append(lines[:i+1], append([]string{"#EXT-X-PLAYLIST-TYPE:VOD"}, lines[i+1:]...)...)
-				break
-			}
-		}
-		playlistContent = strings.Join(lines, "\n")
-	}
-
-	// Add ENDLIST if not present
-	if !strings.Contains(playlistContent, "#EXT-X-ENDLIST") {
-		playlistContent = strings.TrimRight(playlistContent, "\n") + "\n#EXT-X-ENDLIST\n"
-	}
 
 	// Set CORS headers for Chromecast
 	w.Header().Set("Access-Control-Allow-Origin", "*")
@@ -213,8 +180,9 @@ func (m *HLSManagerAuto) ServePlaylist(w http.ResponseWriter, r *http.Request, s
 
 	w.Write([]byte(playlistContent))
 } // ServeSegment serves an HLS segment
-func (m *HLSManagerAuto) ServeSegment(w http.ResponseWriter, r *http.Request, session *HLSSessionAuto, segmentName string) {
-	segmentPath := filepath.Join(session.OutputDir, segmentName)
+func (m *HLSManagerAuto) ServeSegment(w http.ResponseWriter, r *http.Request, session interface{}, segmentName string) {
+	s := session.(*HLSSessionAuto)
+	segmentPath := filepath.Join(s.OutputDir, segmentName)
 
 	// Wait for segment file
 	for i := 0; i < 50; i++ {

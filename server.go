@@ -12,7 +12,7 @@ import (
 type Server struct {
 	port         int
 	httpServer   *http.Server
-	hlsManager   *HLSManagerManual
+	hlsManager   HLSProvider
 	currentMedia string
 	subtitlePath string
 	seekTime     int
@@ -21,11 +21,18 @@ type Server struct {
 }
 
 // NewServer creates a new media server
-func NewServer(port int, localIP string) *Server {
+func NewServer(port int, localIP string, hlsMode HLSMode) *Server {
+	var hlsManager HLSProvider
+	if hlsMode == HLSModeAuto {
+		hlsManager = NewHLSManagerAuto(localIP)
+	} else {
+		hlsManager = NewHLSManagerManual(localIP)
+	}
+
 	s := &Server{
 		port:       port,
 		localIP:    localIP,
-		hlsManager: NewHLSManagerManual(localIP), // Using manual mode by default
+		hlsManager: hlsManager,
 	}
 
 	mux := http.NewServeMux()
@@ -72,7 +79,9 @@ func (s *Server) Start() error {
 
 // Stop stops the HTTP server
 func (s *Server) Stop() error {
-	s.hlsManager.Cleanup()
+	if s.hlsManager != nil {
+		s.hlsManager.Cleanup()
+	}
 	if s.httpServer != nil {
 		return s.httpServer.Close()
 	}
@@ -84,7 +93,6 @@ func (s *Server) handleRequest(w http.ResponseWriter, r *http.Request) {
 	s.mu.RLock()
 	videoPath := s.currentMedia
 	subtitlePath := s.subtitlePath
-	seekTime := s.seekTime
 	s.mu.RUnlock()
 
 	logger.Info("HTTP request", "path", r.URL.Path, "method", r.Method)
@@ -98,7 +106,7 @@ func (s *Server) handleRequest(w http.ResponseWriter, r *http.Request) {
 
 	// Handle HLS playlist request
 	if strings.HasSuffix(path, ".m3u8") || path == "/media.mp4" {
-		session := s.hlsManager.GetOrCreateSession(videoPath, subtitlePath, seekTime)
+		session := s.hlsManager.GetOrCreateSession(videoPath, subtitlePath)
 		s.hlsManager.ServePlaylist(w, r, session)
 		return
 	}
@@ -106,7 +114,7 @@ func (s *Server) handleRequest(w http.ResponseWriter, r *http.Request) {
 	// Handle HLS segment request
 	if strings.HasSuffix(path, ".ts") {
 		segmentName := filepath.Base(path)
-		session := s.hlsManager.GetOrCreateSession(videoPath, subtitlePath, seekTime)
+		session := s.hlsManager.GetOrCreateSession(videoPath, subtitlePath)
 		s.hlsManager.ServeSegment(w, r, session, segmentName)
 		return
 	}
