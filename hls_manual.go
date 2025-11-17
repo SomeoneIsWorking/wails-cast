@@ -26,10 +26,8 @@ type HLSSessionManual struct {
 	VideoPath    string
 	SubtitlePath string
 	OutputDir    string
-	Duration     float64      // Total video duration in seconds
-	SegmentSize  int          // Segment duration in seconds
-	segments     map[int]bool // Track which segments have been transcoded
-	segmentsMu   sync.Mutex   // Protects segments map
+	Duration     float64 // Total video duration in seconds
+	SegmentSize  int     // Segment duration in seconds
 }
 
 // NewHLSManagerManual creates a new HLS manager (manual mode)
@@ -72,10 +70,8 @@ func (m *HLSManagerManual) GetOrCreateSession(videoPath, subtitlePath string) in
 		SubtitlePath: subtitlePath,
 		OutputDir:    outputDir,
 		Duration:     duration,
-		SegmentSize:  4, // 4-second segments
-		segments:     make(map[int]bool),
+		SegmentSize:  10, // 10-second segments
 	}
-
 	m.sessions[sessionID] = session
 	return session
 }
@@ -137,14 +133,10 @@ func (m *HLSManagerManual) ServeSegment(w http.ResponseWriter, r *http.Request, 
 		return
 	}
 
-	// Check if already transcoded
-	s.segmentsMu.Lock()
-	exists := s.segments[segmentNum]
-	s.segmentsMu.Unlock()
-
 	segmentPath := filepath.Join(s.OutputDir, segmentName)
 
-	if !exists {
+	// Check if segment file already exists
+	if _, err := os.Stat(segmentPath); os.IsNotExist(err) {
 		// Wait briefly to see if connection stays alive (avoid transcoding if seeking rapidly)
 		select {
 		case <-r.Context().Done():
@@ -210,11 +202,6 @@ func (m *HLSManagerManual) ServeSegment(w http.ResponseWriter, r *http.Request, 
 			http.Error(w, "Transcode failed", http.StatusInternalServerError)
 			return
 		}
-
-		// Mark as transcoded
-		s.segmentsMu.Lock()
-		s.segments[segmentNum] = true
-		s.segmentsMu.Unlock()
 
 		logger.Info("Segment transcoded", "session", s.ID, "segment", segmentNum)
 	}
