@@ -101,9 +101,10 @@ func (s *Server) handleRequest(w http.ResponseWriter, r *http.Request) {
 	subtitlePath := s.subtitlePath
 	s.mu.RUnlock()
 
-	logger.Info("HTTP request", "path", r.URL.Path, "method", r.Method)
+	logger.Info("HTTP request", "path", r.URL.Path, "method", r.Method, "videoPath", videoPath)
 
 	if videoPath == "" {
+		logger.Warn("Request rejected: no media file set")
 		http.Error(w, "No media file set", http.StatusNotFound)
 		return
 	}
@@ -120,7 +121,9 @@ func (s *Server) handleRequest(w http.ResponseWriter, r *http.Request) {
 	// Handle HLS segment request
 	if strings.HasSuffix(path, ".ts") {
 		segmentName := filepath.Base(path)
+		logger.Info("Routing to HLS segment handler", "segmentName", segmentName)
 		session := s.hlsManager.GetOrCreateSession(videoPath, subtitlePath)
+		logger.Info("Session retrieved", "sessionType", fmt.Sprintf("%T", session))
 		s.hlsManager.ServeSegment(w, r, session, segmentName)
 		return
 	}

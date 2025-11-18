@@ -125,18 +125,24 @@ func (m *HLSManagerManual) ServePlaylist(w http.ResponseWriter, r *http.Request,
 
 // ServeSegment transcodes and serves a specific segment on-demand
 func (m *HLSManagerManual) ServeSegment(w http.ResponseWriter, r *http.Request, session interface{}, segmentName string) {
+	logger.Info("ServeSegment called", "segmentName", segmentName, "sessionType", fmt.Sprintf("%T", session))
 	s := session.(*HLSSessionManual)
+	logger.Info("Session cast successful", "sessionID", s.ID, "videoPath", s.VideoPath)
 	// Extract segment number from name (e.g., "segment123.ts" -> 123)
 	segmentNum, err := strconv.Atoi(strings.TrimSuffix(strings.TrimPrefix(segmentName, "segment"), ".ts"))
 	if err != nil {
+		logger.Error("Invalid segment name format", "segmentName", segmentName, "error", err)
 		http.Error(w, "Invalid segment name", http.StatusBadRequest)
 		return
 	}
 
+	logger.Info("Segment number parsed", "segmentNum", segmentNum)
 	segmentPath := filepath.Join(s.OutputDir, segmentName)
+	logger.Info("Checking segment path", "segmentPath", segmentPath)
 
 	// Check if segment file already exists
 	if _, err := os.Stat(segmentPath); os.IsNotExist(err) {
+		logger.Info("Segment file does not exist, will transcode", "segmentPath", segmentPath)
 		// Wait briefly to see if connection stays alive (avoid transcoding if seeking rapidly)
 		select {
 		case <-r.Context().Done():
@@ -204,9 +210,12 @@ func (m *HLSManagerManual) ServeSegment(w http.ResponseWriter, r *http.Request, 
 		}
 
 		logger.Info("Segment transcoded", "session", s.ID, "segment", segmentNum)
+	} else {
+		logger.Info("Segment file exists, serving cached version", "segmentPath", segmentPath)
 	}
 
 	// Serve the segment
+	logger.Info("Serving segment file", "segmentPath", segmentPath)
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	w.Header().Set("Access-Control-Allow-Methods", "GET, OPTIONS")
 	w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
