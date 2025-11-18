@@ -20,9 +20,9 @@ A desktop application for streaming media to Chromecast devices using Wails and 
 
 ## Installation
 
-1. Clone the repository:
+1. Clone the repository (with submodules):
 ```bash
-git clone https://github.com/SomeoneIsWorking/wails-cast.git
+git clone --recursive https://github.com/SomeoneIsWorking/wails-cast.git
 cd wails-cast
 ```
 
