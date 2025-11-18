@@ -11,12 +11,27 @@ A desktop application for streaming media to Chromecast devices using Wails and 
 - File explorer for easy media selection
 - Real-time device status monitoring
 
+## Screenshots
+
+### Device Discovery
+![Devices](./images/devices.png)
+
+### Media Files
+![Media Files](./images/media-files.png)
+
+### Casting
+![Cast](./images/cast.png)
+
 ## Prerequisites
 
 - Go 1.21 or higher
 - Node.js 16 or higher
 - npm or yarn
 - Wails CLI: `go install github.com/wailsapp/wails/v2/cmd/wails@latest`
+- FFmpeg: Required for media transcoding and streaming
+  - macOS: `brew install ffmpeg`
+  - Ubuntu/Debian: `sudo apt-get install ffmpeg`
+  - Windows: Download from https://ffmpeg.org/download.html
 
 ## Installation
 
