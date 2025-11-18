@@ -1,0 +1,3 @@
+[submodule "go-chromecast"]
+	path = go-chromecast
+	url = https://github.com/SomeoneIsWorking/go-chromecast

@@ -49,5 +49,5 @@ require (
 	gopkg.in/ini.v1 v1.67.0 // indirect
 )
 
-// Use local go-chromecast for modifications
-replace github.com/vishen/go-chromecast => ../go-chromecast
+// Use forked go-chromecast for modifications
+replace github.com/vishen/go-chromecast => ./go-chromecast
