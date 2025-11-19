@@ -358,6 +358,45 @@ func (a *App) GetPlaybackState() PlaybackState {
 	return a.playbackState
 }
 
+// UpdatePlaybackState actively fetches current status from Chromecast
+func (a *App) UpdatePlaybackState() (PlaybackState, error) {
+	a.mu.RLock()
+	ccApp := a.chromecastApp
+	a.mu.RUnlock()
+
+	if ccApp == nil {
+		return a.GetPlaybackState(), nil
+	}
+
+	// Request current media status from Chromecast
+	if err := ccApp.App.Update(); err != nil {
+		logger.Warn("Failed to update chromecast status", "error", err)
+		return a.GetPlaybackState(), err
+	}
+
+	// Get updated status
+	_, media, _ := ccApp.App.Status()
+	if media != nil {
+		a.mu.Lock()
+		a.playbackState.CurrentTime = float64(media.CurrentTime)
+
+		switch media.PlayerState {
+		case "PAUSED":
+			a.playbackState.IsPaused = true
+		case "PLAYING":
+			a.playbackState.IsPaused = false
+		case "IDLE":
+			if media.IdleReason == "FINISHED" || media.IdleReason == "INTERRUPTED" {
+				a.playbackState.IsPlaying = false
+				a.playbackState.IsPaused = false
+			}
+		}
+		a.mu.Unlock()
+	}
+
+	return a.GetPlaybackState(), nil
+}
+
 // Pause pauses current playback
 func (a *App) Pause() error {
 	a.mu.Lock()

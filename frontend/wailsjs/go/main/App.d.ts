@@ -40,4 +40,6 @@ export function StopPlayback():Promise<void>;
 
 export function Unpause():Promise<void>;
 
+export function UpdatePlaybackState():Promise<main.PlaybackState>;
+
 export function UpdateSubtitleSettings(arg1:main.CastOptions):Promise<void>;
