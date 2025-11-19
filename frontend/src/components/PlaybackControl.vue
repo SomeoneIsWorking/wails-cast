@@ -104,7 +104,8 @@ const showTooltip = ref(false)
 const tooltipPosition = ref(0)
 const seekPreviewTime = ref(0)
 const seekBar = ref<HTMLInputElement | null>(null)
-let updateInterval: number | null = null
+let updateInterval: ReturnType<typeof setInterval> | null = null
+let localTimeIncrement: ReturnType<typeof setInterval> | null = null
 
 // Update seek preview when hovering
 const updateTooltipPosition = (event: MouseEvent) => {
@@ -123,16 +124,32 @@ const updateSeekPreview = () => {
   seekPreviewTime.value = seekPosition.value
 }
 
-// Load playback state
+// Load playback state (with active polling)
 const loadPlaybackState = async () => {
   try {
-    const state = await mediaService.getPlaybackState()
+    const state = await mediaService.updatePlaybackState()
     playbackState.value = state
     // Sync seek position with current time from server
     seekPosition.value = Math.floor(state.currentTime)
   } catch (err) {
     console.error('Failed to load playback state:', err)
   }
+}
+
+// Increment local time every second when playing
+const startLocalTimeIncrement = () => {
+  if (localTimeIncrement) clearInterval(localTimeIncrement)
+  
+  localTimeIncrement = setInterval(() => {
+    if (playbackState.value.isPlaying && !playbackState.value.isPaused) {
+      // Increment local position
+      seekPosition.value = Math.min(
+        Math.floor(playbackState.value.duration),
+        seekPosition.value + 1
+      )
+      playbackState.value.currentTime = seekPosition.value
+    }
+  }, 1000)
 }
 
 // Toggle pause/play
@@ -196,11 +213,15 @@ const formatTime = (seconds: number) => {
 onMounted(() => {
   loadPlaybackState()
   
-  // Poll for state updates every 2 seconds
-  const pollInterval = setInterval(loadPlaybackState, 2000)
+  // Start local time increment
+  startLocalTimeIncrement()
+  
+  // Sync with server every 5 seconds
+  const pollInterval = setInterval(loadPlaybackState, 5000)
   
   onUnmounted(() => {
     clearInterval(pollInterval)
+    if (localTimeIncrement) clearInterval(localTimeIncrement)
   })
 })
 </script>

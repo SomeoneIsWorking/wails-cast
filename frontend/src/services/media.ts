@@ -1,4 +1,4 @@
-import { GetMediaURL, CastToDevice, GetMediaFiles, SeekTo, GetPlaybackState, StopPlayback, Pause, Unpause, UpdateSubtitleSettings, GetSubtitleURL } from '../../wailsjs/go/main/App'
+import { GetMediaURL, CastToDevice, GetMediaFiles, SeekTo, GetPlaybackState, UpdatePlaybackState, StopPlayback, Pause, Unpause, UpdateSubtitleSettings, GetSubtitleURL } from '../../wailsjs/go/main/App'
 import type { main } from '../../wailsjs/go/models'
 
 export const mediaService = {
@@ -36,6 +36,10 @@ export const mediaService = {
 
   async getPlaybackState(): Promise<main.PlaybackState> {
     return await GetPlaybackState()
+  },
+
+  async updatePlaybackState(): Promise<main.PlaybackState> {
+    return await UpdatePlaybackState()
   },
 
   async stopPlayback(): Promise<void> {

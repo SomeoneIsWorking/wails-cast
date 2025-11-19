@@ -78,6 +78,10 @@ export function Unpause() {
   return window['go']['main']['App']['Unpause']();
 }
 
+export function UpdatePlaybackState() {
+  return window['go']['main']['App']['UpdatePlaybackState']();
+}
+
 export function UpdateSubtitleSettings(arg1) {
   return window['go']['main']['App']['UpdateSubtitleSettings'](arg1);
 }
