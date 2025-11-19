@@ -16,6 +16,10 @@ export function GetMediaURL(arg1:string):Promise<string>;
 
 export function GetPlaybackState():Promise<main.PlaybackState>;
 
+export function GetSubtitleTracks(arg1:string):Promise<Array<main.SubtitleTrack>>;
+
+export function GetSubtitleURL(arg1:string):Promise<string>;
+
 export function LogError(arg1:string):Promise<void>;
 
 export function LogInfo(arg1:string):Promise<void>;
@@ -26,6 +30,8 @@ export function OpenDirectoryDialog():Promise<string>;
 
 export function OpenFileDialog():Promise<string>;
 
+export function OpenSubtitleDialog():Promise<string>;
+
 export function Pause():Promise<void>;
 
 export function SeekTo(arg1:string,arg2:string,arg3:number):Promise<void>;
@@ -33,3 +39,5 @@ export function SeekTo(arg1:string,arg2:string,arg3:number):Promise<void>;
 export function StopPlayback():Promise<void>;
 
 export function Unpause():Promise<void>;
+
+export function UpdateSubtitleSettings(arg1:main.CastOptions):Promise<void>;

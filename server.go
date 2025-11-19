@@ -13,7 +13,7 @@ import (
 type Server struct {
 	port         int
 	httpServer   *http.Server
-	hlsManager   HLSProvider
+	hlsSession   *HLSSession
 	currentMedia string
 	subtitlePath string
 	seekTime     int
@@ -22,18 +22,10 @@ type Server struct {
 }
 
 // NewServer creates a new media server
-func NewServer(port int, localIP string, hlsMode HLSMode) *Server {
-	var hlsManager HLSProvider
-	if hlsMode == HLSModeAuto {
-		hlsManager = NewHLSManagerAuto(localIP)
-	} else {
-		hlsManager = NewHLSManagerManual(localIP)
-	}
-
+func NewServer(port int, localIP string) *Server {
 	s := &Server{
-		port:       port,
-		localIP:    localIP,
-		hlsManager: hlsManager,
+		port:    port,
+		localIP: localIP,
 	}
 
 	mux := http.NewServeMux()
@@ -56,6 +48,12 @@ func NewServer(port int, localIP string, hlsMode HLSMode) *Server {
 func (s *Server) SetCurrentMedia(filePath string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+
+	// Clean up old session if exists
+	if s.hlsSession != nil {
+		s.hlsSession.Cleanup()
+	}
+
 	s.currentMedia = filePath
 	logger.Info("Server now serving", "file", filePath)
 }
@@ -65,6 +63,15 @@ func (s *Server) SetSubtitlePath(path string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.subtitlePath = path
+
+	// Create new session with current media and subtitle
+	if s.currentMedia != "" {
+		if s.hlsSession != nil {
+			s.hlsSession.Cleanup()
+		}
+		s.hlsSession = NewHLSSession(s.currentMedia, s.subtitlePath, s.localIP)
+	}
+
 	if path != "" {
 		logger.Info("Subtitle path set", "path", path)
 	}
@@ -85,8 +92,8 @@ func (s *Server) Start() error {
 
 // Stop stops the HTTP server
 func (s *Server) Stop() error {
-	if s.hlsManager != nil {
-		s.hlsManager.Cleanup()
+	if s.hlsSession != nil {
+		s.hlsSession.Cleanup()
 	}
 	if s.httpServer != nil {
 		return s.httpServer.Close()
@@ -111,10 +118,25 @@ func (s *Server) handleRequest(w http.ResponseWriter, r *http.Request) {
 
 	path := r.URL.Path
 
+	// Handle subtitle request
+	if path == "/subtitle.vtt" || strings.HasSuffix(path, ".vtt") || strings.HasSuffix(path, ".srt") {
+		if subtitlePath != "" && !strings.Contains(subtitlePath, ":si=") {
+			// Serve external subtitle file
+			w.Header().Set("Access-Control-Allow-Origin", "*")
+			w.Header().Set("Content-Type", "text/vtt")
+			http.ServeFile(w, r, subtitlePath)
+			return
+		}
+		http.NotFound(w, r)
+		return
+	}
+
 	// Handle HLS playlist request
 	if strings.HasSuffix(path, ".m3u8") || path == "/media.mp4" {
-		session := s.hlsManager.GetOrCreateSession(videoPath, subtitlePath)
-		s.hlsManager.ServePlaylist(w, r, session)
+		if s.hlsSession == nil {
+			s.hlsSession = NewHLSSession(videoPath, subtitlePath, s.localIP)
+		}
+		s.hlsSession.ServePlaylist(w, r)
 		return
 	}
 
@@ -122,9 +144,10 @@ func (s *Server) handleRequest(w http.ResponseWriter, r *http.Request) {
 	if strings.HasSuffix(path, ".ts") {
 		segmentName := filepath.Base(path)
 		logger.Info("Routing to HLS segment handler", "segmentName", segmentName)
-		session := s.hlsManager.GetOrCreateSession(videoPath, subtitlePath)
-		logger.Info("Session retrieved", "sessionType", fmt.Sprintf("%T", session))
-		s.hlsManager.ServeSegment(w, r, session, segmentName)
+		if s.hlsSession == nil {
+			s.hlsSession = NewHLSSession(videoPath, subtitlePath, s.localIP)
+		}
+		s.hlsSession.ServeSegment(w, r, segmentName)
 		return
 	}
 

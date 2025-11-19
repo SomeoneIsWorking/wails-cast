@@ -13,7 +13,7 @@ func main() {
 	localIP := discovery.GetLocalIP()
 
 	// Create media manager and server
-	server := NewServer(8888, localIP, HLSModeManual)
+	server := NewServer(8888, localIP)
 	// Set up media
 
 	videoPath := "-"

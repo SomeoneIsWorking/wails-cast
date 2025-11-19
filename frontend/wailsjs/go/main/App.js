@@ -30,6 +30,14 @@ export function GetPlaybackState() {
   return window['go']['main']['App']['GetPlaybackState']();
 }
 
+export function GetSubtitleTracks(arg1) {
+  return window['go']['main']['App']['GetSubtitleTracks'](arg1);
+}
+
+export function GetSubtitleURL(arg1) {
+  return window['go']['main']['App']['GetSubtitleURL'](arg1);
+}
+
 export function LogError(arg1) {
   return window['go']['main']['App']['LogError'](arg1);
 }
@@ -50,6 +58,10 @@ export function OpenFileDialog() {
   return window['go']['main']['App']['OpenFileDialog']();
 }
 
+export function OpenSubtitleDialog() {
+  return window['go']['main']['App']['OpenSubtitleDialog']();
+}
+
 export function Pause() {
   return window['go']['main']['App']['Pause']();
 }
@@ -64,4 +76,8 @@ export function StopPlayback() {
 
 export function Unpause() {
   return window['go']['main']['App']['Unpause']();
+}
+
+export function UpdateSubtitleSettings(arg1) {
+  return window['go']['main']['App']['UpdateSubtitleSettings'](arg1);
 }

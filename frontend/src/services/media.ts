@@ -1,4 +1,4 @@
-import { GetMediaURL, CastToDevice, GetMediaFiles, SeekTo, GetPlaybackState, StopPlayback, Pause, Unpause } from '../../wailsjs/go/main/App'
+import { GetMediaURL, CastToDevice, GetMediaFiles, SeekTo, GetPlaybackState, StopPlayback, Pause, Unpause, UpdateSubtitleSettings, GetSubtitleURL } from '../../wailsjs/go/main/App'
 import type { main } from '../../wailsjs/go/models'
 
 export const mediaService = {
@@ -6,11 +6,24 @@ export const mediaService = {
     return await GetMediaURL(filePath)
   },
 
-  async castToDevice(deviceURL: string, mediaPath: string, subtitlePath?: string): Promise<void> {
+  async castToDevice(deviceURL: string, mediaPath: string, subtitlePath?: string, subtitleTrack?: number): Promise<void> {
     const options: main.CastOptions = {
-      subtitlePath: subtitlePath || ''
+      SubtitlePath: subtitlePath || '',
+      SubtitleTrack: subtitleTrack ?? -1
     }
     return await CastToDevice(deviceURL, mediaPath, options)
+  },
+
+  async updateSubtitleSettings(subtitlePath?: string, subtitleTrack?: number): Promise<void> {
+    const options: main.CastOptions = {
+      SubtitlePath: subtitlePath || '',
+      SubtitleTrack: subtitleTrack ?? -1
+    }
+    return await UpdateSubtitleSettings(options)
+  },
+
+  async getSubtitleURL(subtitlePath: string): Promise<string> {
+    return await GetSubtitleURL(subtitlePath)
   },
 
   async getMediaFiles(dirPath: string): Promise<string[]> {

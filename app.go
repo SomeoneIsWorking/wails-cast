@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
@@ -9,14 +10,23 @@ import (
 	"strconv"
 	"strings"
 	"sync"
-	"time"
 
+	cast_proto "github.com/vishen/go-chromecast/cast/proto"
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
 // CastOptions holds options for casting
 type CastOptions struct {
-	SubtitlePath string
+	SubtitlePath  string
+	SubtitleTrack int // -1 for external file, >= 0 for embedded track index
+}
+
+// SubtitleTrack represents a subtitle track in a video file
+type SubtitleTrack struct {
+	Index    int    `json:"index"`
+	Language string `json:"language"`
+	Title    string `json:"title"`
+	Codec    string `json:"codec"`
 }
 
 type App struct {
@@ -44,7 +54,7 @@ type PlaybackState struct {
 func NewApp() *App {
 	discovery := NewDeviceDiscovery()
 	localIP := discovery.GetLocalIP()
-	server := NewServer(8888, localIP, HLSModeManual)
+	server := NewServer(8888, localIP)
 
 	return &App{
 		discovery:   discovery,
@@ -89,6 +99,15 @@ func (a *App) GetLocalIP() string {
 	return a.discovery.GetLocalIP()
 }
 
+// GetSubtitleURL returns the URL for subtitle file (for Shaka player)
+func (a *App) GetSubtitleURL(subtitlePath string) string {
+	if subtitlePath == "" {
+		return ""
+	}
+	localIP := a.discovery.GetLocalIP()
+	return fmt.Sprintf("http://%s:%d/subtitle.vtt", localIP, 8888)
+}
+
 // GetVideoDuration returns the duration of a video file in seconds
 func GetVideoDuration(videoPath string) (float64, error) {
 	cmd := exec.Command("ffprobe",
@@ -112,14 +131,80 @@ func GetVideoDuration(videoPath string) (float64, error) {
 	return duration, nil
 }
 
+// GetSubtitleTracks extracts subtitle tracks from a video file
+func (a *App) GetSubtitleTracks(videoPath string) ([]SubtitleTrack, error) {
+	cmd := exec.Command("ffprobe",
+		"-v", "error",
+		"-select_streams", "s",
+		"-show_entries", "stream=index:stream_tags=language,title:stream=codec_name",
+		"-of", "json",
+		videoPath,
+	)
+
+	output, err := cmd.Output()
+	if err != nil {
+		return nil, err
+	}
+
+	// Parse JSON output
+	var result struct {
+		Streams []struct {
+			Index     int    `json:"index"`
+			CodecName string `json:"codec_name"`
+			Tags      struct {
+				Language string `json:"language"`
+				Title    string `json:"title"`
+			} `json:"tags"`
+		} `json:"streams"`
+	}
+
+	if err := json.Unmarshal(output, &result); err != nil {
+		return nil, err
+	}
+
+	tracks := make([]SubtitleTrack, 0, len(result.Streams))
+	for i, stream := range result.Streams {
+		track := SubtitleTrack{
+			Index:    i, // Use relative subtitle index (0, 1, 2...) not absolute stream index
+			Language: stream.Tags.Language,
+			Title:    stream.Tags.Title,
+			Codec:    stream.CodecName,
+		}
+		tracks = append(tracks, track)
+		logger.Info("Subtitle track found", "relativeIndex", i, "absoluteStreamIndex", stream.Index, "language", stream.Tags.Language, "title", stream.Tags.Title)
+	}
+
+	return tracks, nil
+}
+
+// OpenSubtitleDialog opens a file picker dialog for subtitle files
+func (a *App) OpenSubtitleDialog() (string, error) {
+	return runtime.OpenFileDialog(a.ctx, runtime.OpenDialogOptions{
+		Title: "Select Subtitle File",
+		Filters: []runtime.FileFilter{
+			{
+				DisplayName: "Subtitle Files",
+				Pattern:     "*.srt;*.vtt;*.ass;*.ssa",
+			},
+		},
+	})
+}
+
 // CastToDevice casts media to a device
 func (a *App) CastToDevice(deviceURL, mediaPath string, options CastOptions) error {
 	// Set media on server
 	a.mediaServer.SetCurrentMedia(mediaPath)
-	a.mediaServer.SetSubtitlePath(options.SubtitlePath)
+
+	// Handle subtitle path - for embedded tracks, use special format
+	subtitlePath := options.SubtitlePath
+	if options.SubtitleTrack >= 0 {
+		// Embedded subtitle track - use video file path with track index
+		subtitlePath = fmt.Sprintf("%s:si=%d", mediaPath, options.SubtitleTrack)
+	}
+	a.mediaServer.SetSubtitlePath(subtitlePath)
 
 	// Store current subtitle
-	a.currentSubtitle = options.SubtitlePath
+	a.currentSubtitle = subtitlePath
 
 	// Get duration
 	duration, err := GetVideoDuration(mediaPath)
@@ -155,8 +240,13 @@ func (a *App) CastToDevice(deviceURL, mediaPath string, options CastOptions) err
 	a.chromecastApp = ccApp
 	a.mu.Unlock()
 
-	// Start polling status
-	go a.pollChromecastStatus()
+	// Register message handler for real-time updates
+	ccApp.App.AddMessageFunc(a.handleChromecastMessage)
+
+	// Do initial update to populate media state (needed for seek/pause to work)
+	if err := ccApp.App.Update(); err != nil {
+		logger.Warn("Failed initial chromecast status update", "error", err)
+	}
 
 	logger.Info("Cast successful",
 		"message", fmt.Sprintf("Casting %s to %s via %s", filepath.Base(mediaPath), deviceURL, mediaURL),
@@ -234,6 +324,30 @@ func (a *App) SeekTo(deviceURL, mediaPath string, seekTime float64) error {
 	a.mu.Unlock()
 
 	logger.Info("Seek successful", "time", seekTime)
+	return nil
+}
+
+// UpdateSubtitleSettings updates subtitle settings for current media without recasting
+func (a *App) UpdateSubtitleSettings(options CastOptions) error {
+	subtitlePath := options.SubtitlePath
+	if options.SubtitleTrack >= 0 {
+		subtitlePath = fmt.Sprintf("%s:si=%d", a.playbackState.MediaPath, options.SubtitleTrack)
+	}
+
+	// Update subtitle path on server (clears cache)
+	a.mediaServer.SetSubtitlePath(subtitlePath)
+	a.currentSubtitle = subtitlePath
+
+	// Seek to current position to reload with new subtitles
+	a.mu.RLock()
+	ccApp := a.chromecastApp
+	currentTime := a.playbackState.CurrentTime
+	a.mu.RUnlock()
+
+	if ccApp != nil {
+		return ccApp.App.SeekToTime(float32(currentTime))
+	}
+
 	return nil
 }
 
@@ -336,44 +450,58 @@ func (a *App) LogError(message string) {
 	logger.Error(message)
 }
 
-// pollChromecastStatus polls Chromecast for status updates
-func (a *App) pollChromecastStatus() {
-	for {
-		a.mu.RLock()
-		ccApp := a.chromecastApp
-		isPlaying := a.playbackState.IsPlaying
-		a.mu.RUnlock()
+// handleChromecastMessage handles messages from Chromecast
+func (a *App) handleChromecastMessage(msg *cast_proto.CastMessage) {
+	if msg.PayloadUtf8 == nil {
+		return
+	}
 
-		if ccApp == nil || !isPlaying {
-			return
+	messageBytes := []byte(*msg.PayloadUtf8)
+
+	// Check message type
+	var msgType struct {
+		Type string `json:"type"`
+	}
+	if err := json.Unmarshal(messageBytes, &msgType); err != nil {
+		return
+	}
+
+	// Handle different message types
+	switch msgType.Type {
+	case "MEDIA_STATUS":
+		var resp struct {
+			Status []struct {
+				CurrentTime float64 `json:"currentTime"`
+				PlayerState string  `json:"playerState"`
+				IdleReason  string  `json:"idleReason"`
+			} `json:"status"`
 		}
 
-		// Update status from Chromecast
-		err := ccApp.App.Update()
-		if err != nil {
-			logger.Warn("Failed to update Chromecast status", "error", err)
-			continue
-		}
+		if err := json.Unmarshal(messageBytes, &resp); err == nil && len(resp.Status) > 0 {
+			status := resp.Status[0]
 
-		// Get current media status
-		_, media, _ := ccApp.App.Status()
-		if media != nil {
 			a.mu.Lock()
-			a.playbackState.CurrentTime = float64(media.CurrentTime)
-			// Update pause state based on PlayerState
-			if media.PlayerState == "PAUSED" {
+			a.playbackState.CurrentTime = status.CurrentTime
+
+			switch status.PlayerState {
+			case "PAUSED":
 				a.playbackState.IsPaused = true
-			} else if media.PlayerState == "PLAYING" {
+			case "PLAYING":
 				a.playbackState.IsPaused = false
-			} else if media.PlayerState == "IDLE" {
-				a.playbackState.IsPlaying = false
-				a.playbackState.IsPaused = false
+			case "IDLE":
+				if status.IdleReason == "FINISHED" || status.IdleReason == "INTERRUPTED" {
+					a.playbackState.IsPlaying = false
+					a.playbackState.IsPaused = false
+				}
 			}
 			a.mu.Unlock()
 		}
 
-		// Poll every 2 seconds
-		time.Sleep(2 * time.Second)
+	case "CLOSE", "LOAD_FAILED":
+		a.mu.Lock()
+		a.playbackState.IsPlaying = false
+		a.playbackState.IsPaused = false
+		a.mu.Unlock()
 	}
 }
 

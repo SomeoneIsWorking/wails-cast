@@ -1,10 +1,12 @@
 <script setup lang="ts">
-import { ref, computed, onMounted } from "vue";
+import { ref, computed, onMounted, watch } from "vue";
 import { useCastStore } from "../stores/cast";
 import { mediaService } from "../services/media";
-import { FindSubtitleFile } from "../../wailsjs/go/main/App";
+import { FindSubtitleFile, GetSubtitleTracks } from "../../wailsjs/go/main/App";
+import type { main } from "../../wailsjs/go/models";
 import type { Device } from "../stores/cast";
-import { ArrowLeft, Cast, Video, Loader2, Check, FileText } from 'lucide-vue-next';
+import { ArrowLeft, Cast, Video, Loader2, Check, Languages } from 'lucide-vue-next';
+import FileSelector from "./FileSelector.vue";
 
 interface Props {
   device: Device;
@@ -24,7 +26,10 @@ const isCasting = ref(false);
 const castResult = ref<string | null>(null);
 const mediaURL = ref<string>("");
 const subtitlePath = ref<string>("");
+const subtitleTracks = ref<main.SubtitleTrack[]>([]);
+const selectedSubtitleSource = ref<string>("none"); // "none", "external", or track index as string
 const autoCastDone = ref(false);
+const fileSelectorRef = ref<InstanceType<typeof FileSelector>>();
 
 const fileName = computed(() => store.selectedMedia?.split("/").pop() || "");
 
@@ -32,12 +37,23 @@ const fileName = computed(() => store.selectedMedia?.split("/").pop() || "");
 onMounted(async () => {
   if (store.selectedMedia) {
     try {
-      const foundSub = await FindSubtitleFile(store.selectedMedia);
-      if (foundSub) {
-        subtitlePath.value = foundSub;
+      // Load subtitle tracks from video file
+      const tracks = await GetSubtitleTracks(store.selectedMedia);
+      subtitleTracks.value = tracks;
+      
+      // If tracks exist, select the first one by default
+      if (tracks.length > 0) {
+        selectedSubtitleSource.value = tracks[0].index.toString();
+      } else {
+        // Try to find external subtitle file
+        const foundSub = await FindSubtitleFile(store.selectedMedia);
+        if (foundSub) {
+          subtitlePath.value = foundSub;
+          selectedSubtitleSource.value = "external";
+        }
       }
     } catch (err) {
-      console.error("Failed to find subtitle:", err);
+      console.error("Failed to load subtitles:", err);
     }
   }
   await generateMediaURL();
@@ -49,19 +65,68 @@ onMounted(async () => {
   }
 });
 
-const handleCast = async () => {
+const handleSubtitleFileSelect = async (path: string) => {
+  subtitlePath.value = path;
+  await applySubtitleSettings();
+};
+
+// Watch for subtitle source changes and apply immediately
+watch(selectedSubtitleSource, async () => {
+  if (autoCastDone.value) {
+    await applySubtitleSettings();
+  }
+});
+
+const applySubtitleSettings = async () => {
+  if (!store.selectedDevice || !store.selectedMedia) return;
+
+  try {
+    let finalSubtitlePath = "";
+    let subtitleTrack = -1;
+
+    if (selectedSubtitleSource.value === "external") {
+      finalSubtitlePath = subtitlePath.value;
+    } else if (selectedSubtitleSource.value !== "none") {
+      subtitleTrack = parseInt(selectedSubtitleSource.value);
+    }
+
+    // Update subtitle settings on the server (backend handles cache clearing and seek)
+    await mediaService.updateSubtitleSettings(finalSubtitlePath, subtitleTrack);
+  } catch (error: unknown) {
+    console.error("Failed to update subtitle settings:", error);
+    store.setError(error instanceof Error ? error.message : String(error));
+  }
+};
+
+const recast = async () => {
+  await handleCast(false);
+};
+
+const handleCast = async (emitCastEvent = true) => {
   isCasting.value = true;
   castResult.value = null;
 
   try {
+    let finalSubtitlePath = "";
+    let subtitleTrack = -1;
+
+    if (selectedSubtitleSource.value === "external") {
+      finalSubtitlePath = subtitlePath.value;
+    } else if (selectedSubtitleSource.value !== "none") {
+      subtitleTrack = parseInt(selectedSubtitleSource.value);
+    }
+
     await mediaService.castToDevice(
       store.selectedDevice!.url,
       store.selectedMedia!,
-      subtitlePath.value
+      finalSubtitlePath,
+      subtitleTrack
     );
     castResult.value = "Casting to " + store.selectedDevice!.name;
     store.clearError();
-    emit('cast');
+    if (emitCastEvent) {
+      emit('cast');
+    }
   } catch (error: unknown) {
     const errorMsg = error instanceof Error ? error.message : String(error);
     store.setError(errorMsg);
@@ -141,18 +206,40 @@ const copyToClipboard = () => {
       </div>
 
       <!-- Subtitles Section -->
-      <div class="space-y-2">
+      <div class="space-y-3">
         <label class="flex items-center gap-2 text-sm font-medium text-gray-300">
-          <FileText :size="20" />
-          Subtitles (optional)
+          <Languages :size="20" />
+          Subtitles
         </label>
-        <input 
-          v-model="subtitlePath" 
-          type="text" 
-          placeholder="Path to subtitle file (.srt, .vtt, .ass)" 
-          class="input-field"
-        />
-        <p v-if="subtitlePath" class="text-xs text-green-400 flex items-center gap-1">
+        
+        <select 
+          v-model="selectedSubtitleSource" 
+          class="select-field"
+        >
+          <option value="none">No Subtitles</option>
+          <option 
+            v-for="track in subtitleTracks" 
+            :key="track.index" 
+            :value="track.index.toString()"
+          >
+            Track {{ track.index }}
+            <template v-if="track.language"> ({{ track.language }})</template>
+            <template v-if="track.title"> - {{ track.title }}</template>
+          </option>
+          <option value="external">External File...</option>
+        </select>
+
+        <div v-if="selectedSubtitleSource === 'external'" class="mt-3">
+          <FileSelector
+            ref="fileSelectorRef"
+            :accepted-extensions="['srt', 'vtt', 'ass', 'ssa']"
+            placeholder="Select subtitle file"
+            dialog-title="Select Subtitle File"
+            @select="handleSubtitleFileSelect"
+          />
+        </div>
+
+        <p v-if="selectedSubtitleSource !== 'none'" class="text-xs text-green-400 flex items-center gap-1">
           <Check :size="14" />
           Subtitles will be burned into video
         </p>
@@ -180,7 +267,7 @@ const copyToClipboard = () => {
           Cancel
         </button>
         <button
-          @click="handleCast"
+          @click="recast"
           :disabled="isCasting || isLoading"
           class="btn-success flex items-center gap-2"
         >
