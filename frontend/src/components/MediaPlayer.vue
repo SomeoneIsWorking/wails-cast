@@ -174,14 +174,6 @@ const copyToClipboard = () => {
         <p class="text-sm text-gray-400 mt-1">Initializing stream</p>
       </div>
 
-      <div v-else-if="castResult" class="flex items-center gap-3 p-4 bg-green-900/30 border border-green-700 rounded-lg">
-        <Check :size="24" class="text-green-400" />
-        <div>
-          <p class="font-medium text-green-400">{{ castResult }}</p>
-          <p class="text-sm text-gray-400">Use the playback controls below to control playback</p>
-        </div>
-      </div>
-
       <!-- Media Info -->
       <div class="flex items-center gap-4 p-4 bg-gray-700 rounded-lg">
         <div class="p-3 bg-purple-600 rounded-lg">
@@ -243,22 +235,6 @@ const copyToClipboard = () => {
           <Check :size="14" />
           Subtitles will be burned into video
         </p>
-      </div>
-
-      <!-- Media URL Section -->
-      <div v-if="mediaURL" class="space-y-2">
-        <label class="text-sm font-medium text-gray-300">Stream URL</label>
-        <div class="flex gap-2">
-          <input 
-            :value="mediaURL" 
-            readonly 
-            class="input-field flex-1 font-mono text-sm"
-          />
-          <button @click="copyToClipboard" class="btn-secondary flex items-center gap-2">
-            <Check :size="18" />
-            Copy
-          </button>
-        </div>
       </div>
 
       <!-- Recast Button -->
