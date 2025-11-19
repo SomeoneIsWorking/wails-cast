@@ -2,6 +2,7 @@ export namespace main {
 	
 	export class CastOptions {
 	    SubtitlePath: string;
+	    SubtitleTrack: number;
 	
 	    static createFrom(source: any = {}) {
 	        return new CastOptions(source);
@@ -10,6 +11,7 @@ export namespace main {
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.SubtitlePath = source["SubtitlePath"];
+	        this.SubtitleTrack = source["SubtitleTrack"];
 	    }
 	}
 	export class Device {
@@ -62,6 +64,24 @@ export namespace main {
 	        this.currentTime = source["currentTime"];
 	        this.duration = source["duration"];
 	        this.canSeek = source["canSeek"];
+	    }
+	}
+	export class SubtitleTrack {
+	    index: number;
+	    language: string;
+	    title: string;
+	    codec: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new SubtitleTrack(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.index = source["index"];
+	        this.language = source["language"];
+	        this.title = source["title"];
+	        this.codec = source["codec"];
 	    }
 	}
 

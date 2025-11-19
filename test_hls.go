@@ -12,7 +12,7 @@ func main() {
 	// Setup
 	discovery := NewDeviceDiscovery()
 	localIP := discovery.GetLocalIP()
-	server := NewServer(8888, localIP, HLSModeManual)
+	server := NewServer(8888, localIP)
 
 	// Start server
 	go server.Start()

@@ -3,7 +3,7 @@ import { ref, onMounted } from "vue";
 import { useCastStore } from "../stores/cast";
 import { mediaService } from "../services/media";
 import { fileService } from "../services/file";
-import { Video, Folder, File, Upload, Loader2, Check } from 'lucide-vue-next';
+import { Video, Loader2, Check } from 'lucide-vue-next';
 import { OnFileDrop } from '../../wailsjs/runtime/runtime';
 
 const emit = defineEmits<{
@@ -57,17 +57,6 @@ const openFileDialog = async () => {
   }
 };
 
-const openFolderDialog = async () => {
-  try {
-    const folder = await fileService.selectMediaFolder();
-    if (folder) {
-      loadMediaFiles(folder);
-    }
-  } catch (error: unknown) {
-    store.setError("Failed to open folder dialog");
-  }
-};
-
 // Setup Wails file drop handler
 onMounted(() => {
   // Use Wails OnFileDrop API to get actual file paths
@@ -105,13 +94,8 @@ onMounted(() => {
           class="input-field flex-1"
           @keyup.enter="handlePathChange"
         />
-        <button @click="openFolderDialog" class="btn-secondary flex items-center gap-2">
-          <Folder :size="18" />
-          Folder
-        </button>
-        <button @click="openFileDialog" class="btn-secondary flex items-center gap-2">
-          <File :size="18" />
-          File
+        <button @click="openFileDialog" class="btn-secondary">
+          Browse
         </button>
       </div>
 
@@ -120,12 +104,12 @@ onMounted(() => {
         class="drop-zone"
         style="--wails-drop-target: drop"
       >
-        <Upload :size="48" class="text-gray-500 mb-3" />
+        <Video :size="48" class="text-gray-500 mb-3" />
         <p class="text-lg font-medium text-gray-300 mb-1">
           Drag & drop a video file
         </p>
         <p class="text-sm text-gray-500">
-          or use the buttons above to browse
+          or use the button above to browse
         </p>
       </div>
 
