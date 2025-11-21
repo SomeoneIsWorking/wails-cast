@@ -7,12 +7,13 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"sync"
 
 	cast_proto "github.com/vishen/go-chromecast/cast/proto"
-	"github.com/wailsapp/wails/v2/pkg/runtime"
+	wails_runtime "github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
 // CastOptions holds options for casting
@@ -36,6 +37,7 @@ type App struct {
 	playbackState   PlaybackState
 	currentSubtitle string
 	chromecastApp   *ChromecastApp
+	caffeinateCmd   *exec.Cmd
 	mu              sync.RWMutex
 }
 
@@ -74,7 +76,64 @@ func (a *App) startup(ctx context.Context) {
 	logger.Info("App started")
 }
 
+// startSleepInhibition prevents system sleep during streaming (cross-platform)
+func (a *App) startSleepInhibition() {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+
+	// Kill existing process if running
+	if a.caffeinateCmd != nil && a.caffeinateCmd.Process != nil {
+		a.caffeinateCmd.Process.Kill()
+		a.caffeinateCmd = nil
+	}
+
+	var cmd *exec.Cmd
+
+	switch runtime.GOOS {
+	case "darwin":
+		// macOS: use caffeinate
+		cmd = exec.Command("caffeinate", "-d") // -d prevents display sleep
+	case "linux":
+		// Linux: try systemd-inhibit (systemd), then fallback to xdg-screensaver
+		if _, err := exec.LookPath("systemd-inhibit"); err == nil {
+			cmd = exec.Command("systemd-inhibit", "--what=idle:sleep", "--who=wails-cast", "--why=Streaming media", "--mode=block", "sleep", "infinity")
+		} else if _, err := exec.LookPath("xdg-screensaver"); err == nil {
+			cmd = exec.Command("xdg-screensaver", "suspend", fmt.Sprintf("%d", os.Getpid()))
+		}
+	case "windows":
+		// Windows: use powercfg or SetThreadExecutionState via PowerShell
+		// Note: This uses a PowerShell command to prevent sleep
+		cmd = exec.Command("powershell", "-Command", "$null = [System.Threading.Thread]::CurrentThread.SetThreadExecutionState(3); while($true){Start-Sleep -Seconds 30}")
+	}
+
+	if cmd == nil {
+		logger.Warn("Sleep inhibition not supported on this platform", "os", runtime.GOOS)
+		return
+	}
+
+	if err := cmd.Start(); err != nil {
+		logger.Warn("Failed to start sleep inhibition", "error", err)
+		return
+	}
+
+	a.caffeinateCmd = cmd
+	logger.Info("Sleep inhibition enabled", "os", runtime.GOOS)
+}
+
+// stopSleepInhibition allows system sleep again
+func (a *App) stopSleepInhibition() {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+
+	if a.caffeinateCmd != nil && a.caffeinateCmd.Process != nil {
+		a.caffeinateCmd.Process.Kill()
+		a.caffeinateCmd = nil
+		logger.Info("Sleep inhibition disabled")
+	}
+}
+
 func (a *App) shutdown(ctx context.Context) {
+	a.stopSleepInhibition()
 	a.mediaServer.Stop()
 }
 
@@ -179,9 +238,9 @@ func (a *App) GetSubtitleTracks(videoPath string) ([]SubtitleTrack, error) {
 
 // OpenSubtitleDialog opens a file picker dialog for subtitle files
 func (a *App) OpenSubtitleDialog() (string, error) {
-	return runtime.OpenFileDialog(a.ctx, runtime.OpenDialogOptions{
+	return wails_runtime.OpenFileDialog(a.ctx, wails_runtime.OpenDialogOptions{
 		Title: "Select Subtitle File",
-		Filters: []runtime.FileFilter{
+		Filters: []wails_runtime.FileFilter{
 			{
 				DisplayName: "Subtitle Files",
 				Pattern:     "*.srt;*.vtt;*.ass;*.ssa",
@@ -247,6 +306,9 @@ func (a *App) CastToDevice(deviceURL, mediaPath string, options CastOptions) err
 	if err := ccApp.App.Update(); err != nil {
 		logger.Warn("Failed initial chromecast status update", "error", err)
 	}
+
+	// Prevent system sleep while streaming
+	a.startSleepInhibition()
 
 	logger.Info("Cast successful",
 		"message", fmt.Sprintf("Casting %s to %s via %s", filepath.Base(mediaPath), deviceURL, mediaURL),
@@ -452,26 +514,50 @@ func (a *App) StopPlayback() {
 	a.playbackState.IsPaused = false
 	a.playbackState.CurrentTime = 0
 	a.mu.Unlock()
+
+	// Allow system sleep again
+	a.stopSleepInhibition()
 }
 
 // OpenFileDialog opens a file picker dialog
-func (a *App) OpenFileDialog() (string, error) {
-	return runtime.OpenFileDialog(a.ctx, runtime.OpenDialogOptions{
-		Title: "Select Video File",
-		Filters: []runtime.FileFilter{
+func (a *App) OpenFileDialog(title string, filters []string) (string, error) {
+	if title == "" {
+		title = "Select File"
+	}
+
+	// Convert filters to Wails format
+	var wailsFilters []wails_runtime.FileFilter
+	if len(filters) > 0 {
+		pattern := strings.Join(filters, ";")
+		wailsFilters = []wails_runtime.FileFilter{
 			{
-				DisplayName: "Video Files",
-				Pattern:     "*.mp4;*.mkv;*.avi;*.mov;*.flv;*.webm;*.m4v",
+				DisplayName: "Files",
+				Pattern:     pattern,
 			},
-		},
+		}
+	}
+
+	return wails_runtime.OpenFileDialog(a.ctx, wails_runtime.OpenDialogOptions{
+		Title:   title,
+		Filters: wailsFilters,
 	})
 }
 
 // OpenDirectoryDialog opens a directory picker dialog
 func (a *App) OpenDirectoryDialog() (string, error) {
-	return runtime.OpenDirectoryDialog(a.ctx, runtime.OpenDialogOptions{
+	return wails_runtime.OpenDirectoryDialog(a.ctx, wails_runtime.OpenDialogOptions{
 		Title: "Select Directory",
 	})
+}
+
+// ClearCache clears the HLS segment cache
+func (a *App) ClearCache() error {
+	if a.mediaServer != nil && a.mediaServer.hlsSession != nil {
+		a.mediaServer.hlsSession.Cleanup()
+		logger.Info("Cache cleared")
+		return nil
+	}
+	return fmt.Errorf("no active session to clear")
 }
 
 // LogInfo logs an info message from frontend
@@ -531,6 +617,10 @@ func (a *App) handleChromecastMessage(msg *cast_proto.CastMessage) {
 				if status.IdleReason == "FINISHED" || status.IdleReason == "INTERRUPTED" {
 					a.playbackState.IsPlaying = false
 					a.playbackState.IsPaused = false
+					a.mu.Unlock()
+					// Allow system sleep when playback finishes
+					a.stopSleepInhibition()
+					return
 				}
 			}
 			a.mu.Unlock()
@@ -541,6 +631,8 @@ func (a *App) handleChromecastMessage(msg *cast_proto.CastMessage) {
 		a.playbackState.IsPlaying = false
 		a.playbackState.IsPaused = false
 		a.mu.Unlock()
+		// Allow system sleep when playback closes/fails
+		a.stopSleepInhibition()
 	}
 }
 

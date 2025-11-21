@@ -41,7 +41,7 @@ func NewHLSSession(videoPath, subtitlePath, localIP string) *HLSSession {
 		SubtitlePath: subtitlePath,
 		OutputDir:    outputDir,
 		Duration:     duration,
-		SegmentSize:  10, // 10-second segments
+		SegmentSize:  5, // 10-second segments
 		LocalIP:      localIP,
 	}
 }
@@ -53,7 +53,7 @@ func (s *HLSSession) ServePlaylist(w http.ResponseWriter, r *http.Request) {
 
 	playlist.WriteString("#EXTM3U\n")
 	playlist.WriteString("#EXT-X-VERSION:3\n")
-	playlist.WriteString(fmt.Sprintf("#EXT-X-TARGETDURATION:%d\n", s.SegmentSize+1))
+	playlist.WriteString(fmt.Sprintf("#EXT-X-TARGETDURATION:%d\n", s.SegmentSize))
 	playlist.WriteString("#EXT-X-MEDIA-SEQUENCE:0\n")
 	playlist.WriteString("#EXT-X-PLAYLIST-TYPE:VOD\n")
 
@@ -190,6 +190,7 @@ func (s *HLSSession) ServeSegment(w http.ResponseWriter, r *http.Request, segmen
 			segmentPath,
 		)
 
+		logger.Info("FFMPEG CALL: ffmpeg " + strings.Join(args, " "))
 		cmd := exec.CommandContext(r.Context(), "ffmpeg", args...)
 		if err := cmd.Run(); err != nil {
 			// Check if it was cancelled

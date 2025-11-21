@@ -6,6 +6,10 @@ export function CastToDevice(arg1, arg2, arg3) {
   return window['go']['main']['App']['CastToDevice'](arg1, arg2, arg3);
 }
 
+export function ClearCache() {
+  return window['go']['main']['App']['ClearCache']();
+}
+
 export function DiscoverDevices() {
   return window['go']['main']['App']['DiscoverDevices']();
 }
@@ -54,8 +58,8 @@ export function OpenDirectoryDialog() {
   return window['go']['main']['App']['OpenDirectoryDialog']();
 }
 
-export function OpenFileDialog() {
-  return window['go']['main']['App']['OpenFileDialog']();
+export function OpenFileDialog(arg1, arg2) {
+  return window['go']['main']['App']['OpenFileDialog'](arg1, arg2);
 }
 
 export function OpenSubtitleDialog() {
