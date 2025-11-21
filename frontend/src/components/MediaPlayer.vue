@@ -159,22 +159,16 @@ const clearCache = async () => {
 </script>
 
 <template>
-  <div class="card">
-    <div class="card-header">
-      <div class="flex items-center justify-between">
-        <button @click="$emit('back')" class="btn-secondary flex items-center gap-2">
-          <ArrowLeft :size="18" />
-          Back
-        </button>
-        <h2 class="text-2xl font-bold flex items-center gap-2">
-          <Cast :size="28" class="text-green-400" />
-          Cast Media
-        </h2>
-        <div class="w-20"></div>
-      </div>
+  <div class="media-player h-full flex flex-col">
+    <div class="flex items-center justify-between mb-4">
+      <button @click="$emit('back')" class="btn-secondary flex items-center gap-2">
+        <ArrowLeft :size="18" />
+        Back
+      </button>
+      <div></div>
+      <div class="w-20"></div>
     </div>
-
-    <div class="card-body space-y-6">
+    <div class="flex-1 overflow-auto space-y-6">
       <!-- Casting Status -->
       <div v-if="isCasting || isLoading" class="flex flex-col items-center justify-center py-8 bg-blue-900/20 rounded-lg border border-blue-700">
         <Loader2 :size="56" class="text-blue-400 mb-4 animate-spin" />
@@ -245,8 +239,9 @@ const clearCache = async () => {
         </p>
       </div>
 
-      <!-- Recast Button -->
-      <div class="flex justify-between gap-3 pt-4">
+    </div>
+    <!-- Recast Button -->
+    <div class="flex justify-between gap-3 pt-4">
         <button @click="clearCache" class="btn-secondary flex items-center gap-2">
           <Trash2 :size="18" />
           Clear Cache
@@ -265,7 +260,6 @@ const clearCache = async () => {
             {{ isCasting || isLoading ? "Casting..." : "Recast" }}
           </button>
         </div>
-      </div>
     </div>
   </div>
 </template>
