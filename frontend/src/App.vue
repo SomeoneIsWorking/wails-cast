@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref } from "vue";
+import { ref, onMounted } from "vue";
 import { useCastStore } from "./stores/cast";
 import DeviceDiscovery from "./components/DeviceDiscovery.vue";
 import MediaPlayer from "./components/MediaPlayer.vue";
@@ -9,6 +9,10 @@ import { Tv, Video, Play, AlertCircle, X } from "lucide-vue-next";
 
 const store = useCastStore();
 const activeTab = ref<"devices" | "files" | "player">("devices");
+
+onMounted(() => {
+  store.discoverDevices();
+});
 
 const selectDevice = (device: any) => {
   store.selectDevice(device);

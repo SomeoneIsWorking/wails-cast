@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
+import { deviceService } from '../services/device'
 
 export interface Device {
   name: string
@@ -7,12 +8,6 @@ export interface Device {
   url: string
   address: string
   manufacturerUrl: string
-}
-
-interface CastState {
-  devices: Device[]
-  selectedDevice: Device | null
-  selectedMedia: string | null
 }
 
 export const useCastStore = defineStore('cast', () => {
@@ -55,6 +50,21 @@ export const useCastStore = defineStore('cast', () => {
     error.value = null
   }
 
+  const discoverDevices = async () => {
+    setLoading(true);
+    clearError();
+
+    try {
+      const devices = await deviceService.discoverDevices();
+      setDevices(devices);
+    } catch (error: unknown) {
+      setError("Failed to discover devices");
+      throw error;
+    } finally {
+      setLoading(false);
+    }
+  }
+
   const reset = () => {
     devices.value = []
     selectedDevice.value = null
@@ -83,6 +93,7 @@ export const useCastStore = defineStore('cast', () => {
     setLoading,
     setError,
     clearError,
+    discoverDevices,
     reset,
   }
 })
