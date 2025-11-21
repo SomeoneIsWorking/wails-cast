@@ -41,7 +41,7 @@ func NewHLSSession(videoPath, subtitlePath, localIP string) *HLSSession {
 		SubtitlePath: subtitlePath,
 		OutputDir:    outputDir,
 		Duration:     duration,
-		SegmentSize:  5, // 10-second segments
+		SegmentSize:  15,
 		LocalIP:      localIP,
 	}
 }
