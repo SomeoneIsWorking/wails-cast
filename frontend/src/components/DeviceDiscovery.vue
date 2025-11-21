@@ -1,79 +1,71 @@
 <script setup lang="ts">
-import { ref } from 'vue'
-import { useCastStore } from '../stores/cast'
-import { deviceService } from '../services/device'
-import type { Device } from '../stores/cast'
-import { Tv, RefreshCw, Cast, Check, Loader2 } from 'lucide-vue-next'
-
-defineProps({
-  isLoading: Boolean,
-})
+import { useCastStore } from "../stores/cast";
+import { deviceService } from "../services/device";
+import type { Device } from "../stores/cast";
+import { RefreshCw, Cast, Check, Loader2 } from "lucide-vue-next";
 
 const emit = defineEmits<{
-  select: [device: Device]
-  discover: []
-}>()
+  select: [device: Device];
+  discover: [];
+}>();
 
-const store = useCastStore()
-const isRefreshing = ref(false)
+const store = useCastStore();
 
 const handleDiscover = async () => {
-  isRefreshing.value = true
-  store.setLoading(true)
-  store.clearError()
+  store.setLoading(true);
+  store.clearError();
 
   try {
-    const devices = await deviceService.discoverDevices()
-    store.setDevices(devices)
-
-    if (devices.length === 0) {
-      store.setError('No cast devices found. Make sure devices are on the same network.')
-    }
+    const devices = await deviceService.discoverDevices();
+    store.setDevices(devices);
   } catch (error: unknown) {
-    store.setError('Failed to discover devices')
+    store.setError("Failed to discover devices");
+    throw error;
   } finally {
-    isRefreshing.value = false
-    store.setLoading(false)
+    store.setLoading(false);
   }
-}
+};
 
 const selectDevice = (device: Device) => {
-  store.selectDevice(device)
-  emit('select', device)
-}
+  store.selectDevice(device);
+  emit("select", device);
+};
 </script>
 
 <template>
-  <div class="card">
-    <div class="card-header">
-      <div class="flex items-center justify-between">
-        <h2 class="text-2xl font-bold flex items-center gap-2">
-          <Tv :size="28" class="text-blue-400" />
-          Cast Devices
-        </h2>
-        <button 
-          @click="handleDiscover" 
-          :disabled="isRefreshing || isLoading"
-          class="btn-primary flex items-center gap-2"
-        >
-          <RefreshCw :size="18" :class="{ 'animate-spin': isRefreshing || isLoading }" />
-          {{ isRefreshing || isLoading ? 'Searching...' : 'Scan Network' }}
-        </button>
-      </div>
+  <div class="device-discovery h-full flex flex-col">
+    <div class="flex items-center justify-between mb-4">
+      <div></div>
+      <button
+        @click="handleDiscover"
+        :disabled="store.isLoading"
+        class="btn-primary flex items-center gap-2"
+      >
+        <RefreshCw :size="18" :class="{ 'animate-spin': store.isLoading }" />
+        {{ store.isLoading ? "Searching..." : "Scan Network" }}
+      </button>
     </div>
 
-    <div class="card-body">
+    <div class="flex-1 overflow-auto space-y-4">
       <!-- Loading State -->
-      <div v-if="isRefreshing || isLoading" class="flex flex-col items-center justify-center py-12">
+      <div
+        v-if="store.isLoading"
+        class="flex flex-col items-center justify-center py-12"
+      >
         <Loader2 :size="48" class="text-blue-400 mb-4 animate-spin" />
         <p class="text-gray-400">Discovering devices...</p>
       </div>
 
       <!-- Empty State -->
-      <div v-else-if="!store.hasDevices" class="flex flex-col items-center justify-center py-12">
+      <div
+        v-else-if="!store.hasDevices"
+        class="flex flex-col items-center justify-center py-12"
+      >
         <Cast :size="64" class="text-gray-600 mb-4" />
         <p class="text-gray-400 text-lg mb-2">No devices found</p>
-        <p class="text-gray-500 text-sm mb-6">Make sure your Chromecast is on the same network</p>
+        <p class="text-gray-500 text-sm mb-6">
+          Make sure your Chromecast is on the same network
+        </p>
         <button @click="handleDiscover" class="btn-primary">
           Search for Devices
         </button>
@@ -81,13 +73,16 @@ const selectDevice = (device: Device) => {
 
       <!-- Device List -->
       <div v-else class="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <div 
-          v-for="device in store.devices" 
+        <div
+          v-for="device in store.devices"
           :key="device.url"
           @click="selectDevice(device)"
-          :class="['device-item', {
-            'device-item-selected': store.selectedDevice?.url === device.url
-          }]"
+          :class="[
+            'device-item',
+            {
+              'device-item-selected': store.selectedDevice?.url === device.url,
+            },
+          ]"
         >
           <div class="flex items-center gap-3">
             <div class="p-3 bg-blue-600 rounded-lg">
@@ -106,8 +101,13 @@ const selectDevice = (device: Device) => {
       </div>
 
       <!-- Device Count -->
-      <div v-if="store.hasDevices && !isRefreshing && !isLoading" class="mt-6 text-center text-sm text-gray-500">
-        Found {{ store.devices.length }} device{{ store.devices.length > 1 ? 's' : '' }}
+      <div
+        v-if="store.hasDevices && !store.isLoading"
+        class="text-center text-sm text-gray-500"
+      >
+        Found {{ store.devices.length }} device{{
+          store.devices.length > 1 ? "s" : ""
+        }}
       </div>
     </div>
   </div>

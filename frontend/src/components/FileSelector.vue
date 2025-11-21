@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted } from "vue";
-import { Upload } from 'lucide-vue-next';
-import { OnFileDrop } from '../../wailsjs/runtime/runtime';
-import { OpenFileDialog } from '../../wailsjs/go/main/App';
+import { ref } from "vue";
+import { Upload } from "lucide-vue-next";
+// Central Wails drop events are dispatched as 'wails-file-drop' from main.ts
+import useOnFileDrop from "../hooks/useOnFileDrop";
+import { OpenFileDialog } from "../../wailsjs/go/main/App";
 
 interface Props {
   modelValue?: string;
@@ -13,22 +14,22 @@ interface Props {
 }
 
 const props = withDefaults(defineProps<Props>(), {
-  modelValue: '',
-  placeholder: 'Drag & drop a file or click Browse',
-  dialogTitle: 'Select File'
+  modelValue: "",
+  placeholder: "Drag & drop a file or click Browse",
+  dialogTitle: "Select File",
 });
 
 const emit = defineEmits<{
-  'update:modelValue': [path: string];
+  "update:modelValue": [path: string];
 }>();
 
 const dropZoneRef = ref<HTMLElement | null>(null);
 const isHovering = ref(false);
 
 const isAcceptedFile = (filePath: string): boolean => {
-  const ext = filePath.toLowerCase().split('.').pop();
-  return props.acceptedExtensions.some(accepted => 
-    accepted.toLowerCase() === ext || accepted === '*'
+  const ext = filePath.toLowerCase().split(".").pop();
+  return props.acceptedExtensions.some(
+    (accepted) => accepted.toLowerCase() === ext || accepted === "*"
   );
 };
 
@@ -39,42 +40,27 @@ const handleFileSelect = (filePath: string) => {
 };
 
 const openFileDialog = async () => {
-  try {
-    const filters = props.dialogFilters || props.acceptedExtensions.map(ext => `*.${ext}`);
-    const file = await OpenFileDialog(props.dialogTitle, filters);
-    if (file) {
-      handleFileSelect(file);
-    }
-  } catch (error) {
-    console.error("Failed to open file dialog", error);
+  const filters =
+    props.dialogFilters || props.acceptedExtensions.map((ext) => `*.${ext}`);
+  const file = await OpenFileDialog(props.dialogTitle, filters);
+  if (file) {
+    handleFileSelect(file);
   }
 };
 
-let dropHandler: ((x: number, y: number, paths: string[]) => void) | null = null;
+// useOnFileDrop will manage the global listener
 
 // Setup Wails file drop handler
-onMounted(() => {
-  dropHandler = (_x: number, _y: number, paths: string[]) => {
-    // Only handle drops on this specific component's drop zone
-    if (!dropZoneRef.value || !isHovering.value) {
-      return;
-    }
-    
+useOnFileDrop({
+  dropZoneRef,
+  acceptedExtensions: props.acceptedExtensions,
+  onDrop: (paths) => {
     if (paths && paths.length > 0) {
       const filePath = paths[0];
-      if (isAcceptedFile(filePath)) {
-        handleFileSelect(filePath);
-      }
+      handleFileSelect(filePath);
     }
     isHovering.value = false;
-  };
-  
-  OnFileDrop(dropHandler, true);
-});
-
-onUnmounted(() => {
-  // Clean up handler
-  dropHandler = null;
+  },
 });
 </script>
 
@@ -88,9 +74,7 @@ onUnmounted(() => {
         class="input-field flex-1"
         readonly
       />
-      <button @click="openFileDialog" class="btn-secondary">
-        Browse
-      </button>
+      <button @click="openFileDialog" class="btn-secondary">Browse</button>
     </div>
 
     <!-- Drag and Drop Zone -->
@@ -104,12 +88,8 @@ onUnmounted(() => {
     >
       <Upload :size="48" class="text-gray-500 mb-3 mr-5" />
       <div>
-        <p class="text-lg font-medium text-gray-300 mb-1">
-          Drag & drop a file
-        </p>
-        <p class="text-sm text-gray-500">
-          or click to browse
-        </p>
+        <p class="text-lg font-medium text-gray-300 mb-1">Drag & drop a file</p>
+        <p class="text-sm text-gray-500">or click to browse</p>
       </div>
     </div>
   </div>
