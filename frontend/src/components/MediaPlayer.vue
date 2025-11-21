@@ -2,10 +2,10 @@
 import { ref, computed, onMounted, watch } from "vue";
 import { useCastStore } from "../stores/cast";
 import { mediaService } from "../services/media";
-import { FindSubtitleFile, GetSubtitleTracks } from "../../wailsjs/go/main/App";
+import { FindSubtitleFile, GetSubtitleTracks, ClearCache } from "../../wailsjs/go/main/App";
 import type { main } from "../../wailsjs/go/models";
 import type { Device } from "../stores/cast";
-import { ArrowLeft, Cast, Video, Loader2, Check, Languages } from 'lucide-vue-next';
+import { ArrowLeft, Cast, Video, Loader2, Check, Languages, Trash2 } from 'lucide-vue-next';
 import FileSelector from "./FileSelector.vue";
 
 interface Props {
@@ -29,7 +29,6 @@ const subtitlePath = ref<string>("");
 const subtitleTracks = ref<main.SubtitleTrack[]>([]);
 const selectedSubtitleSource = ref<string>("none"); // "none", "external", or track index as string
 const autoCastDone = ref(false);
-const fileSelectorRef = ref<InstanceType<typeof FileSelector>>();
 
 const fileName = computed(() => store.selectedMedia?.split("/").pop() || "");
 
@@ -37,20 +36,20 @@ const fileName = computed(() => store.selectedMedia?.split("/").pop() || "");
 onMounted(async () => {
   if (store.selectedMedia) {
     try {
+      // First priority: Try to find external subtitle file (e.g., .srt next to video)
+      const foundSub = await FindSubtitleFile(store.selectedMedia);
+      if (foundSub) {
+        subtitlePath.value = foundSub;
+        selectedSubtitleSource.value = "external";
+      }
+      
       // Load subtitle tracks from video file
       const tracks = await GetSubtitleTracks(store.selectedMedia);
       subtitleTracks.value = tracks;
       
-      // If tracks exist, select the first one by default
-      if (tracks.length > 0) {
+      // If no external subtitle found and embedded tracks exist, select the first one
+      if (!foundSub && tracks.length > 0) {
         selectedSubtitleSource.value = tracks[0].index.toString();
-      } else {
-        // Try to find external subtitle file
-        const foundSub = await FindSubtitleFile(store.selectedMedia);
-        if (foundSub) {
-          subtitlePath.value = foundSub;
-          selectedSubtitleSource.value = "external";
-        }
       }
     } catch (err) {
       console.error("Failed to load subtitles:", err);
@@ -65,14 +64,16 @@ onMounted(async () => {
   }
 });
 
-const handleSubtitleFileSelect = async (path: string) => {
-  subtitlePath.value = path;
-  await applySubtitleSettings();
-};
-
 // Watch for subtitle source changes and apply immediately
 watch(selectedSubtitleSource, async () => {
   if (autoCastDone.value) {
+    await applySubtitleSettings();
+  }
+});
+
+// Watch for subtitle path changes and apply immediately
+watch(subtitlePath, async () => {
+  if (autoCastDone.value && selectedSubtitleSource.value === "external") {
     await applySubtitleSettings();
   }
 });
@@ -145,9 +146,16 @@ const generateMediaURL = async () => {
   }
 };
 
-const copyToClipboard = () => {
-  navigator.clipboard.writeText(mediaURL.value);
+const clearCache = async () => {
+  try {
+    await ClearCache();
+    store.clearError();
+  } catch (error: unknown) {
+    const errorMsg = error instanceof Error ? error.message : String(error);
+    store.setError(errorMsg);
+  }
 };
+
 </script>
 
 <template>
@@ -209,25 +217,25 @@ const copyToClipboard = () => {
           class="select-field"
         >
           <option value="none">No Subtitles</option>
+          <option value="external">External File...</option>
           <option 
             v-for="track in subtitleTracks" 
             :key="track.index" 
             :value="track.index.toString()"
           >
-            Track {{ track.index }}
+            Embedded Track {{ track.index }}
             <template v-if="track.language"> ({{ track.language }})</template>
             <template v-if="track.title"> - {{ track.title }}</template>
           </option>
-          <option value="external">External File...</option>
         </select>
 
         <div v-if="selectedSubtitleSource === 'external'" class="mt-3">
           <FileSelector
-            ref="fileSelectorRef"
+            v-model="subtitlePath"
             :accepted-extensions="['srt', 'vtt', 'ass', 'ssa']"
+            :dialog-filters="['*.srt', '*.vtt', '*.ass', '*.ssa']"
             placeholder="Select subtitle file"
             dialog-title="Select Subtitle File"
-            @select="handleSubtitleFileSelect"
           />
         </div>
 
@@ -238,19 +246,25 @@ const copyToClipboard = () => {
       </div>
 
       <!-- Recast Button -->
-      <div class="flex justify-end gap-3 pt-4">
-        <button @click="$emit('back')" class="btn-secondary">
-          Cancel
+      <div class="flex justify-between gap-3 pt-4">
+        <button @click="clearCache" class="btn-secondary flex items-center gap-2">
+          <Trash2 :size="18" />
+          Clear Cache
         </button>
-        <button
-          @click="recast"
-          :disabled="isCasting || isLoading"
-          class="btn-success flex items-center gap-2"
-        >
-          <Loader2 v-if="isCasting || isLoading" :size="18" class="animate-spin" />
-          <Cast v-else :size="18" />
-          {{ isCasting || isLoading ? "Casting..." : "Recast" }}
-        </button>
+        <div class="flex gap-3">
+          <button @click="$emit('back')" class="btn-secondary">
+            Cancel
+          </button>
+          <button
+            @click="recast"
+            :disabled="isCasting || isLoading"
+            class="btn-success flex items-center gap-2"
+          >
+            <Loader2 v-if="isCasting || isLoading" :size="18" class="animate-spin" />
+            <Cast v-else :size="18" />
+            {{ isCasting || isLoading ? "Casting..." : "Recast" }}
+          </button>
+        </div>
       </div>
     </div>
   </div>

@@ -121,7 +121,6 @@ const handleCast = () => {
           </div>
           <FileExplorer 
             @select="selectMedia"
-            @loading="(loading) => store.setLoading(loading)"
           />
         </section>
 

@@ -4,6 +4,8 @@ import {main} from '../models';
 
 export function CastToDevice(arg1:string,arg2:string,arg3:main.CastOptions):Promise<void>;
 
+export function ClearCache():Promise<void>;
+
 export function DiscoverDevices():Promise<Array<main.Device>>;
 
 export function FindSubtitleFile(arg1:string):Promise<string>;
@@ -28,7 +30,7 @@ export function LogWarn(arg1:string):Promise<void>;
 
 export function OpenDirectoryDialog():Promise<string>;
 
-export function OpenFileDialog():Promise<string>;
+export function OpenFileDialog(arg1:string,arg2:Array<string>):Promise<string>;
 
 export function OpenSubtitleDialog():Promise<string>;
 
