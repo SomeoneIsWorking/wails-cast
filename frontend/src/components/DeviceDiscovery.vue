@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import { useCastStore } from "../stores/cast";
-import { deviceService } from "../services/device";
 import type { Device } from "../stores/cast";
 import { RefreshCw, Cast, Check, Loader2 } from "lucide-vue-next";
 
@@ -10,21 +9,6 @@ const emit = defineEmits<{
 }>();
 
 const store = useCastStore();
-
-const handleDiscover = async () => {
-  store.setLoading(true);
-  store.clearError();
-
-  try {
-    const devices = await deviceService.discoverDevices();
-    store.setDevices(devices);
-  } catch (error: unknown) {
-    store.setError("Failed to discover devices");
-    throw error;
-  } finally {
-    store.setLoading(false);
-  }
-};
 
 const selectDevice = (device: Device) => {
   store.selectDevice(device);
@@ -37,7 +21,7 @@ const selectDevice = (device: Device) => {
     <div class="flex items-center justify-between mb-4">
       <div></div>
       <button
-        @click="handleDiscover"
+        @click="store.discoverDevices"
         :disabled="store.isLoading"
         class="btn-primary flex items-center gap-2"
       >
@@ -66,7 +50,7 @@ const selectDevice = (device: Device) => {
         <p class="text-gray-500 text-sm mb-6">
           Make sure your Chromecast is on the same network
         </p>
-        <button @click="handleDiscover" class="btn-primary">
+        <button @click="store.discoverDevices" class="btn-primary">
           Search for Devices
         </button>
       </div>
