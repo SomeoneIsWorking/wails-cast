@@ -41,7 +41,7 @@ func NewHLSSession(videoPath, subtitlePath, localIP string) *HLSSession {
 		SubtitlePath: subtitlePath,
 		OutputDir:    outputDir,
 		Duration:     duration,
-		SegmentSize:  15,
+		SegmentSize:  8,
 		LocalIP:      localIP,
 	}
 }
@@ -154,6 +154,8 @@ func (s *HLSSession) ServeSegment(w http.ResponseWriter, r *http.Request, segmen
 			"-preset", "veryfast",
 			"-tune", "zerolatency",
 			"-pix_fmt", "yuv420p",
+			"-sc_threshold", "0",
+			"-g", "48",
 		)
 
 		// Add subtitles if provided
