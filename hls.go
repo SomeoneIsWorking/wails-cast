@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"fmt"
 	"net/http"
 	"os"
@@ -103,6 +104,7 @@ func (s *HLSSession) ServePlaylist(w http.ResponseWriter, r *http.Request) {
 // ServeSegment transcodes and serves a specific segment on-demand
 func (s *HLSSession) ServeSegment(w http.ResponseWriter, r *http.Request, segmentName string) {
 	logger.Info("ServeSegment called", "segmentName", segmentName, "videoPath", s.VideoPath)
+	os.MkdirAll(s.OutputDir, 0755)
 	// Extract segment number from name (e.g., "segment123.ts" -> 123)
 	segmentNum, err := strconv.Atoi(strings.TrimSuffix(strings.TrimPrefix(segmentName, "segment"), ".ts"))
 	if err != nil {
@@ -128,8 +130,6 @@ func (s *HLSSession) ServeSegment(w http.ResponseWriter, r *http.Request, segmen
 	if err != nil || !manifestMatches(manifest, s.SubtitlePath, segmentDuration) {
 		logger.Info("Segment needs regeneration", "segment", segmentNum, "reason", "manifest mismatch or missing")
 		needsRegeneration = true
-		// Remove old segment if it exists
-		os.Remove(segmentPath)
 	}
 
 	// Check if segment file already exists
@@ -150,6 +150,7 @@ func (s *HLSSession) ServeSegment(w http.ResponseWriter, r *http.Request, segmen
 
 		// Build FFmpeg command to extract just this segment
 		args := []string{
+			"-y",
 			"-ss", fmt.Sprintf("%.2f", startTime),
 			"-t", fmt.Sprintf("%d", s.SegmentSize),
 			"-i", escapeFFmpegPath(s.VideoPath),
@@ -201,13 +202,16 @@ func (s *HLSSession) ServeSegment(w http.ResponseWriter, r *http.Request, segmen
 
 		logger.Info("FFMPEG CALL: ffmpeg " + strings.Join(args, " "))
 		cmd := exec.CommandContext(r.Context(), "ffmpeg", args...)
+		var stderr bytes.Buffer
+		cmd.Stderr = &stderr
 		if err := cmd.Run(); err != nil {
 			// Check if it was cancelled
 			if r.Context().Err() != nil {
-				logger.Info("Transcode cancelled", "segment", segmentNum)
+				logger.Info("Segment request cancelled", "segment", segmentNum)
 				return
 			}
-			logger.Error("Failed to transcode segment", "error", err, "segment", segmentNum)
+			stderrStr := strings.TrimSpace(stderr.String())
+			logger.Error("Failed to transcode segment", "error", err, "stderr", stderrStr, "segment", segmentNum)
 			http.Error(w, "Transcode failed", http.StatusInternalServerError)
 			return
 		}
