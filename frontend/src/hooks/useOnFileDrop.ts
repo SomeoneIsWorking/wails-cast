@@ -1,4 +1,5 @@
 import { Ref, onMounted, onUnmounted } from 'vue'
+import { isAcceptedFile } from '../utils/file'
 
 type DropEventDetail = { x: number; y: number; paths: string[] }
 
@@ -9,11 +10,6 @@ interface Options {
 }
 
 export function useOnFileDrop({ dropZoneRef, acceptedExtensions, onDrop }: Options) {
-  const isAcceptedFile = (filePath: string) => {
-    if (!acceptedExtensions || acceptedExtensions.length === 0) return true
-    const ext = (filePath || '').toLowerCase().split('.').pop() || ''
-    return acceptedExtensions.some(accepted => accepted === '*' || accepted.toLowerCase() === ext)
-  }
 
   const listener = (evt: Event) => {
     const e = evt as CustomEvent<DropEventDetail>
@@ -29,7 +25,7 @@ export function useOnFileDrop({ dropZoneRef, acceptedExtensions, onDrop }: Optio
       }
     }
 
-    const accepted = paths.filter(p => isAcceptedFile(p))
+    const accepted = paths.filter(p => isAcceptedFile(p, acceptedExtensions))
     if (accepted.length > 0) {
       onDrop(accepted)
     }

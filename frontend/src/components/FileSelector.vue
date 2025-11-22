@@ -3,6 +3,7 @@ import { ref } from "vue";
 import { Upload } from "lucide-vue-next";
 // Central Wails drop events are dispatched as 'wails-file-drop' from main.ts
 import useOnFileDrop from "../hooks/useOnFileDrop";
+import { isAcceptedFile } from "../utils/file";
 import { OpenFileDialog } from "../../wailsjs/go/main/App";
 
 interface Props {
@@ -10,7 +11,6 @@ interface Props {
   acceptedExtensions: string[];
   placeholder?: string;
   dialogTitle?: string;
-  dialogFilters?: string[];
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -26,22 +26,17 @@ const emit = defineEmits<{
 const dropZoneRef = ref<HTMLElement | null>(null);
 const isHovering = ref(false);
 
-const isAcceptedFile = (filePath: string): boolean => {
-  const ext = filePath.toLowerCase().split(".").pop();
-  return props.acceptedExtensions.some(
-    (accepted) => accepted.toLowerCase() === ext || accepted === "*"
-  );
-};
 
 const handleFileSelect = (filePath: string) => {
-  if (isAcceptedFile(filePath)) {
+  if (isAcceptedFile(filePath, props.acceptedExtensions)) {
     emit("update:modelValue", filePath);
   }
 };
 
 const openFileDialog = async () => {
-  const filters =
-    props.dialogFilters || props.acceptedExtensions.map((ext) => `*.${ext}`);
+  const filters = props.acceptedExtensions
+    .filter((ext) => ext && ext !== "*")
+    .map((ext) => `*.${ext}`);
   const file = await OpenFileDialog(props.dialogTitle, filters);
   if (file) {
     handleFileSelect(file);

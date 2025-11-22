@@ -37,16 +37,6 @@ watch(selectedFile, (newFile) => {
           'mov',
           'flv',
           'm4v',
-          '*',
-        ]"
-        :dialog-filters="[
-          '*.mp4',
-          '*.mkv',
-          '*.webm',
-          '*.avi',
-          '*.mov',
-          '*.flv',
-          '*.m4v',
         ]"
         placeholder="Drag & drop a video file or click Browse"
         dialog-title="Select Video File"

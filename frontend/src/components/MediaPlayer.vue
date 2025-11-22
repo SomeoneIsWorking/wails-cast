@@ -227,7 +227,6 @@ const clearCache = async () => {
           <FileSelector
             v-model="subtitlePath"
             :accepted-extensions="['srt', 'vtt', 'ass', 'ssa']"
-            :dialog-filters="['*.srt', '*.vtt', '*.ass', '*.ssa']"
             placeholder="Select subtitle file"
             dialog-title="Select Subtitle File"
           />

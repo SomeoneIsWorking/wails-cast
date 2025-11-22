@@ -151,15 +151,5 @@ func (s *Server) handleRequest(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Direct file serving (no transcoding needed)
-	ext := strings.ToLower(filepath.Ext(videoPath))
-	if ext == ".mp4" && subtitlePath == "" {
-		w.Header().Set("Content-Type", "video/mp4")
-		w.Header().Set("Accept-Ranges", "bytes")
-		http.ServeFile(w, r, videoPath)
-		return
-	}
-
-	// Default to HLS for everything else
-	http.Redirect(w, r, "/media.m3u8", http.StatusFound)
+	http.NotFound(w, r)
 }
