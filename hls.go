@@ -11,6 +11,14 @@ import (
 	"time"
 )
 
+// escapeFFmpegPath escapes special characters in paths that ffmpeg doesn't like, including square brackets, colons, and normalizes backslashes
+func escapeFFmpegPath(path string) string {
+	path = strings.ReplaceAll(path, "\\", "/")
+	path = strings.ReplaceAll(path, "[", "\\[")
+	path = strings.ReplaceAll(path, "]", "\\]")
+	return path
+}
+
 // HLSSession represents an active HLS streaming session
 type HLSSession struct {
 	VideoPath    string
@@ -144,7 +152,7 @@ func (s *HLSSession) ServeSegment(w http.ResponseWriter, r *http.Request, segmen
 		args := []string{
 			"-ss", fmt.Sprintf("%.2f", startTime),
 			"-t", fmt.Sprintf("%d", s.SegmentSize),
-			"-i", s.VideoPath,
+			"-i", escapeFFmpegPath(s.VideoPath),
 			"-copyts",
 		}
 
@@ -167,15 +175,14 @@ func (s *HLSSession) ServeSegment(w http.ResponseWriter, r *http.Request, segmen
 				if len(parts) == 2 {
 					streamIndex := parts[1]
 					// Properly construct the subtitles filter with stream index
-					filterStr := fmt.Sprintf("subtitles=%s:si=%s:force_style='FontSize=24'", s.VideoPath, streamIndex)
+					filterStr := fmt.Sprintf("subtitles='%s':si=%s:force_style='FontSize=24'", escapeFFmpegPath(s.VideoPath), streamIndex)
 					args = append(args, "-vf", filterStr)
 					logger.Info("Using embedded subtitle track", "streamIndex", streamIndex, "filter", filterStr)
 				}
 			} else if _, err := os.Stat(s.SubtitlePath); err == nil {
 				// External subtitle file
-				escapedPath := strings.ReplaceAll(s.SubtitlePath, "\\", "/")
-				escapedPath = strings.ReplaceAll(escapedPath, ":", "\\\\:")
-				args = append(args, "-vf", fmt.Sprintf("subtitles=%s:force_style='FontSize=24'", escapedPath))
+				escapedPath := escapeFFmpegPath(s.SubtitlePath)
+				args = append(args, "-vf", fmt.Sprintf("subtitles='%s':force_style='FontSize=24'", escapedPath))
 			}
 		}
 
