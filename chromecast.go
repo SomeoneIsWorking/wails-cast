@@ -18,8 +18,8 @@ type ChromecastApp struct {
 }
 
 // CastToChromeCastWithSeek casts media with duration and seek time
-func CastToChromeCast(ctx any, deviceAddr string, mediaURL string, duration float64) (*ChromecastApp, error) {
-	logger.Info("Attempting Chromecast cast", "device", deviceAddr, "media", mediaURL, "duration", duration)
+func CastToChromeCast(ctx any, deviceAddr string, mediaURL string) (*ChromecastApp, error) {
+	logger.Info("Attempting Chromecast cast", "device", deviceAddr, "media", mediaURL)
 
 	// Extract host from device URL if it's a full URL
 	host := deviceAddr
@@ -63,7 +63,7 @@ func CastToChromeCast(ctx any, deviceAddr string, mediaURL string, duration floa
 		return nil, err
 	}
 
-	logger.Info("Sending load command with duration", "url", mediaURL, "duration", duration)
+	logger.Info("Sending load command", "url", mediaURL)
 	app.SetRequestTimeout(30 * time.Second)
 	// Load media with HLS content type and Shaka Player
 	err = app.Load(mediaURL, application.LoadOptions{
@@ -72,7 +72,6 @@ func CastToChromeCast(ctx any, deviceAddr string, mediaURL string, duration floa
 		Transcode:   false,
 		Detach:      true,
 		ForceDetach: false,
-		Duration:    float32(duration),
 	})
 	if err != nil {
 		logger.Error("Load failed", "error", err)
