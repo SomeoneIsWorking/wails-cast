@@ -286,7 +286,7 @@ func (a *App) CastToDevice(deviceURL, mediaPath string, options CastOptions) err
 	mediaURL := a.GetMediaURL(mediaPath)
 
 	// Cast to device and get chromecast app
-	ccApp, err := CastToChromeCast(a.ctx, deviceURL, mediaURL, duration)
+	ccApp, err := CastToChromeCast(a.ctx, deviceURL, mediaURL)
 	if err != nil {
 		a.mu.Lock()
 		a.playbackState.IsPlaying = false
