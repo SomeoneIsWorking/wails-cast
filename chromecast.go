@@ -67,13 +67,12 @@ func CastToChromeCast(ctx any, deviceAddr string, mediaURL string, duration floa
 	app.SetRequestTimeout(30 * time.Second)
 	// Load media with HLS content type and Shaka Player
 	err = app.Load(mediaURL, application.LoadOptions{
-		StartTime:      0,
-		ContentType:    "application/x-mpegURL",
-		Transcode:      false,
-		Detach:         true,
-		ForceDetach:    false,
-		Duration:       float32(duration),
-		UseShakaForHls: true, // Enable Shaka Player for HLS
+		StartTime:   0,
+		ContentType: "application/x-mpegURL",
+		Transcode:   false,
+		Detach:      true,
+		ForceDetach: false,
+		Duration:    float32(duration),
 	})
 	if err != nil {
 		logger.Error("Load failed", "error", err)
