@@ -1,6 +1,6 @@
 <script setup lang="ts">
+import { Device } from "@/services/device";
 import { useCastStore } from "../stores/cast";
-import type { Device } from "../stores/cast";
 import { RefreshCw, Cast, Check, Loader2 } from "lucide-vue-next";
 
 const emit = defineEmits<{
@@ -31,32 +31,8 @@ const selectDevice = (device: Device) => {
     </div>
 
     <div class="flex-1 overflow-auto space-y-4">
-      <!-- Loading State -->
-      <div
-        v-if="store.isLoading"
-        class="flex flex-col items-center justify-center py-12"
-      >
-        <Loader2 :size="48" class="text-blue-400 mb-4 animate-spin" />
-        <p class="text-gray-400">Discovering devices...</p>
-      </div>
-
-      <!-- Empty State -->
-      <div
-        v-else-if="!store.hasDevices"
-        class="flex flex-col items-center justify-center py-12"
-      >
-        <Cast :size="64" class="text-gray-600 mb-4" />
-        <p class="text-gray-400 text-lg mb-2">No devices found</p>
-        <p class="text-gray-500 text-sm mb-6">
-          Make sure your Chromecast is on the same network
-        </p>
-        <button @click="store.discoverDevices" class="btn-primary">
-          Search for Devices
-        </button>
-      </div>
-
       <!-- Device List -->
-      <div v-else class="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div
           v-for="device in store.devices"
           :key="device.url"
@@ -92,6 +68,30 @@ const selectDevice = (device: Device) => {
         Found {{ store.devices.length }} device{{
           store.devices.length > 1 ? "s" : ""
         }}
+      </div>
+
+         <!-- Loading State -->
+      <div
+        v-if="store.isLoading"
+        class="flex flex-col items-center justify-center py-12"
+      >
+        <Loader2 :size="48" class="text-blue-400 mb-4 animate-spin" />
+        <p class="text-gray-400">Discovering devices...</p>
+      </div>
+
+      <!-- Empty State -->
+      <div
+        v-else-if="!store.hasDevices"
+        class="flex flex-col items-center justify-center py-12"
+      >
+        <Cast :size="64" class="text-gray-600 mb-4" />
+        <p class="text-gray-400 text-lg mb-2">No devices found</p>
+        <p class="text-gray-500 text-sm mb-6">
+          Make sure your Chromecast is on the same network
+        </p>
+        <button @click="store.discoverDevices" class="btn-primary">
+          Search for Devices
+        </button>
       </div>
     </div>
   </div>

@@ -4,9 +4,9 @@ import { useCastStore } from "../stores/cast";
 import { mediaService } from "../services/media";
 import { FindSubtitleFile, GetSubtitleTracks, ClearCache } from "../../wailsjs/go/main/App";
 import type { main } from "../../wailsjs/go/models";
-import type { Device } from "../stores/cast";
 import { ArrowLeft, Cast, Video, Loader2, Check, Languages, Trash2 } from 'lucide-vue-next';
 import FileSelector from "./FileSelector.vue";
+import { Device } from "@/services/device";
 
 interface Props {
   device: Device;
