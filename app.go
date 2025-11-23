@@ -139,12 +139,17 @@ func (a *App) shutdown(ctx context.Context) {
 
 // DiscoverDevices discovers Chromecast devices on the network
 func (a *App) DiscoverDevices() []Device {
-	devices, err := a.discovery.Discover()
+	// Start streaming discovery and emit events for each device found
+	err := a.discovery.DiscoverStream(func(d Device) {
+		wails_runtime.EventsEmit(a.ctx, "device:found", d)
+	}, func() {
+		wails_runtime.EventsEmit(a.ctx, "discovery:complete")
+	})
 	if err != nil {
-		logger.Error("Device discovery failed", "error", err)
-		return []Device{}
+		logger.Error("Device discovery failed to start", "error", err)
 	}
-	return devices
+	// Return immediately; frontend will receive devices via events
+	return []Device{}
 }
 
 // GetMediaURL returns the URL for a media file to be cast

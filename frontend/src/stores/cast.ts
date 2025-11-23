@@ -1,14 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
-import { deviceService } from '../services/device'
-
-export interface Device {
-  name: string
-  type: string
-  url: string
-  address: string
-  manufacturerUrl: string
-}
+import { Device, deviceService } from '../services/device'
+import { EventsOn } from '../../wailsjs/runtime/runtime'
 
 export const useCastStore = defineStore('cast', () => {
   // State
@@ -54,14 +47,33 @@ export const useCastStore = defineStore('cast', () => {
     setLoading(true);
     clearError();
 
+    // Clear existing devices and register event listeners to update UI as devices are found.
+    setDevices([])
+    const unsubscribers: Array<() => void> = []
+
+    const deviceHandler = (device: Device) => {
+      setDevices([...devices.value, device])
+    }
+    const deviceUnsub = EventsOn('device:found', deviceHandler)
+    unsubscribers.push(deviceUnsub)
+
+    const completeHandler = () => {
+      setLoading(false)
+      // Unsubscribe listeners when discovery completes
+      unsubscribers.forEach(u => u())
+    }
+    const completeUnsub = EventsOn('discovery:complete', completeHandler)
+    unsubscribers.push(completeUnsub)
+
     try {
-      const devices = await deviceService.discoverDevices();
-      setDevices(devices);
+      // Trigger backend discovery (returns quickly since discovery is streamed via events)
+      await deviceService.discoverDevices();
     } catch (error: unknown) {
       setError("Failed to discover devices");
+      // Unsubscribe if there's an error
+      unsubscribers.forEach(u => u())
+      setLoading(false)
       throw error;
-    } finally {
-      setLoading(false);
     }
   }
 
