@@ -11,9 +11,13 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
+	"github.com/vishen/go-chromecast/application"
 	cast_proto "github.com/vishen/go-chromecast/cast/proto"
 	wails_runtime "github.com/wailsapp/wails/v2/pkg/runtime"
+
+	"wails-cast/pkg/cast"
 )
 
 // CastOptions holds options for casting
@@ -36,7 +40,7 @@ type App struct {
 	mediaServer     *Server
 	playbackState   PlaybackState
 	currentSubtitle string
-	chromecastApp   *ChromecastApp
+	chromecastApp   *cast.ChromecastApp
 	caffeinateCmd   *exec.Cmd
 	mu              sync.RWMutex
 }
@@ -289,13 +293,66 @@ func (a *App) CastToDevice(deviceURL, mediaPath string, options CastOptions) err
 	// Get media URL
 	mediaURL := a.GetMediaURL(mediaPath)
 
-	// Cast to device and get chromecast app
-	ccApp, err := CastToChromeCast(a.ctx, deviceURL, mediaURL)
+	// Cast to device - connect directly for local files
+	app := application.NewApplication()
+	app.SetRequestTimeout(30 * time.Second)
+
+	// Extract host and port from deviceURL
+	// deviceURL could be "http://192.168.1.21:8009", "192.168.1.21:8009", or "192.168.1.21"
+	deviceAddr := deviceURL
+
+	// Strip protocol if present
+	if strings.HasPrefix(deviceAddr, "http://") {
+		deviceAddr = strings.TrimPrefix(deviceAddr, "http://")
+	} else if strings.HasPrefix(deviceAddr, "https://") {
+		deviceAddr = strings.TrimPrefix(deviceAddr, "https://")
+	}
+
+	host := deviceAddr
+	port := 8009
+
+	// Check if port is already included
+	if strings.Contains(deviceAddr, ":") {
+		parts := strings.SplitN(deviceAddr, ":", 2)
+		host = parts[0]
+		if len(parts) == 2 {
+			if p, err := strconv.Atoi(parts[1]); err == nil {
+				port = p
+			}
+		}
+	}
+
+	err = app.Start(host, port)
 	if err != nil {
 		a.mu.Lock()
 		a.playbackState.IsPlaying = false
 		a.mu.Unlock()
 		return err
+	}
+
+	// Update to ensure receiver is ready
+	if err := app.Update(); err != nil {
+		a.mu.Lock()
+		a.playbackState.IsPlaying = false
+		a.mu.Unlock()
+		return err
+	}
+
+	// Load media with custom receiver
+	customAppID := "4C4BFD9F"
+	err = app.LoadApp(customAppID, mediaURL)
+	if err != nil {
+		a.mu.Lock()
+		a.playbackState.IsPlaying = false
+		a.mu.Unlock()
+		return err
+	}
+
+	// Store the chromecast app
+	ccApp := &cast.ChromecastApp{
+		App:  app,
+		Host: host,
+		Port: port,
 	}
 
 	// Store the chromecast app
@@ -556,8 +613,8 @@ func (a *App) OpenDirectoryDialog() (string, error) {
 
 // ClearCache clears the HLS segment cache
 func (a *App) ClearCache() error {
-	if a.mediaServer != nil && a.mediaServer.hlsSession != nil {
-		a.mediaServer.hlsSession.Cleanup()
+	if a.mediaServer != nil && a.mediaServer.hlsServer != nil {
+		a.mediaServer.hlsServer.Cleanup()
 		logger.Info("Cache cleared")
 		return nil
 	}

@@ -1,4 +1,4 @@
-package hlsproxy
+package stream
 
 import (
 	"encoding/json"
@@ -8,7 +8,7 @@ import (
 )
 
 // handleDebugLog receives debug logs from the Cast receiver
-func (p *HLSProxy) handleDebugLog(w http.ResponseWriter, r *http.Request) {
+func (p *RemoteHLSProxy) handleDebugLog(w http.ResponseWriter, r *http.Request) {
 	// Set CORS headers
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	w.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS")
