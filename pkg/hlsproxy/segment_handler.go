@@ -95,23 +95,35 @@ func (p *HLSProxy) serveSegment(w http.ResponseWriter, fullURL string, key strin
 	p.ManifestData.mu.RUnlock()
 
 	if exists && item.LocalPath != "" {
-		fmt.Printf("Found in manifest: %s (Playlist: %v, Transcoded: %v, Type: %s)\n", fullURL, item.IsPlaylist, item.Transcoded, item.ContentType)
-		if item.IsPlaylist {
-			p.servePlaylist(w, item.LocalPath, fullURL)
-			return
+		// Verify file exists on disk (don't rely just on memory/manifest)
+		if _, err := os.Stat(item.LocalPath); err != nil {
+			fmt.Printf("⚠️ File missing on disk despite manifest entry: %s. Re-downloading.\n", item.LocalPath)
+			// Fall through to download logic
+		} else {
+			fmt.Printf("Found in manifest: %s (Playlist: %v, Transcoded: %v, Type: %s)\n", fullURL, item.IsPlaylist, item.Transcoded, item.ContentType)
+			if item.IsPlaylist {
+				p.servePlaylist(w, item.LocalPath, fullURL)
+				return
+			}
+			if item.Transcoded {
+				// Verify transcoded file exists
+				if _, err := os.Stat(item.TranscodedPath); err == nil {
+					p.serveFile(w, item.TranscodedPath, "video/mp2t")
+					return
+				}
+				fmt.Printf("⚠️ Transcoded file missing on disk: %s. Re-transcoding.\n", item.TranscodedPath)
+				// Fall through to transcode logic (item.Transcoded will be overwritten)
+			} else {
+				// Not transcoded yet, or re-transcoding needed
+				// For non-playlist items, always try to transcode
+				p.transcodeAndServe(w, item)
+				return
+			}
 		}
-		if item.Transcoded {
-			p.serveFile(w, item.TranscodedPath, "video/mp2t")
-			return
-		}
-		// For non-playlist items, always try to transcode
-		// This handles disguised video segments (e.g., .jpg files that are actually video)
-		p.transcodeAndServe(w, item)
-		return
 	}
 
 	// Not in manifest, download it
-	fmt.Println("Not in manifest, downloading...")
+	fmt.Printf("⚠️ Not in manifest, downloading: %s (Key: %s)\n", fullURL, key)
 
 	// Create a cache key
 	cacheKey := key
@@ -200,18 +212,54 @@ func (p *HLSProxy) transcodeAndServe(w http.ResponseWriter, item *ManifestItem) 
 
 	// First try: copy video codec if it's already H.264, only transcode audio
 	// This is much faster and avoids quality loss
-	cmd := exec.Command("ffmpeg",
+	// transcodedPath already has .ts extension from line 188
+
+	// Determine if it's an audio or video segment based on filename
+	isAudio := strings.Contains(filepath.Base(item.LocalPath), "audio_")
+	isVideo := strings.Contains(filepath.Base(item.LocalPath), "video_")
+
+	args := []string{
+		"-copyts", // IMPORTANT: Preserve input timestamps!
 		"-i", item.LocalPath,
-		"-c:v", "copy", // Try copying video
-		"-c:a", "aac",
-		"-b:a", "128k",
-		"-ar", "48000",
-		"-ac", "2",
+		"-y",
+	}
+
+	if isAudio {
+		// Audio segment: Map only audio, re-encode to ensure compatibility, drop ID3/video
+		args = append(args,
+			"-map", "0:a",
+			"-c:a", "aac",
+			"-b:a", "128k",
+			"-ar", "48000",
+			"-ac", "2",
+		)
+	} else if isVideo {
+		// Video segment: Map only video, copy stream, drop ID3/audio
+		args = append(args,
+			"-map", "0:v",
+			"-c:v", "copy",
+		)
+	} else {
+		// Fallback for unknown types (e.g. muxed): Try to handle both
+		args = append(args,
+			"-c:v", "copy",
+			"-c:a", "aac",
+			"-b:a", "128k",
+			"-ar", "48000",
+			"-ac", "2",
+		)
+	}
+
+	// Common flags
+	args = append(args,
 		"-f", "mpegts",
 		"-mpegts_copyts", "1",
-		"-y",
+		"-muxdelay", "0",
+		"-muxpreload", "0",
 		transcodedPath,
 	)
+
+	cmd := exec.Command("ffmpeg", args...)
 
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
@@ -234,22 +282,59 @@ func (p *HLSProxy) transcodeAndServe(w http.ResponseWriter, item *ManifestItem) 
 	// - H.264 High Profile Level 4.2 (max supported by most Chromecasts)
 	// - AAC-LC audio at 128kbps, 48kHz (recommended for Chromecast)
 	// - Proper MPEG-TS muxing with alignment
-	cmd = exec.Command("ffmpeg",
+	// Use Chromecast-compatible settings:
+	// - H.264 High Profile Level 4.2 (max supported by most Chromecasts)
+	// - AAC-LC audio at 128kbps, 48kHz (recommended for Chromecast)
+	// - Proper MPEG-TS muxing with alignment
+
+	args = []string{
+		"-copyts", // IMPORTANT: Preserve input timestamps!
 		"-i", item.LocalPath,
-		"-c:v", "libx264",
-		"-profile:v", "high",
-		"-level", "4.2",
-		"-preset", "veryfast", // Fast encoding
-		"-pix_fmt", "yuv420p", // Chromecast requires 4:2:0
-		"-c:a", "aac",
-		"-b:a", "128k",
-		"-ar", "48000", // 48kHz sample rate
-		"-ac", "2", // Stereo
+		"-y",
+	}
+
+	if isAudio {
+		args = append(args,
+			"-map", "0:a",
+			"-c:a", "aac",
+			"-b:a", "128k",
+			"-ar", "48000",
+			"-ac", "2",
+		)
+	} else if isVideo {
+		// If video copy failed, re-encode video
+		args = append(args,
+			"-map", "0:v",
+			"-c:v", "libx264",
+			"-profile:v", "high",
+			"-level", "4.2",
+			"-preset", "veryfast",
+			"-pix_fmt", "yuv420p",
+		)
+	} else {
+		args = append(args,
+			"-c:v", "libx264",
+			"-profile:v", "high",
+			"-level", "4.2",
+			"-preset", "veryfast",
+			"-pix_fmt", "yuv420p",
+			"-c:a", "aac",
+			"-b:a", "128k",
+			"-ar", "48000",
+			"-ac", "2",
+		)
+	}
+
+	args = append(args,
 		"-f", "mpegts",
 		"-mpegts_copyts", "1",
-		"-y",
+		"-muxdelay", "0",
+		"-muxpreload", "0",
 		transcodedPath,
 	)
+
+	fmt.Printf("🎥 FFMPEG Command: ffmpeg %s\n", strings.Join(args, " "))
+	cmd = exec.Command("ffmpeg", args...)
 
 	stderr.Reset()
 	cmd.Stderr = &stderr
@@ -257,11 +342,7 @@ func (p *HLSProxy) transcodeAndServe(w http.ResponseWriter, item *ManifestItem) 
 	err = cmd.Run()
 	if err != nil {
 		fmt.Printf("Transcode failed: %v\nStderr: %s\n", err, stderr.String())
-		// Fallback to original if transcode fails? Or error?
-		// User said "it should be transcoded then served".
-		// If fail, maybe serve original as fallback to keep stream alive?
-		// Let's try serving original if transcode fails.
-		// Force video/mp2t as we know it's intended to be video
+		// Fallback to original if transcode fails
 		p.serveFile(w, item.LocalPath, "video/mp2t")
 		return
 	}
