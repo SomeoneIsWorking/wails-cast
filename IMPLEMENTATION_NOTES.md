@@ -1,13 +1,40 @@
 # Wails-Cast Implementation Notes
 
 ## Project Overview
-A desktop application built with Wails (Go + Vue.js) to cast local video files with subtitles to Chromecast devices.
+A desktop application built with Wails (Go + Vue.js) to cast local video files with subtitles to Chromecast devices, and stream remote HLS content with transcoding support.
+
+## Current Implementation (Two Casting Approaches)
+
+### 1. Cast Local Media File (`hls.go`)
+- **Purpose:** Cast local MKV/MP4 files to Chromecast
+- **Method:** HLS with on-demand segment generation
+- **Subtitles:** Burn-in SRT subtitles during transcoding
+- **Seeking:** Supported from both Vue interface and TV remote
+- **File:** `hls.go` (formerly `hls_manual.go`)
+
+### 2. Cast Remote Stream (`test_cast_extracted.go`)
+- **Purpose:** Extract and cast remote HLS streams to Chromecast
+- **Features:**
+  - Browser automation to extract streams
+  - Interactive track selection (video quality, audio language)
+  - HLS proxy with transcoding for compatibility
+  - Custom Cast receiver (App ID: 4C4BFD9F)
+  - Demuxed stream support (separate audio/video tracks)
+- **Components:**
+  - `pkg/extractor` - Browser automation and stream extraction
+  - `pkg/hlsproxy` - Local proxy server with transcoding
+  - `pkg/cast` - Chromecast management and track selection
+  - `CastReceiver/` - Custom receiver web app (submodule)
+
+> **Note:** These two implementations currently have separate code paths. Future refactoring will eliminate repetition and implement proper Separation of Concerns.
 
 ## Key Requirements
 - Cast local MKV/MP4 files to Chromecast
+- Extract and cast remote HLS streams
 - Burn-in SRT subtitles during streaming
 - Support seeking from both Vue interface and TV remote
 - Display proper duration/timeline on Chromecast
+- Handle demuxed HLS streams (separate audio/video tracks)
 
 ---
 
@@ -270,7 +297,7 @@ GET /segment50.ts
 
 **Implementation Files:**
 - `hls_auto.go` - Original FFmpeg-generates-all-segments approach
-- `hls_manual.go` - **Recommended** on-demand segment generation
+- `hls.go` - **Recommended** on-demand segment generation
 
 ---
 
@@ -421,7 +448,7 @@ wails-cast/
 ├── app.go              # Main Wails app, binds Go↔Vue
 ├── server.go           # HTTP server for media streaming
 ├── hls_auto.go         # HLS Auto Mode - FFmpeg generates all segments
-├── hls_manual.go       # HLS Manual Mode - On-demand segments (RECOMMENDED)
+├── hls.go              # HLS Mode - On-demand segments (RECOMMENDED)
 ├── chromecast.go       # Chromecast device communication
 ├── discovery.go        # mDNS device discovery
 ├── logger.go           # Structured logging
@@ -437,7 +464,7 @@ wails-cast/
 
 ### Key Components
 
-**HLSManagerManual** (`hls_manual.go`) - **RECOMMENDED**
+**HLSManager** (`hls.go`) - **RECOMMENDED**
 - Generates complete playlist upfront with full duration
 - Transcodes segments on-demand when requested
 - Smart connection checking prevents wasted CPU
@@ -553,7 +580,7 @@ ls -lah /tmp/wails-cast-hls/matrix.mkv_0/
 ### Test Without Wails
 ```bash
 # Use test harness with manual mode (recommended)
-go run test_hls.go logger.go discovery.go server.go hls_manual.go chromecast.go app.go
+go run test_hls.go logger.go discovery.go server.go hls.go chromecast.go app.go
 
 # Or with auto mode
 go run test_hls.go logger.go discovery.go server.go hls_auto.go chromecast.go app.go
@@ -649,4 +676,4 @@ Manual Mode: Chromecast requests → Server generates → FFmpeg (one segment) �
 
 *Last Updated: November 17, 2025*
 *Tested with: Chromecast 3rd Gen, Wails v2.10.2, FFmpeg 6.0*
-*Recommended: HLS Manual Mode (`hls_manual.go`)*
+*Recommended: HLS Mode (`hls.go`)*

@@ -58,10 +58,13 @@ func (m *CastManager) StartCasting(videoURL string, deviceHost string, devicePor
 	}
 	defer app.Close(true)
 
-	err = app.Load(proxyURL, application.LoadOptions{
-		ContentType: "application/x-mpegURL",
-		Transcode:   false,
-	})
+	// Cast the media using custom receiver app
+	fmt.Printf("\n🎬 Casting to Chromecast with custom receiver app...\n\n")
+
+	// Use custom receiver app ID
+	customAppID := "4C4BFD9F"
+
+	err = app.LoadApp(customAppID, proxyURL)
 	if err != nil {
 		return fmt.Errorf("error loading stream: %w", err)
 	}
