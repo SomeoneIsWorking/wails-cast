@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"os/exec"
 	"strings"
-	"time"
 )
 
 // TranscodeOptions contains options for transcoding
@@ -19,16 +18,7 @@ type TranscodeOptions struct {
 	StreamIndex  string // For embedded subtitles
 	IsAudioOnly  bool
 	IsVideoOnly  bool
-	CopyVideo    bool // Try to copy video codec instead of re-encoding
 	Preset       string
-}
-
-// TranscodeResult contains the result of a transcode operation
-type TranscodeResult struct {
-	Success      bool
-	Error        error
-	VideoCopied  bool // true if video was copied instead of re-encoded
-	StderrOutput string
 }
 
 // EscapeFFmpegPath escapes special characters in paths that ffmpeg doesn't like
@@ -40,21 +30,7 @@ func EscapeFFmpegPath(path string) string {
 }
 
 // TranscodeSegment transcodes a segment with optional 100ms wait to avoid wasted work during rapid seeking
-func TranscodeSegment(ctx context.Context, opts TranscodeOptions, checkConnection bool) *TranscodeResult {
-	result := &TranscodeResult{}
-
-	// Optional: Wait briefly to see if connection stays alive (avoid transcoding if seeking rapidly)
-	if checkConnection {
-		select {
-		case <-ctx.Done():
-			// Client disconnected/cancelled - don't transcode
-			result.Error = ctx.Err()
-			return result
-		case <-time.After(100 * time.Millisecond):
-			// Connection still alive, proceed with transcode
-		}
-	}
-
+func TranscodeSegment(ctx context.Context, opts TranscodeOptions) error {
 	// Build ffmpeg arguments
 	args := buildTranscodeArgs(opts)
 
@@ -63,22 +39,16 @@ func TranscodeSegment(ctx context.Context, opts TranscodeOptions, checkConnectio
 	cmd.Stderr = &stderr
 
 	err := cmd.Run()
-	result.StderrOutput = stderr.String()
-
 	if err != nil {
 		// Check if it was cancelled
 		if ctx.Err() != nil {
-			result.Error = ctx.Err()
-			return result
+			return ctx.Err()
 		}
-		result.Error = err
-		result.Success = false
-		return result
+		fmt.Println(stderr.String())
+		return err
 	}
 
-	result.Success = true
-	result.VideoCopied = opts.CopyVideo
-	return result
+	return nil
 }
 
 // buildTranscodeArgs builds ffmpeg arguments based on options
@@ -110,36 +80,24 @@ func buildTranscodeArgs(opts TranscodeOptions) []string {
 			"-ac", "2",
 		)
 	} else if opts.IsVideoOnly {
-		// Video-only segment
-		if opts.CopyVideo {
-			args = append(args,
-				"-map", "0:v",
-				"-c:v", "copy",
-			)
-		} else {
-			args = append(args,
-				"-map", "0:v",
-				"-c:v", "libx264",
-				"-profile:v", "high",
-				"-level", "4.2",
-				"-preset", getPreset(opts.Preset),
-				"-pix_fmt", "yuv420p",
-			)
-		}
+		args = append(args,
+			"-map", "0:v",
+			"-c:v", "libx264",
+			"-profile:v", "high",
+			"-level", "4.2",
+			"-preset", getPreset(opts.Preset),
+			"-pix_fmt", "yuv420p",
+		)
 	} else {
 		// Mixed segment or local file
-		if opts.CopyVideo {
-			args = append(args, "-c:v", "copy")
-		} else {
-			args = append(args,
-				"-c:v", "libx264",
-				"-preset", getPreset(opts.Preset),
-				"-tune", "zerolatency",
-				"-pix_fmt", "yuv420p",
-				"-sc_threshold", "0",
-				"-g", "48",
-			)
-		}
+		args = append(args,
+			"-c:v", "libx264",
+			"-preset", getPreset(opts.Preset),
+			"-tune", "zerolatency",
+			"-pix_fmt", "yuv420p",
+			"-sc_threshold", "0",
+			"-g", "48",
+		)
 
 		// Add subtitles if provided (for local files)
 		if opts.SubtitlePath != "" {

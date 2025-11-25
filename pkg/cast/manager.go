@@ -82,24 +82,6 @@ func (m *CastManager) StartCasting(videoURL string, deviceHost string, devicePor
 	return nil
 }
 
-// StartProxy starts the proxy for the given video URL and prints the URL
-// It blocks until the user stops it
-func (m *CastManager) StartProxy(videoURL string) error {
-	proxy, err := m.prepareStream(videoURL)
-	if err != nil {
-		return err
-	}
-	defer proxy.Stop()
-
-	proxyURL := proxy.GetProxyURL()
-	fmt.Printf("\n✅ Proxy server started!\n")
-	fmt.Printf("🔗 Proxy URL: %s\n", proxyURL)
-	fmt.Println("You can play this URL in VLC or another player.")
-
-	m.waitForStop()
-	return nil
-}
-
 func (m *CastManager) prepareStream(videoURL string) (*stream.RemoteHLSProxy, error) {
 	// 1. Calculate hash of video URL for cache key
 	hash := md5.Sum([]byte(videoURL))

@@ -1,6 +1,7 @@
 package stream
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -268,7 +269,7 @@ func (p *RemoteHLSProxy) downloadAndParseNestedPlaylists() {
 
 	// Download audio playlist
 	if p.AudioPlaylistURL != "" {
-		resp, err := p.downloadFile(p.AudioPlaylistURL)
+		resp, err := p.downloadFile(context.Background(), p.AudioPlaylistURL)
 		if err != nil {
 			fmt.Printf("Failed to download audio playlist: %v\n", err)
 			return
@@ -295,7 +296,7 @@ func (p *RemoteHLSProxy) downloadAndParseNestedPlaylists() {
 
 	// Download video playlist
 	if p.VideoPlaylistURL != "" {
-		resp, err := p.downloadFile(p.VideoPlaylistURL)
+		resp, err := p.downloadFile(context.Background(), p.VideoPlaylistURL)
 		if err != nil {
 			fmt.Printf("Failed to download video playlist: %v\n", err)
 			return

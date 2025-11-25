@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"wails-cast/pkg/hls"
 )
@@ -14,6 +15,14 @@ import (
 // handleSegment proxies segment requests with captured cookies and headers,
 // and transcodes them using ffmpeg for compatibility
 func (p *RemoteHLSProxy) handleSegment(w http.ResponseWriter, r *http.Request) {
+	// Optional: Wait briefly to see if connection stays alive (avoid transcoding if seeking rapidly)
+	select {
+	case <-r.Context().Done():
+		// Client disconnected/cancelled - don't transcode
+		return
+	case <-time.After(100 * time.Millisecond):
+		// Connection still alive, proceed with transcode
+	}
 	// Parse key from path
 	path := r.URL.Path
 	if !strings.HasPrefix(path, "/segment/") {
@@ -130,7 +139,7 @@ func (p *RemoteHLSProxy) serveSegment(w http.ResponseWriter, r *http.Request, fu
 
 	localPath := filepath.Join(p.CacheDir, cacheKey+".ts")
 
-	resp, err := p.downloadFile(fullURL)
+	resp, err := p.downloadFile(r.Context(), fullURL)
 	if err != nil {
 		http.Error(w, fmt.Sprintf("Failed to download: %v", err), http.StatusBadGateway)
 		return
@@ -218,39 +227,18 @@ func (p *RemoteHLSProxy) transcodeAndServe(w http.ResponseWriter, r *http.Reques
 		OutputPath:  transcodedPath,
 		IsAudioOnly: isAudio,
 		IsVideoOnly: isVideo,
-		CopyVideo:   isVideo, // Try to copy video codec first
 		Preset:      "veryfast",
 	}
 
-	// Use shared transcode function with 100ms wait check
-	result := hls.TranscodeSegment(r.Context(), opts, true)
+	err := hls.TranscodeSegment(r.Context(), opts)
 
-	if result.Success {
-		item.TranscodedPath = transcodedPath
-		item.Transcoded = true
-		p.updateManifest(item.URL, item)
-		fmt.Println("Transcoding complete, serving...")
-		p.serveFile(w, transcodedPath, "video/mp2t")
+	if err != nil {
 		return
 	}
 
-	// If video copy failed, try full re-encode
-	if result.Error != nil && opts.CopyVideo {
-		fmt.Printf("Video copy failed: %v\nTrying full re-encode...\n", result.Error)
-		opts.CopyVideo = false
-		result = hls.TranscodeSegment(r.Context(), opts, false) // Don't wait again
-
-		if result.Success {
-			item.TranscodedPath = transcodedPath
-			item.Transcoded = true
-			p.updateManifest(item.URL, item)
-			fmt.Println("Transcoding complete, serving...")
-			p.serveFile(w, transcodedPath, "video/mp2t")
-			return
-		}
-	}
-
-	// If transcoding failed, serve original
-	fmt.Printf("Transcode failed: %v\nServing original file\n", result.Error)
-	p.serveFile(w, item.LocalPath, "video/mp2t")
+	item.TranscodedPath = transcodedPath
+	item.Transcoded = true
+	p.updateManifest(item.URL, item)
+	fmt.Println("Transcoding complete, serving...")
+	p.serveFile(w, transcodedPath, "video/mp2t")
 }
