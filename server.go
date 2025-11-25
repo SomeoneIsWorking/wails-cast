@@ -7,17 +7,18 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"wails-cast/pkg/stream"
 )
 
-// Server handles HTTP media streaming
+// Server is an HTTP server for serving media
 type Server struct {
 	port         int
-	httpServer   *http.Server
-	hlsSession   *HLSSession
+	localIP      string
 	currentMedia string
 	subtitlePath string
+	hlsServer    *stream.LocalHLSServer
+	httpServer   *http.Server
 	seekTime     int
-	localIP      string
 	mu           sync.RWMutex
 }
 
@@ -50,8 +51,8 @@ func (s *Server) SetCurrentMedia(filePath string) {
 	defer s.mu.Unlock()
 
 	// Clean up old session if exists
-	if s.hlsSession != nil {
-		s.hlsSession.Cleanup()
+	if s.hlsServer != nil {
+		s.hlsServer.Cleanup()
 	}
 
 	s.currentMedia = filePath
@@ -66,10 +67,10 @@ func (s *Server) SetSubtitlePath(path string) {
 
 	// Create new session with current media and subtitle
 	if s.currentMedia != "" {
-		if s.hlsSession != nil {
-			s.hlsSession.Cleanup()
+		if s.hlsServer != nil {
+			s.hlsServer.Cleanup()
 		}
-		s.hlsSession = NewHLSSession(s.currentMedia, s.subtitlePath, s.localIP)
+		s.hlsServer = stream.NewLocalHLSServer(s.currentMedia, s.subtitlePath, s.localIP)
 	}
 
 	if path != "" {
@@ -92,8 +93,8 @@ func (s *Server) Start() error {
 
 // Stop stops the HTTP server
 func (s *Server) Stop() error {
-	if s.hlsSession != nil {
-		s.hlsSession.Cleanup()
+	if s.hlsServer != nil {
+		s.hlsServer.Cleanup()
 	}
 	if s.httpServer != nil {
 		return s.httpServer.Close()
@@ -133,10 +134,10 @@ func (s *Server) handleRequest(w http.ResponseWriter, r *http.Request) {
 
 	// Handle HLS playlist request
 	if strings.HasSuffix(path, ".m3u8") || path == "/media.mp4" {
-		if s.hlsSession == nil {
-			s.hlsSession = NewHLSSession(videoPath, subtitlePath, s.localIP)
+		if s.hlsServer == nil {
+			s.hlsServer = stream.NewLocalHLSServer(videoPath, subtitlePath, s.localIP)
 		}
-		s.hlsSession.ServePlaylist(w, r)
+		s.hlsServer.ServePlaylist(w, r)
 		return
 	}
 
@@ -144,10 +145,10 @@ func (s *Server) handleRequest(w http.ResponseWriter, r *http.Request) {
 	if strings.HasSuffix(path, ".ts") {
 		segmentName := filepath.Base(path)
 		logger.Info("Routing to HLS segment handler", "segmentName", segmentName)
-		if s.hlsSession == nil {
-			s.hlsSession = NewHLSSession(videoPath, subtitlePath, s.localIP)
+		if s.hlsServer == nil {
+			s.hlsServer = stream.NewLocalHLSServer(videoPath, subtitlePath, s.localIP)
 		}
-		s.hlsSession.ServeSegment(w, r, segmentName)
+		s.hlsServer.ServeSegment(w, r, segmentName)
 		return
 	}
 

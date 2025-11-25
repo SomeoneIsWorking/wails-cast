@@ -13,7 +13,7 @@ import (
 	"github.com/vishen/go-chromecast/application"
 
 	"wails-cast/pkg/extractor"
-	"wails-cast/pkg/hlsproxy"
+	"wails-cast/pkg/stream"
 )
 
 // CastManager handles the casting workflow including caching and proxying
@@ -21,6 +21,13 @@ type CastManager struct {
 	LocalIP   string
 	ProxyPort int
 	CacheRoot string
+}
+
+// ChromecastApp wraps the chromecast application
+type ChromecastApp struct {
+	App  *application.Application
+	Host string
+	Port int
 }
 
 // NewCastManager creates a new CastManager
@@ -45,12 +52,11 @@ func (m *CastManager) StartCasting(videoURL string, deviceHost string, devicePor
 	proxyURL := proxy.GetProxyURL()
 	fmt.Printf("\n✅ Proxy server started at %s\n", proxyURL)
 
-	// 4. Cast to Chromecast
+	// Cast to Chromecast using custom receiver
 	fmt.Printf("\n🎬 Casting to Chromecast at %s:%d...\n", deviceHost, devicePort)
 
 	app := application.NewApplication()
 	app.SetRequestTimeout(60 * time.Second)
-	app.SetDebug(true)
 
 	err = app.Start(deviceHost, devicePort)
 	if err != nil {
@@ -58,12 +64,13 @@ func (m *CastManager) StartCasting(videoURL string, deviceHost string, devicePor
 	}
 	defer app.Close(true)
 
-	// Cast the media using custom receiver app
-	fmt.Printf("\n🎬 Casting to Chromecast with custom receiver app...\n\n")
+	// Update to ensure receiver is ready
+	if err := app.Update(); err != nil {
+		return fmt.Errorf("failed to update app status: %w", err)
+	}
 
 	// Use custom receiver app ID
 	customAppID := "4C4BFD9F"
-
 	err = app.LoadApp(customAppID, proxyURL)
 	if err != nil {
 		return fmt.Errorf("error loading stream: %w", err)
@@ -93,7 +100,7 @@ func (m *CastManager) StartProxy(videoURL string) error {
 	return nil
 }
 
-func (m *CastManager) prepareStream(videoURL string) (*hlsproxy.HLSProxy, error) {
+func (m *CastManager) prepareStream(videoURL string) (*stream.RemoteHLSProxy, error) {
 	// 1. Calculate hash of video URL for cache key
 	hash := md5.Sum([]byte(videoURL))
 	cacheKey := hex.EncodeToString(hash[:])
@@ -163,11 +170,14 @@ func (m *CastManager) prepareStream(videoURL string) (*hlsproxy.HLSProxy, error)
 	fmt.Printf("\n✅ HLS stream ready:\n")
 	fmt.Printf("  URL: %s\n", result.URL)
 
-	// 3. Start Proxy
-	proxy := hlsproxy.NewHLSProxy(result, m.LocalIP, m.ProxyPort, cacheDir)
+	// Create and configure proxy
+	proxy := stream.NewRemoteHLSProxy(m.LocalIP, m.ProxyPort, cacheDir)
+	proxy.SetExtractor(result)
+
+	// Start the proxy server
 	err := proxy.Start()
 	if err != nil {
-		return nil, fmt.Errorf("error starting proxy: %w", err)
+		return nil, fmt.Errorf("failed to start proxy: %w", err)
 	}
 
 	// Get the served manifest and update the result
