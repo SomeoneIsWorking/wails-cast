@@ -18,8 +18,11 @@ type ManifestItem struct {
 	IsPlaylist     bool   `json:"is_playlist"`
 }
 
+const CurrentManifestVersion = 1
+
 // Manifest represents the tracking of cached files
 type Manifest struct {
+	Version     int                      `json:"version"`     // Schema version
 	Items       map[string]*ManifestItem `json:"items"`       // URL -> Item
 	SegmentMap  map[string]string        `json:"segment_map"` // ID -> URL
 	URLMap      map[string]string        `json:"url_map"`     // URL -> ID

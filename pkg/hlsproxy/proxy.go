@@ -49,7 +49,32 @@ func NewHLSProxy(result *extractor.ExtractResult, localIP string, port int, cach
 
 	// Load existing manifest if available
 	if data, err := os.ReadFile(manifestPath); err == nil {
-		json.Unmarshal(data, manifestData)
+		if err := json.Unmarshal(data, manifestData); err == nil {
+			// Check version
+			if manifestData.Version != CurrentManifestVersion {
+				fmt.Printf("⚠️ Manifest version mismatch (found %d, expected %d). Resetting cache.\n", manifestData.Version, CurrentManifestVersion)
+				// Reset manifest
+				manifestData = &Manifest{
+					Version:     CurrentManifestVersion,
+					Items:       make(map[string]*ManifestItem),
+					SegmentMap:  make(map[string]string),
+					URLMap:      make(map[string]string),
+					NextID:      0,
+					AudioNextID: 0,
+					VideoNextID: 0,
+				}
+				// Clear cache directory contents (preserve directory itself)
+				dirEntries, _ := os.ReadDir(cacheDir)
+				for _, entry := range dirEntries {
+					os.RemoveAll(filepath.Join(cacheDir, entry.Name()))
+				}
+			} else {
+				fmt.Println("✅ Loaded existing manifest from disk")
+			}
+		}
+	} else {
+		// New manifest
+		manifestData.Version = CurrentManifestVersion
 	}
 
 	return &HLSProxy{
@@ -71,8 +96,8 @@ func (p *HLSProxy) Start() error {
 	mux.HandleFunc("/playlist.m3u8", p.handleManifest)
 	mux.HandleFunc("/audio.m3u8", p.handleAudioPlaylist)
 	mux.HandleFunc("/video.m3u8", p.handleVideoPlaylist)
-	mux.HandleFunc("/playlist/", p.handleSegment)
 	mux.HandleFunc("/segment/", p.handleSegment)
+	mux.HandleFunc("/debug/log", p.handleDebugLog) // Remote logging from receiver
 
 	// Catch-all for debugging
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
