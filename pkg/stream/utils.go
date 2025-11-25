@@ -1,6 +1,7 @@
 package stream
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"strings"
@@ -8,11 +9,11 @@ import (
 )
 
 // downloadFile downloads a file with cookies and headers
-func (p *RemoteHLSProxy) downloadFile(url string) (*http.Response, error) {
+func (p *RemoteHLSProxy) downloadFile(ctx context.Context, url string) (*http.Response, error) {
 	client := &http.Client{
 		Timeout: 30 * time.Second,
 	}
-	req, err := http.NewRequest("GET", url, nil)
+	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
 	if err != nil {
 		return nil, err
 	}

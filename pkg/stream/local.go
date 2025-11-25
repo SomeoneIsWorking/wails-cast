@@ -89,7 +89,7 @@ func (s *LocalHLSServer) ServeSegment(w http.ResponseWriter, r *http.Request, se
 			Preset:       "veryfast",
 		}
 
-		result := hls.TranscodeSegment(r.Context(), opts, true)
+		result := hls.TranscodeSegment(r.Context(), opts)
 		if result.Error != nil {
 			if r.Context().Err() != nil {
 				return
