@@ -1,4 +1,4 @@
-package hlsproxy
+package stream
 
 import (
 	"fmt"
@@ -8,7 +8,7 @@ import (
 )
 
 // downloadFile downloads a file with cookies and headers
-func (p *HLSProxy) downloadFile(url string) (*http.Response, error) {
+func (p *RemoteHLSProxy) downloadFile(url string) (*http.Response, error) {
 	client := &http.Client{
 		Timeout: 30 * time.Second,
 	}

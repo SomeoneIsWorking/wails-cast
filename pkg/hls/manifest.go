@@ -1,4 +1,4 @@
-package main
+package hls
 
 import (
 	"encoding/json"
@@ -8,6 +8,7 @@ import (
 )
 
 // SegmentManifest stores metadata for each segment
+// This is used by BOTH local file HLS and remote proxy HLS
 type SegmentManifest struct {
 	SegmentNumber int     `json:"segment_number"`
 	Duration      float64 `json:"duration"`
@@ -19,8 +20,8 @@ type SegmentManifest struct {
 	CreatedAt     string  `json:"created_at"`
 }
 
-// saveSegmentManifest saves manifest JSON for a segment
-func saveSegmentManifest(outputDir string, manifest SegmentManifest) error {
+// SaveSegmentManifest saves manifest JSON for a segment (used by local file HLS)
+func SaveSegmentManifest(outputDir string, manifest SegmentManifest) error {
 	manifestPath := filepath.Join(outputDir, fmt.Sprintf("segment%d.json", manifest.SegmentNumber))
 	data, err := json.MarshalIndent(manifest, "", "  ")
 	if err != nil {
@@ -29,8 +30,8 @@ func saveSegmentManifest(outputDir string, manifest SegmentManifest) error {
 	return os.WriteFile(manifestPath, data, 0644)
 }
 
-// loadSegmentManifest loads manifest JSON for a segment
-func loadSegmentManifest(outputDir string, segmentNum int) (*SegmentManifest, error) {
+// LoadSegmentManifest loads manifest JSON for a segment (used by local file HLS)
+func LoadSegmentManifest(outputDir string, segmentNum int) (*SegmentManifest, error) {
 	manifestPath := filepath.Join(outputDir, fmt.Sprintf("segment%d.json", segmentNum))
 	data, err := os.ReadFile(manifestPath)
 	if err != nil {
@@ -43,8 +44,8 @@ func loadSegmentManifest(outputDir string, segmentNum int) (*SegmentManifest, er
 	return &manifest, nil
 }
 
-// manifestMatches checks if current parameters match manifest
-func manifestMatches(manifest *SegmentManifest, subtitlePath string, duration float64) bool {
+// ManifestMatches checks if current parameters match manifest (used by local file HLS)
+func ManifestMatches(manifest *SegmentManifest, subtitlePath string, duration float64) bool {
 	if manifest == nil {
 		return false
 	}

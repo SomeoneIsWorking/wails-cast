@@ -1,4 +1,4 @@
-package hlsproxy
+package hls
 
 import (
 	"fmt"
@@ -33,6 +33,41 @@ func ParsePlaylistType(content string) PlaylistType {
 		return PlaylistTypeMaster
 	}
 	return PlaylistTypeMedia
+}
+
+// GenerateVODPlaylist generates a complete HLS VOD playlist
+func GenerateVODPlaylist(duration float64, segmentSize int, localIP string, port int) string {
+	var playlist strings.Builder
+
+	playlist.WriteString("#EXTM3U\n")
+	playlist.WriteString("#EXT-X-VERSION:3\n")
+	playlist.WriteString(fmt.Sprintf("#EXT-X-TARGETDURATION:%d\n", segmentSize))
+	playlist.WriteString("#EXT-X-MEDIA-SEQUENCE:0\n")
+	playlist.WriteString("#EXT-X-PLAYLIST-TYPE:VOD\n")
+
+	// Calculate number of segments
+	numSegments := int(duration / float64(segmentSize))
+	if float64(numSegments*segmentSize) < duration {
+		numSegments++
+	}
+
+	// Add all segments with proper durations
+	for i := 0; i < numSegments; i++ {
+		segmentDuration := float64(segmentSize)
+		// Last segment might be shorter
+		if i == numSegments-1 {
+			remaining := duration - float64(i*segmentSize)
+			if remaining < float64(segmentSize) {
+				segmentDuration = remaining
+			}
+		}
+
+		playlist.WriteString(fmt.Sprintf("#EXTINF:%.6f,\n", segmentDuration))
+		playlist.WriteString(fmt.Sprintf("http://%s:%d/segment%d.ts\n", localIP, port, i))
+	}
+
+	playlist.WriteString("#EXT-X-ENDLIST\n")
+	return playlist.String()
 }
 
 // ExtractTracksFromMaster extracts all audio and video tracks from a master playlist
@@ -114,7 +149,7 @@ func extractAttribute(line, attr string) string {
 	// Check if value is quoted
 	if line[start] == '"' {
 		start++
-		end := strings.Index(line[start:], "\"")
+		end := strings.Index(line[start:], `"`)
 		if end == -1 {
 			return ""
 		}

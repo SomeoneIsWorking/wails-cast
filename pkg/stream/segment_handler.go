@@ -1,19 +1,19 @@
-package hlsproxy
+package stream
 
 import (
-	"bytes"
 	"fmt"
 	"io"
 	"net/http"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
+
+	"wails-cast/pkg/hls"
 )
 
 // handleSegment proxies segment requests with captured cookies and headers,
 // and transcodes them using ffmpeg for compatibility
-func (p *HLSProxy) handleSegment(w http.ResponseWriter, r *http.Request) {
+func (p *RemoteHLSProxy) handleSegment(w http.ResponseWriter, r *http.Request) {
 	// Parse key from path
 	path := r.URL.Path
 	if !strings.HasPrefix(path, "/segment/") {
@@ -56,7 +56,7 @@ func (p *HLSProxy) handleSegment(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		p.serveSegment(w, fullURL, key)
+		p.serveSegment(w, r, fullURL, key)
 		return
 	}
 
@@ -75,7 +75,7 @@ func (p *HLSProxy) handleSegment(w http.ResponseWriter, r *http.Request) {
 		if !strings.HasPrefix(trimmed, "#") && trimmed != "" {
 			if segmentCount == index {
 				fullURL := trimmed
-				p.serveSegment(w, fullURL, key)
+				p.serveSegment(w, r, fullURL, key)
 				return
 			}
 			segmentCount++
@@ -86,7 +86,7 @@ func (p *HLSProxy) handleSegment(w http.ResponseWriter, r *http.Request) {
 }
 
 // serveSegment serves a segment by URL and key
-func (p *HLSProxy) serveSegment(w http.ResponseWriter, fullURL string, key string) {
+func (p *RemoteHLSProxy) serveSegment(w http.ResponseWriter, r *http.Request, fullURL string, key string) {
 	fmt.Printf("Proxying request: %s (Key: %s)\n", fullURL, key)
 
 	// Check manifest
@@ -116,7 +116,7 @@ func (p *HLSProxy) serveSegment(w http.ResponseWriter, fullURL string, key strin
 			} else {
 				// Not transcoded yet, or re-transcoding needed
 				// For non-playlist items, always try to transcode
-				p.transcodeAndServe(w, item)
+				p.transcodeAndServe(w, r, item)
 				return
 			}
 		}
@@ -174,11 +174,11 @@ func (p *HLSProxy) serveSegment(w http.ResponseWriter, fullURL string, key strin
 	// All other items are treated as segments and transcoded
 	newItem.IsPlaylist = false
 	p.updateManifest(fullURL, newItem)
-	p.transcodeAndServe(w, newItem)
+	p.transcodeAndServe(w, r, newItem)
 }
 
 // serveFile serves a local file
-func (p *HLSProxy) serveFile(w http.ResponseWriter, path string, contentType string) {
+func (p *RemoteHLSProxy) serveFile(w http.ResponseWriter, path string, contentType string) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		http.Error(w, "Failed to read file", http.StatusInternalServerError)
@@ -196,10 +196,10 @@ func (p *HLSProxy) serveFile(w http.ResponseWriter, path string, contentType str
 }
 
 // transcodeAndServe transcodes a segment and serves it
-func (p *HLSProxy) transcodeAndServe(w http.ResponseWriter, item *ManifestItem) {
+func (p *RemoteHLSProxy) transcodeAndServe(w http.ResponseWriter, r *http.Request, item *ManifestItem) {
 	transcodedPath := item.LocalPath + "_transcoded.ts"
 
-	// If already transcoded (but maybe flag wasn't set or we are retrying), check file
+	// If already transcoded, serve it
 	if _, err := os.Stat(transcodedPath); err == nil {
 		item.TranscodedPath = transcodedPath
 		item.Transcoded = true
@@ -208,149 +208,49 @@ func (p *HLSProxy) transcodeAndServe(w http.ResponseWriter, item *ManifestItem) 
 		return
 	}
 
-	fmt.Println("Transcoding segment...")
-
-	// First try: copy video codec if it's already H.264, only transcode audio
-	// This is much faster and avoids quality loss
-	// transcodedPath already has .ts extension from line 188
-
-	// Determine if it's an audio or video segment based on filename
+	// Determine segment type based on filename
 	isAudio := strings.Contains(filepath.Base(item.LocalPath), "audio_")
 	isVideo := strings.Contains(filepath.Base(item.LocalPath), "video_")
 
-	args := []string{
-		"-copyts", // IMPORTANT: Preserve input timestamps!
-		"-i", item.LocalPath,
-		"-y",
+	// Build transcode options using shared module
+	opts := hls.TranscodeOptions{
+		InputPath:   item.LocalPath,
+		OutputPath:  transcodedPath,
+		IsAudioOnly: isAudio,
+		IsVideoOnly: isVideo,
+		CopyVideo:   isVideo, // Try to copy video codec first
+		Preset:      "veryfast",
 	}
 
-	if isAudio {
-		// Audio segment: Map only audio, re-encode to ensure compatibility, drop ID3/video
-		args = append(args,
-			"-map", "0:a",
-			"-c:a", "aac",
-			"-b:a", "128k",
-			"-ar", "48000",
-			"-ac", "2",
-		)
-	} else if isVideo {
-		// Video segment: Map only video, copy stream, drop ID3/audio
-		args = append(args,
-			"-map", "0:v",
-			"-c:v", "copy",
-		)
-	} else {
-		// Fallback for unknown types (e.g. muxed): Try to handle both
-		args = append(args,
-			"-c:v", "copy",
-			"-c:a", "aac",
-			"-b:a", "128k",
-			"-ar", "48000",
-			"-ac", "2",
-		)
-	}
+	// Use shared transcode function with 100ms wait check
+	result := hls.TranscodeSegment(r.Context(), opts, true)
 
-	// Common flags
-	args = append(args,
-		"-f", "mpegts",
-		"-mpegts_copyts", "1",
-		"-muxdelay", "0",
-		"-muxpreload", "0",
-		transcodedPath,
-	)
-
-	cmd := exec.Command("ffmpeg", args...)
-
-	var stderr bytes.Buffer
-	cmd.Stderr = &stderr
-
-	err := cmd.Run()
-	if err == nil {
-		// Success with video copy, audio transcode
+	if result.Success {
 		item.TranscodedPath = transcodedPath
 		item.Transcoded = true
 		p.updateManifest(item.URL, item)
-		fmt.Println("Transcoding (video copy, audio re-encode) complete, serving...")
+		fmt.Println("Transcoding complete, serving...")
 		p.serveFile(w, transcodedPath, "video/mp2t")
 		return
 	}
 
-	fmt.Printf("First transcode attempt (video copy) failed: %v\nStderr: %s\n", err, stderr.String())
-	fmt.Println("Falling back to full video and audio re-encode...")
+	// If video copy failed, try full re-encode
+	if result.Error != nil && opts.CopyVideo {
+		fmt.Printf("Video copy failed: %v\nTrying full re-encode...\n", result.Error)
+		opts.CopyVideo = false
+		result = hls.TranscodeSegment(r.Context(), opts, false) // Don't wait again
 
-	// Use Chromecast-compatible settings:
-	// - H.264 High Profile Level 4.2 (max supported by most Chromecasts)
-	// - AAC-LC audio at 128kbps, 48kHz (recommended for Chromecast)
-	// - Proper MPEG-TS muxing with alignment
-	// Use Chromecast-compatible settings:
-	// - H.264 High Profile Level 4.2 (max supported by most Chromecasts)
-	// - AAC-LC audio at 128kbps, 48kHz (recommended for Chromecast)
-	// - Proper MPEG-TS muxing with alignment
-
-	args = []string{
-		"-copyts", // IMPORTANT: Preserve input timestamps!
-		"-i", item.LocalPath,
-		"-y",
+		if result.Success {
+			item.TranscodedPath = transcodedPath
+			item.Transcoded = true
+			p.updateManifest(item.URL, item)
+			fmt.Println("Transcoding complete, serving...")
+			p.serveFile(w, transcodedPath, "video/mp2t")
+			return
+		}
 	}
 
-	if isAudio {
-		args = append(args,
-			"-map", "0:a",
-			"-c:a", "aac",
-			"-b:a", "128k",
-			"-ar", "48000",
-			"-ac", "2",
-		)
-	} else if isVideo {
-		// If video copy failed, re-encode video
-		args = append(args,
-			"-map", "0:v",
-			"-c:v", "libx264",
-			"-profile:v", "high",
-			"-level", "4.2",
-			"-preset", "veryfast",
-			"-pix_fmt", "yuv420p",
-		)
-	} else {
-		args = append(args,
-			"-c:v", "libx264",
-			"-profile:v", "high",
-			"-level", "4.2",
-			"-preset", "veryfast",
-			"-pix_fmt", "yuv420p",
-			"-c:a", "aac",
-			"-b:a", "128k",
-			"-ar", "48000",
-			"-ac", "2",
-		)
-	}
-
-	args = append(args,
-		"-f", "mpegts",
-		"-mpegts_copyts", "1",
-		"-muxdelay", "0",
-		"-muxpreload", "0",
-		transcodedPath,
-	)
-
-	fmt.Printf("🎥 FFMPEG Command: ffmpeg %s\n", strings.Join(args, " "))
-	cmd = exec.Command("ffmpeg", args...)
-
-	stderr.Reset()
-	cmd.Stderr = &stderr
-
-	err = cmd.Run()
-	if err != nil {
-		fmt.Printf("Transcode failed: %v\nStderr: %s\n", err, stderr.String())
-		// Fallback to original if transcode fails
-		p.serveFile(w, item.LocalPath, "video/mp2t")
-		return
-	}
-
-	item.TranscodedPath = transcodedPath
-	item.Transcoded = true
-	p.updateManifest(item.URL, item)
-
-	fmt.Println("Transcoding complete, serving...")
-	p.serveFile(w, transcodedPath, "video/mp2t")
+	// If transcoding failed, serve original
+	fmt.Printf("Transcode failed: %v\nServing original file\n", result.Error)
+	p.serveFile(w, item.LocalPath, "video/mp2t")
 }
