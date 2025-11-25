@@ -1,3 +1,6 @@
 [submodule "go-chromecast"]
 	path = go-chromecast
 	url = https://github.com/SomeoneIsWorking/go-chromecast
+[submodule "CastReceiver"]
+	path = CastReceiver
+	url = https://github.com/SomeoneIsWorking/CastReceiver
