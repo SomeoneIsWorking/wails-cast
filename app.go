@@ -168,8 +168,7 @@ func (a *App) GetSubtitleURL(subtitlePath string) string {
 	if subtitlePath == "" {
 		return ""
 	}
-	localIP := a.discovery.GetLocalIP()
-	return fmt.Sprintf("http://%s:%d/subtitle.vtt", localIP, 8888)
+	return "/subtitle.vtt"
 }
 
 // GetVideoDuration returns the duration of a video file in seconds
