@@ -86,11 +86,11 @@ func (s *LocalHLSServer) ServeSegment(w http.ResponseWriter, r *http.Request, se
 			StartTime:    startTime,
 			Duration:     s.SegmentSize,
 			SubtitlePath: s.SubtitlePath,
-			Preset:       "veryfast",
+			Preset:       "fast",
 		}
 
-		result := hls.TranscodeSegment(r.Context(), opts)
-		if result.Error != nil {
+		err := hls.TranscodeSegment(r.Context(), opts)
+		if err != nil {
 			if r.Context().Err() != nil {
 				return
 			}
@@ -105,7 +105,7 @@ func (s *LocalHLSServer) ServeSegment(w http.ResponseWriter, r *http.Request, se
 			SubtitleStyle: "FontSize=24",
 			VideoCodec:    "libx264",
 			AudioCodec:    "aac",
-			Preset:        "veryfast",
+			Preset:        "fast",
 			CreatedAt:     time.Now().Format(time.RFC3339),
 		}
 		hls.SaveSegmentManifest(s.OutputDir, manifest)
