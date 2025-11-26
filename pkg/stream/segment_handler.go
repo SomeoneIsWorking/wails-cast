@@ -54,11 +54,12 @@ func (p *RemoteHLSProxy) handleSegment(w http.ResponseWriter, r *http.Request) {
 
 	// Get URL from cached playlist
 	var playlistPath string
-	if segType == "audio" {
+	switch segType {
+	case "audio":
 		playlistPath = filepath.Join(p.CacheDir, "audio.m3u8")
-	} else if segType == "video" {
+	case "video":
 		playlistPath = filepath.Join(p.CacheDir, "video.m3u8")
-	} else {
+	default:
 		// For regular segments, use the map
 		p.ManifestData.mu.RLock()
 		fullURL, ok := p.ManifestData.SegmentMap[key]
