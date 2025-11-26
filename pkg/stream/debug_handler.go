@@ -7,8 +7,8 @@ import (
 	"net/http"
 )
 
-// handleDebugLog receives debug logs from the Cast receiver
-func (p *RemoteHLSProxy) handleDebugLog(w http.ResponseWriter, r *http.Request) {
+// HandleDebugLog receives debug logs from the Cast receiver
+func (p *RemoteHandler) HandleDebugLog(w http.ResponseWriter, r *http.Request) {
 	// Set CORS headers
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	w.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS")

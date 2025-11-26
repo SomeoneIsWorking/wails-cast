@@ -70,6 +70,7 @@ useOnFileDrop({
         readonly
       />
       <button @click="openFileDialog" class="btn-secondary">Browse</button>
+      <slot></slot>
     </div>
 
     <!-- Drag and Drop Zone -->

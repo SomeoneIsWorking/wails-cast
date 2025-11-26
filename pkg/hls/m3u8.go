@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net/url"
 	"strings"
+	"wails-cast/pkg/mediainfo"
 )
 
 // PlaylistType represents the type of HLS playlist
@@ -13,19 +14,6 @@ const (
 	PlaylistTypeMaster PlaylistType = iota
 	PlaylistTypeMedia
 )
-
-// Track represents an audio or video track in a master playlist
-type Track struct {
-	Type       string // "AUDIO" or "VIDEO"
-	URI        string
-	GroupID    string
-	Name       string
-	Language   string
-	IsDefault  bool
-	Resolution string
-	Bandwidth  int
-	Codecs     string
-}
 
 // ParsePlaylistType determines if a playlist is master or media
 func ParsePlaylistType(content string) PlaylistType {
@@ -71,15 +59,21 @@ func GenerateVODPlaylist(duration float64, segmentSize int, localIP string, port
 }
 
 // ExtractTracksFromMaster extracts all audio and video tracks from a master playlist
-func ExtractTracksFromMaster(content string) (audioTracks []Track, videoTracks []Track) {
+func ExtractTracksFromMaster(content string) mediainfo.MediaTrackInfo {
 	lines := strings.Split(content, "\n")
+
+	mi := mediainfo.MediaTrackInfo{
+		VideoTracks:    make([]mediainfo.VideoTrack, 0),
+		AudioTracks:    make([]mediainfo.AudioTrack, 0),
+		SubtitleTracks: make([]mediainfo.SubtitleTrack, 0),
+	}
 
 	for i := 0; i < len(lines); i++ {
 		line := strings.TrimSpace(lines[i])
 
 		// Parse #EXT-X-MEDIA (audio tracks)
 		if strings.HasPrefix(line, "#EXT-X-MEDIA:") {
-			track := Track{}
+			track := mediainfo.AudioTrack{}
 			track.Type = extractAttribute(line, "TYPE")
 			track.URI = extractAttribute(line, "URI")
 			track.GroupID = extractAttribute(line, "GROUP-ID")
@@ -87,14 +81,33 @@ func ExtractTracksFromMaster(content string) (audioTracks []Track, videoTracks [
 			track.Language = extractAttribute(line, "LANGUAGE")
 			track.IsDefault = extractAttribute(line, "DEFAULT") == "YES"
 
-			if track.Type == "AUDIO" {
-				audioTracks = append(audioTracks, track)
+			switch track.Type {
+			case "AUDIO":
+				// Add to audioTracks and to media info structured type
+				mi.AudioTracks = append(mi.AudioTracks, track)
+				// Create mediainfo.AudioTrack
+				ai := mediainfo.AudioTrack{
+					Index:    len(mi.AudioTracks),
+					Language: track.Language,
+					Codec:    "",
+				}
+				mi.AudioTracks = append(mi.AudioTracks, ai)
+
+			case "SUBTITLES":
+
+				si := mediainfo.SubtitleTrack{
+					Index:    len(mi.SubtitleTracks),
+					Language: track.Language,
+					Title:    track.Name,
+					Codec:    "",
+				}
+				mi.SubtitleTracks = append(mi.SubtitleTracks, si)
 			}
 		}
 
 		// Parse #EXT-X-STREAM-INF (video tracks)
 		if strings.HasPrefix(line, "#EXT-X-STREAM-INF:") {
-			track := Track{}
+			track := mediainfo.VideoTrack{}
 			track.Type = "VIDEO"
 			track.Resolution = extractAttribute(line, "RESOLUTION")
 			track.Bandwidth = extractIntAttribute(line, "BANDWIDTH")
@@ -105,11 +118,26 @@ func ExtractTracksFromMaster(content string) (audioTracks []Track, videoTracks [
 				track.URI = strings.TrimSpace(lines[i+1])
 			}
 
-			videoTracks = append(videoTracks, track)
+			mi.VideoTracks = append(mi.VideoTracks, track)
+			// Create mediainfo.VideoTrack
+			codec := ""
+			if track.Codecs != "" {
+				// Take first codec before comma
+				parts := strings.Split(track.Codecs, ",")
+				if len(parts) > 0 {
+					codec = strings.TrimSpace(parts[0])
+				}
+			}
+			vi := mediainfo.VideoTrack{
+				Index:      len(mi.VideoTracks),
+				Codec:      codec,
+				Resolution: track.Resolution,
+			}
+			mi.VideoTracks = append(mi.VideoTracks, vi)
 		}
 	}
 
-	return audioTracks, videoTracks
+	return mi
 }
 
 // ResolveURL resolves a relative URL against a base URL
