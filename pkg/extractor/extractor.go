@@ -4,8 +4,6 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
-	"os"
-	"path/filepath"
 	"strings"
 	"time"
 
@@ -18,7 +16,6 @@ import (
 type ExtractResult struct {
 	URL          string            // Original HLS URL
 	BaseURL      string            // Base URL (scheme + host) for resolving relative paths
-	ManifestPath string            // Path to saved m3u8 file
 	ManifestBody string            // Raw m3u8 content
 	Cookies      map[string]string // Captured cookies
 	Headers      map[string]string // Captured headers
@@ -95,22 +92,9 @@ func ExtractVideo(pageURL string) (*ExtractResult, error) {
 			}
 			fmt.Printf("Captured %d headers\n", len(headers))
 
-			// Save manifest to temp file (for debugging)
-			tmpDir := os.TempDir()
-			manifestPath := filepath.Join(tmpDir, fmt.Sprintf("extracted_stream_%d.m3u8", time.Now().Unix()))
-
-			err = os.WriteFile(manifestPath, []byte(manifestContent), 0644)
-			if err != nil {
-				fmt.Printf("Failed to save manifest: %v\n", err)
-				return
-			}
-
-			fmt.Printf("Saved manifest to: %s\n", manifestPath)
-
 			result := &ExtractResult{
 				URL:          reqURL,
 				BaseURL:      baseURL,
-				ManifestPath: manifestPath,
 				ManifestBody: manifestContent,
 				Cookies:      cookies,
 				Headers:      headers,

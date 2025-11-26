@@ -22,7 +22,6 @@ type TranscodeOptions struct {
 	Quality       string // "low", "medium", "high", "original"
 	StreamIndex   string // Deprecated: use SubtitleTrack
 	IsAudioOnly   bool
-	IsVideoOnly   bool
 	Preset        string
 }
 
@@ -39,6 +38,8 @@ func TranscodeSegment(ctx context.Context, opts TranscodeOptions) error {
 	// Build ffmpeg arguments
 	args := buildTranscodeArgs(opts)
 
+	// log the call
+	fmt.Printf(">>>> ffmpeg %s\n\n", strings.Join(args, " "))
 	cmd := exec.CommandContext(ctx, "ffmpeg", args...)
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
@@ -74,19 +75,6 @@ func buildTranscodeArgs(opts TranscodeOptions) []string {
 	// Preserve timestamps for HLS
 	args = append(args, "-copyts")
 
-	// Map specific tracks if requested
-	if opts.VideoTrack >= 0 {
-		args = append(args, "-map", fmt.Sprintf("0:v:%d", opts.VideoTrack))
-	} else if !opts.IsAudioOnly {
-		args = append(args, "-map", "0:v:0") // Default to first video track
-	}
-
-	if opts.AudioTrack >= 0 {
-		args = append(args, "-map", fmt.Sprintf("0:a:%d", opts.AudioTrack))
-	} else if !opts.IsVideoOnly {
-		args = append(args, "-map", "0:a:0") // Default to first audio track
-	}
-
 	// Video encoding
 	if opts.IsAudioOnly {
 		// Audio-only segment
@@ -96,29 +84,21 @@ func buildTranscodeArgs(opts TranscodeOptions) []string {
 			"-ar", "48000",
 			"-ac", "2",
 		)
-	} else if opts.IsVideoOnly {
-		args = append(args,
-			"-c:v", "libx264",
-			"-profile:v", "high",
-			"-level", "4.2",
-			"-preset", getPreset(opts.Preset),
-			"-crf", getCRF(opts.Quality),
-			"-maxrate", "3M",
-			"-bufsize", "10M",
-			"-pix_fmt", "yuv420p",
-		)
 	} else {
 		// Mixed segment or local file
 		args = append(args,
 			"-c:v", "libx264",
-			"-preset", getPreset(opts.Preset),
+			"-preset", "fast",
 			"-crf", getCRF(opts.Quality),
-			"-maxrate", "3M",
-			"-bufsize", "10M",
-			"-tune", "zerolatency",
 			"-pix_fmt", "yuv420p",
 			"-sc_threshold", "0",
-			"-g", "48",
+			"-g", "60",
+			"-s", "1280x720",
+			"-r", "30",
+			"-c:a", "aac",
+			"-b:a", "128k",
+			"-ar", "48000",
+			"-ac", "2",
 		)
 
 		// Add subtitles if provided (for local files)
@@ -140,7 +120,6 @@ func buildTranscodeArgs(opts TranscodeOptions) []string {
 	// Output format
 	args = append(args,
 		"-f", "mpegts",
-		"-mpegts_copyts", "1",
 		"-muxdelay", "0",
 		"-muxpreload", "0",
 		opts.OutputPath,
@@ -153,9 +132,9 @@ func buildTranscodeArgs(opts TranscodeOptions) []string {
 func getCRF(quality string) string {
 	switch quality {
 	case "low":
-		return "35"
-	case "medium":
 		return "28"
+	case "medium":
+		return "25"
 	case "high":
 		return "23"
 	case "original":
@@ -171,15 +150,6 @@ func buildSubtitleFilter(subtitlePath string, trackIndex int, videoPath string) 
 	if trackIndex >= 0 {
 		return fmt.Sprintf("subtitles='%s':si=%d:force_style='FontSize=24'",
 			EscapeFFmpegPath(videoPath), trackIndex)
-	}
-
-	// Check if path has embedded syntax (legacy support)
-	if strings.Contains(subtitlePath, ":si=") {
-		parts := strings.Split(subtitlePath, ":si=")
-		if len(parts) == 2 {
-			return fmt.Sprintf("subtitles='%s':si=%s:force_style='FontSize=24'",
-				EscapeFFmpegPath(videoPath), parts[1])
-		}
 	}
 
 	// External subtitle file

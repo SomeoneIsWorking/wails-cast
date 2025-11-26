@@ -25,36 +25,12 @@ const pendingCast = ref<{ type: "local" | "remote"; path: string } | null>(
 const handleCastLocal = async () => {
   if (!selectedFile.value || !store.selectedDevice) return;
 
-  try {
-    // Get track info for local file
-    const info = await mediaService.getMediaTrackInfo(selectedFile.value);
+  // Get track info for local file
+  const info = await mediaService.getMediaTrackInfo(selectedFile.value);
 
-    // Check if we need to show track selection modal
-    const needsSelection =
-      info.videoTracks.length > 1 ||
-      info.audioTracks.length > 1 ||
-      info.subtitleTracks.length > 0;
-
-    if (needsSelection) {
-      trackInfo.value = info;
-      pendingCast.value = { type: "local", path: selectedFile.value };
-      showTrackModal.value = true;
-    } else {
-      // Cast directly with defaults
-      await castWithOptions(selectedFile.value, {
-        SubtitlePath: "",
-        SubtitleTrack: -1,
-        VideoTrack: -1,
-        AudioTrack: -1,
-        BurnIn: false,
-        Quality: "medium",
-      });
-      store.setCasting(true);
-    }
-  } catch (err) {
-    console.error("Failed to get track info", err);
-    store.setError("Failed to analyze media file: " + err);
-  }
+  trackInfo.value = info;
+  pendingCast.value = { type: "local", path: selectedFile.value };
+  showTrackModal.value = true;
 };
 
 const castRemoteUrl = async () => {
@@ -85,21 +61,7 @@ const castWithOptions = async (mediaPath: string, options: CastOptions) => {
 
   try {
     console.log("Casting with options:", options);
-    await mediaService.castToDevice(
-      store.selectedDevice.url,
-      mediaPath,
-      options
-    );
-    store.setCasting(true);
-    store.clearError();
-
-    // Reset remote URL after successful cast
-    if (isRemote) {
-      remoteUrl.value = "";
-    }
-  } catch (err) {
-    console.error("Failed to cast", err);
-    store.setError("Failed to cast: " + err);
+    await store.startCasting(mediaPath, options);
   } finally {
     isCastingRemote.value = false;
     isCastingLocal.value = false;
@@ -227,7 +189,8 @@ const castWithOptions = async (mediaPath: string, options: CastOptions) => {
     <!-- Track Selection Modal -->
     <TrackSelectionModal
       v-model="showTrackModal"
-      :track-info="trackInfo!"
+      v-if="trackInfo"
+      :track-info="trackInfo"
       @confirm="handleTrackConfirm"
     />
   </div>

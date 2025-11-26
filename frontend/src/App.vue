@@ -12,6 +12,10 @@ const activeTab = ref<"devices" | "files" | "player">("devices");
 
 onMounted(() => {
   store.discoverDevices();
+  window.addEventListener("wheel", (event: WheelEvent) => {
+    event.preventDefault();
+    window.scrollTo(0, window.scrollY + event.deltaY);
+  });
 });
 
 const selectDevice = (device: any) => {
@@ -44,7 +48,7 @@ const handleCast = () => {
       </header>
 
       <!-- Playback Control (shown when something is playing) -->
-      <PlaybackControl />
+      <PlaybackControl v-if="store.isCasting"/>
 
       <main class="mt-6">
         <!-- Tab Navigation -->
@@ -128,9 +132,7 @@ const handleCast = () => {
         <!-- Media Player Tab -->
         <section class="h-full" v-show="activeTab === 'player'">
           <MediaPlayer
-            v-if="
-              store.isCasting
-            "
+            v-if="store.isCasting"
             :device="store.selectedDevice"
             :mediaPath="store.selectedMedia"
             :isLoading="store.isLoading"

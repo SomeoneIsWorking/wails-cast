@@ -1,25 +1,18 @@
 <script setup lang="ts">
 import { ref, onMounted, computed, watch } from 'vue'
 import { useCastStore } from '../stores/cast'
-import { mediaService } from '../services/media'
-import { EventsOn } from '../../wailsjs/runtime/runtime'
+import { mediaService, type SubtitleTrack } from '../services/media'
 
 const castStore = useCastStore()
 
 // Local UI state
 const showSubtitleDialog = ref(false)
-const subtitleTracks = ref<Array<{index: number, language: string, title: string, codec: string}>>([])
+const subtitleTracks = ref<SubtitleTrack[]>([])
 
 // Computed properties from store
 const isCasting = computed(() => castStore.isCasting)
 const playbackState = computed(() => castStore.playbackState)
 const castOptions = computed(() => castStore.castOptions)
-
-// Methods
-const handleCast = async () => {
-  if (!castStore.selectedDevice || !castStore.selectedMedia) return
-  await castStore.startCasting()
-}
 
 const togglePlayback = async () => {
   if (playbackState.value.isPlaying) {
@@ -83,11 +76,6 @@ watch(() => castStore.selectedMedia, () => {
 
 // Lifecycle
 onMounted(() => {
-  // Listen for playback state updates from backend
-  EventsOn('playback:state', (state: any) => {
-    castStore.playbackState = state
-  })
-  
   // Initial load
   if (castStore.selectedMedia) {
     loadSubtitleTracks()
@@ -136,7 +124,7 @@ onMounted(() => {
             class="cursor-pointer p-1 hover:bg-gray-600 rounded text-sm text-gray-200"
             :class="{ 'bg-blue-900': castOptions.SubtitleTrack === track.index }"
           >
-            {{ track.title || track.language || `Track ${track.index}` }} ({{ track.codec }})
+            {{ track.title || track.language || `Track ${track.index}` }}
           </div>
           <div 
             @click="selectSubtitleTrack(-1)"
@@ -151,17 +139,6 @@ onMounted(() => {
     <div v-if="castStore.selectedDevice" class="mb-4">
       <h3 class="text-xl font-bold text-white mb-2">Device</h3>
       <p class="text-gray-300">{{ castStore.selectedDevice.name }} ({{ castStore.selectedDevice.address }})</p>
-    </div>
-
-    <div v-if="castStore.isReadyToCast" class="mt-6">
-      <button 
-        @click="handleCast"
-        :disabled="isCasting"
-        class="w-full py-3 px-6 bg-green-600 text-white font-bold rounded-lg hover:bg-green-700 transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
-      >
-        <span v-if="isCasting" class="mr-2 animate-spin">⟳</span>
-        {{ isCasting ? 'Casting...' : 'Cast to Device' }}
-      </button>
     </div>
 
     <div v-if="castStore.error" class="mt-4 p-3 bg-red-900/50 border border-red-700 text-red-200 rounded">

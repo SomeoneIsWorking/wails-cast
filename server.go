@@ -6,29 +6,26 @@ import (
 	"strings"
 	"sync"
 	"time"
-	"wails-cast/pkg/sleepinhibit"
 	"wails-cast/pkg/stream"
 )
 
 // Server is an HTTP server for serving media
 type Server struct {
-	port           int
-	localIP        string
-	currentMedia   string
-	subtitlePath   string
-	streamHandler  stream.StreamHandler
-	httpServer     *http.Server
-	seekTime       int
-	sleepInhibitor *sleepinhibit.Inhibitor
-	mu             sync.RWMutex
+	port          int
+	localIP       string
+	currentMedia  string
+	subtitlePath  string
+	streamHandler stream.StreamHandler
+	httpServer    *http.Server
+	seekTime      int
+	mu            sync.RWMutex
 }
 
 // NewServer creates a new media server
 func NewServer(port int, localIP string) *Server {
 	s := &Server{
-		port:           port,
-		localIP:        localIP,
-		sleepInhibitor: sleepinhibit.NewInhibitor(logger),
+		port:    port,
+		localIP: localIP,
 	}
 
 	mux := http.NewServeMux()
@@ -115,9 +112,7 @@ func (s *Server) Start() error {
 // Stop stops the HTTP server
 func (s *Server) Stop() error {
 	// Stop sleep inhibition
-	if s.sleepInhibitor != nil {
-		s.sleepInhibitor.Stop()
-	}
+	inhibitor.Stop()
 
 	if s.streamHandler != nil {
 		s.streamHandler.Cleanup()
@@ -161,9 +156,7 @@ func (s *Server) handleRequest(w http.ResponseWriter, r *http.Request) {
 	// Handle HLS playlist request
 	if strings.HasSuffix(path, ".m3u8") || path == "/media.mp4" {
 		// Briefly inhibit sleep on streaming requests (auto-stops after 30s of inactivity)
-		if s.sleepInhibitor != nil {
-			s.sleepInhibitor.Refresh(30 * time.Second)
-		}
+		inhibitor.Refresh(3 * time.Second)
 
 		handler.ServePlaylist(w, r)
 		return
@@ -172,9 +165,7 @@ func (s *Server) handleRequest(w http.ResponseWriter, r *http.Request) {
 	// Handle HLS segment request
 	if strings.HasSuffix(path, ".ts") || strings.Contains(path, "/segment/") {
 		// Briefly inhibit sleep on streaming requests
-		if s.sleepInhibitor != nil {
-			s.sleepInhibitor.Refresh(30 * time.Second)
-		}
+		inhibitor.Refresh(3 * time.Second)
 
 		handler.ServeSegment(w, r)
 		return

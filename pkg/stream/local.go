@@ -95,7 +95,6 @@ func (s *LocalHandler) ServeSegment(w http.ResponseWriter, r *http.Request) {
 			AudioTrack:    s.Options.AudioTrack,
 			BurnIn:        s.Options.BurnIn,
 			Quality:       s.Options.Quality,
-			Preset:        "fast",
 		}
 
 		err := hls.TranscodeSegment(r.Context(), opts)

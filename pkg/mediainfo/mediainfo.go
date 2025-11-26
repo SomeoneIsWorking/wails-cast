@@ -10,7 +10,6 @@ type SubtitleTrack struct {
 	Index    int    `json:"index"`
 	Language string `json:"language"`
 	Title    string `json:"title"`
-	Codec    string `json:"codec"`
 }
 
 type VideoTrack struct {
@@ -29,8 +28,6 @@ type VideoTrack struct {
 type AudioTrack struct {
 	Index     int    `json:"index"`
 	Language  string `json:"language"`
-	Codec     string `json:"codec"`
-	Type      string // "AUDIO" or "VIDEO"
 	URI       string
 	GroupID   string
 	Name      string
@@ -81,7 +78,6 @@ func GetSubtitleTracks(videoPath string) ([]SubtitleTrack, error) {
 			Index:    i,
 			Language: stream.Tags.Language,
 			Title:    stream.Tags.Title,
-			Codec:    stream.CodecName,
 		}
 		tracks = append(tracks, track)
 	}
@@ -148,7 +144,6 @@ func GetMediaTrackInfo(mediaPath string) (*MediaTrackInfo, error) {
 			info.AudioTracks = append(info.AudioTracks, AudioTrack{
 				Index:    audioIdx,
 				Language: stream.Tags.Language,
-				Codec:    stream.CodecName,
 			})
 			audioIdx++
 		case "subtitle":
@@ -156,7 +151,6 @@ func GetMediaTrackInfo(mediaPath string) (*MediaTrackInfo, error) {
 				Index:    subtitleIdx,
 				Language: stream.Tags.Language,
 				Title:    stream.Tags.Title,
-				Codec:    stream.CodecName,
 			})
 			subtitleIdx++
 		}
