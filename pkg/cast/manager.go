@@ -57,6 +57,7 @@ func (m *CastManager) StartCasting(videoURL string, deviceHost string, devicePor
 
 	app := application.NewApplication()
 	app.SetRequestTimeout(60 * time.Second)
+	app.SetDebug(true)
 
 	err = app.Start(deviceHost, devicePort)
 	if err != nil {

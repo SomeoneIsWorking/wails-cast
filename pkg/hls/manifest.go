@@ -59,8 +59,5 @@ func ManifestMatches(manifest *SegmentManifest, subtitlePath string, duration fl
 	}
 	// Check subtitle style (currently hardcoded FontSize=24)
 	expectedStyle := "FontSize=24"
-	if manifest.SubtitleStyle != expectedStyle {
-		return false
-	}
-	return true
+	return manifest.SubtitleStyle == expectedStyle
 }

@@ -7,7 +7,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"runtime"
 	"strconv"
 	"strings"
 	"sync"
@@ -18,6 +17,7 @@ import (
 	wails_runtime "github.com/wailsapp/wails/v2/pkg/runtime"
 
 	"wails-cast/pkg/cast"
+	"wails-cast/pkg/sleepinhibit"
 )
 
 // CastOptions holds options for casting
@@ -41,7 +41,7 @@ type App struct {
 	playbackState   PlaybackState
 	currentSubtitle string
 	chromecastApp   *cast.ChromecastApp
-	caffeinateCmd   *exec.Cmd
+	sleepInhibitor  *sleepinhibit.Inhibitor
 	mu              sync.RWMutex
 }
 
@@ -63,8 +63,9 @@ func NewApp() *App {
 	server := NewServer(8888, localIP)
 
 	return &App{
-		discovery:   discovery,
-		mediaServer: server,
+		discovery:      discovery,
+		mediaServer:    server,
+		sleepInhibitor: sleepinhibit.NewInhibitor(logger),
 		playbackState: PlaybackState{
 			CanSeek: true,
 		},
@@ -80,59 +81,17 @@ func (a *App) startup(ctx context.Context) {
 	logger.Info("App started")
 }
 
-// startSleepInhibition prevents system sleep during streaming (cross-platform)
+// startSleepInhibition prevents system sleep during streaming
 func (a *App) startSleepInhibition() {
-	a.mu.Lock()
-	defer a.mu.Unlock()
-
-	// Kill existing process if running
-	if a.caffeinateCmd != nil && a.caffeinateCmd.Process != nil {
-		a.caffeinateCmd.Process.Kill()
-		a.caffeinateCmd = nil
+	if a.sleepInhibitor != nil {
+		a.sleepInhibitor.Start()
 	}
-
-	var cmd *exec.Cmd
-
-	switch runtime.GOOS {
-	case "darwin":
-		// macOS: use caffeinate
-		cmd = exec.Command("caffeinate", "-d") // -d prevents display sleep
-	case "linux":
-		// Linux: try systemd-inhibit (systemd), then fallback to xdg-screensaver
-		if _, err := exec.LookPath("systemd-inhibit"); err == nil {
-			cmd = exec.Command("systemd-inhibit", "--what=idle:sleep", "--who=wails-cast", "--why=Streaming media", "--mode=block", "sleep", "infinity")
-		} else if _, err := exec.LookPath("xdg-screensaver"); err == nil {
-			cmd = exec.Command("xdg-screensaver", "suspend", fmt.Sprintf("%d", os.Getpid()))
-		}
-	case "windows":
-		// Windows: use powercfg or SetThreadExecutionState via PowerShell
-		// Note: This uses a PowerShell command to prevent sleep
-		cmd = exec.Command("powershell", "-Command", "$null = [System.Threading.Thread]::CurrentThread.SetThreadExecutionState(3); while($true){Start-Sleep -Seconds 30}")
-	}
-
-	if cmd == nil {
-		logger.Warn("Sleep inhibition not supported on this platform", "os", runtime.GOOS)
-		return
-	}
-
-	if err := cmd.Start(); err != nil {
-		logger.Warn("Failed to start sleep inhibition", "error", err)
-		return
-	}
-
-	a.caffeinateCmd = cmd
-	logger.Info("Sleep inhibition enabled", "os", runtime.GOOS)
 }
 
 // stopSleepInhibition allows system sleep again
 func (a *App) stopSleepInhibition() {
-	a.mu.Lock()
-	defer a.mu.Unlock()
-
-	if a.caffeinateCmd != nil && a.caffeinateCmd.Process != nil {
-		a.caffeinateCmd.Process.Kill()
-		a.caffeinateCmd = nil
-		logger.Info("Sleep inhibition disabled")
+	if a.sleepInhibitor != nil {
+		a.sleepInhibitor.Stop()
 	}
 }
 

@@ -15,6 +15,11 @@ import (
 // handleSegment proxies segment requests with captured cookies and headers,
 // and transcodes them using ffmpeg for compatibility
 func (p *RemoteHLSProxy) handleSegment(w http.ResponseWriter, r *http.Request) {
+	// Briefly inhibit sleep on streaming requests (auto-stops after 30s of inactivity)
+	if p.sleepInhibitor != nil {
+		p.sleepInhibitor.Refresh(30 * time.Second)
+	}
+
 	// Optional: Wait briefly to see if connection stays alive (avoid transcoding if seeking rapidly)
 	select {
 	case <-r.Context().Done():
@@ -49,11 +54,12 @@ func (p *RemoteHLSProxy) handleSegment(w http.ResponseWriter, r *http.Request) {
 
 	// Get URL from cached playlist
 	var playlistPath string
-	if segType == "audio" {
+	switch segType {
+	case "audio":
 		playlistPath = filepath.Join(p.CacheDir, "audio.m3u8")
-	} else if segType == "video" {
+	case "video":
 		playlistPath = filepath.Join(p.CacheDir, "video.m3u8")
-	} else {
+	default:
 		// For regular segments, use the map
 		p.ManifestData.mu.RLock()
 		fullURL, ok := p.ManifestData.SegmentMap[key]
