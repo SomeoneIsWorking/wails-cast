@@ -10,15 +10,20 @@ import (
 
 // TranscodeOptions contains options for transcoding
 type TranscodeOptions struct {
-	InputPath    string
-	OutputPath   string
-	StartTime    float64
-	Duration     int
-	SubtitlePath string
-	StreamIndex  string // For embedded subtitles
-	IsAudioOnly  bool
-	IsVideoOnly  bool
-	Preset       string
+	InputPath     string
+	OutputPath    string
+	StartTime     float64
+	Duration      int
+	SubtitlePath  string
+	SubtitleTrack int // -1 for external/none, >= 0 for embedded
+	VideoTrack    int // -1 for default
+	AudioTrack    int // -1 for default
+	BurnIn        bool
+	Quality       string // "low", "medium", "high", "original"
+	StreamIndex   string // Deprecated: use SubtitleTrack
+	IsAudioOnly   bool
+	IsVideoOnly   bool
+	Preset        string
 }
 
 // EscapeFFmpegPath escapes special characters in paths that ffmpeg doesn't like
@@ -69,11 +74,23 @@ func buildTranscodeArgs(opts TranscodeOptions) []string {
 	// Preserve timestamps for HLS
 	args = append(args, "-copyts")
 
+	// Map specific tracks if requested
+	if opts.VideoTrack >= 0 {
+		args = append(args, "-map", fmt.Sprintf("0:v:%d", opts.VideoTrack))
+	} else if !opts.IsAudioOnly {
+		args = append(args, "-map", "0:v:0") // Default to first video track
+	}
+
+	if opts.AudioTrack >= 0 {
+		args = append(args, "-map", fmt.Sprintf("0:a:%d", opts.AudioTrack))
+	} else if !opts.IsVideoOnly {
+		args = append(args, "-map", "0:a:0") // Default to first audio track
+	}
+
 	// Video encoding
 	if opts.IsAudioOnly {
 		// Audio-only segment
 		args = append(args,
-			"-map", "0:a",
 			"-c:a", "aac",
 			"-b:a", "128k",
 			"-ar", "48000",
@@ -81,12 +98,11 @@ func buildTranscodeArgs(opts TranscodeOptions) []string {
 		)
 	} else if opts.IsVideoOnly {
 		args = append(args,
-			"-map", "0:v",
 			"-c:v", "libx264",
 			"-profile:v", "high",
 			"-level", "4.2",
 			"-preset", getPreset(opts.Preset),
-			"-crf", "28",
+			"-crf", getCRF(opts.Quality),
 			"-maxrate", "3M",
 			"-bufsize", "10M",
 			"-pix_fmt", "yuv420p",
@@ -96,7 +112,7 @@ func buildTranscodeArgs(opts TranscodeOptions) []string {
 		args = append(args,
 			"-c:v", "libx264",
 			"-preset", getPreset(opts.Preset),
-			"-crf", "28",
+			"-crf", getCRF(opts.Quality),
 			"-maxrate", "3M",
 			"-bufsize", "10M",
 			"-tune", "zerolatency",
@@ -106,8 +122,8 @@ func buildTranscodeArgs(opts TranscodeOptions) []string {
 		)
 
 		// Add subtitles if provided (for local files)
-		if opts.SubtitlePath != "" {
-			filterStr := buildSubtitleFilter(opts.SubtitlePath, opts.StreamIndex, opts.InputPath)
+		if opts.BurnIn && opts.SubtitlePath != "" {
+			filterStr := buildSubtitleFilter(opts.SubtitlePath, opts.SubtitleTrack, opts.InputPath)
 			if filterStr != "" {
 				args = append(args, "-vf", filterStr)
 			}
@@ -133,9 +149,31 @@ func buildTranscodeArgs(opts TranscodeOptions) []string {
 	return args
 }
 
+// getCRF returns the CRF value based on quality setting
+func getCRF(quality string) string {
+	switch quality {
+	case "low":
+		return "35"
+	case "medium":
+		return "28"
+	case "high":
+		return "23"
+	case "original":
+		return "18"
+	default:
+		return "28"
+	}
+}
+
 // buildSubtitleFilter builds the subtitle filter string for ffmpeg
-func buildSubtitleFilter(subtitlePath, streamIndex, videoPath string) string {
-	// Check if it's an embedded subtitle track (format: "videopath:si=N")
+func buildSubtitleFilter(subtitlePath string, trackIndex int, videoPath string) string {
+	// Check if it's an embedded subtitle track
+	if trackIndex >= 0 {
+		return fmt.Sprintf("subtitles='%s':si=%d:force_style='FontSize=24'",
+			EscapeFFmpegPath(videoPath), trackIndex)
+	}
+
+	// Check if path has embedded syntax (legacy support)
 	if strings.Contains(subtitlePath, ":si=") {
 		parts := strings.Split(subtitlePath, ":si=")
 		if len(parts) == 2 {
@@ -143,9 +181,14 @@ func buildSubtitleFilter(subtitlePath, streamIndex, videoPath string) string {
 				EscapeFFmpegPath(videoPath), parts[1])
 		}
 	}
+
 	// External subtitle file
-	return fmt.Sprintf("subtitles='%s':force_style='FontSize=24'",
-		EscapeFFmpegPath(subtitlePath))
+	if subtitlePath != "" {
+		return fmt.Sprintf("subtitles='%s':force_style='FontSize=24'",
+			EscapeFFmpegPath(subtitlePath))
+	}
+
+	return ""
 }
 
 // getPreset returns the ffmpeg preset, defaulting to "veryfast"

@@ -7,12 +7,13 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strings"
 	"time"
 
 	"github.com/vishen/go-chromecast/application"
 
 	"wails-cast/pkg/extractor"
+	"wails-cast/pkg/hls"
+	"wails-cast/pkg/mediainfo"
 	"wails-cast/pkg/stream"
 )
 
@@ -41,49 +42,43 @@ func NewCastManager(localIP string, proxyPort int) *CastManager {
 	}
 }
 
-// StartCasting starts the casting process for the given video URL
-func (m *CastManager) StartCasting(videoURL string, deviceHost string, devicePort int) error {
-	proxy, err := m.prepareStream(videoURL)
-	if err != nil {
-		return err
-	}
-	defer proxy.Stop()
-
-	proxyURL := proxy.GetProxyURL()
-	fmt.Printf("\n✅ Proxy server started at %s\n", proxyURL)
-
-	// Cast to Chromecast using custom receiver
-	fmt.Printf("\n🎬 Casting to Chromecast at %s:%d...\n", deviceHost, devicePort)
-
+// NewChromecastApp creates a new ChromecastApp wrapper
+func NewChromecastApp(host string, port int) *ChromecastApp {
 	app := application.NewApplication()
 	app.SetRequestTimeout(60 * time.Second)
 	app.SetDebug(true)
 
-	err = app.Start(deviceHost, devicePort)
-	if err != nil {
-		return fmt.Errorf("error connecting to Chromecast: %w", err)
+	return &ChromecastApp{
+		App:  app,
+		Host: host,
+		Port: port,
 	}
-	defer app.Close(true)
-
-	// Update to ensure receiver is ready
-	if err := app.Update(); err != nil {
-		return fmt.Errorf("failed to update app status: %w", err)
-	}
-
-	// Use custom receiver app ID
-	customAppID := "4C4BFD9F"
-	err = app.LoadApp(customAppID, proxyURL)
-	if err != nil {
-		return fmt.Errorf("error loading stream: %w", err)
-	}
-
-	fmt.Printf("\n✅ Successfully cast to Chromecast!\n")
-
-	m.waitForStop()
-	return nil
 }
 
-func (m *CastManager) prepareStream(videoURL string) (*stream.RemoteHLSProxy, error) {
+// Start starts the Chromecast connection
+func (c *ChromecastApp) Start() error {
+	return c.App.Start(c.Host, c.Port)
+}
+
+// Load loads a media URL
+func (c *ChromecastApp) Load(url string) error {
+	customAppID := "4C4BFD9F"
+	return c.App.LoadApp(customAppID, url)
+}
+
+// StartCasting prepares the stream for a remote video URL
+func (m *CastManager) StartCasting(videoURL string, deviceHost string, devicePort int, options stream.StreamOptions) (*stream.RemoteHandler, error) {
+	handler, err := m.prepareStream(videoURL, options)
+	if err != nil {
+		return nil, err
+	}
+
+	// Return the handler so the App can set it on the Server
+	// The App will handle the actual Chromecast connection
+	return handler, nil
+}
+
+func (m *CastManager) prepareStream(videoURL string, options stream.StreamOptions) (*stream.RemoteHandler, error) {
 	// 1. Calculate hash of video URL for cache key
 	hash := md5.Sum([]byte(videoURL))
 	cacheKey := hex.EncodeToString(hash[:])
@@ -123,64 +118,27 @@ func (m *CastManager) prepareStream(videoURL string) (*stream.RemoteHLSProxy, er
 		}
 	}
 
-	// 2.5 Track Selection (if master playlist)
-	filteredManifestPath := filepath.Join(cacheDir, "filtered_manifest.m3u8")
-	if strings.Contains(result.ManifestBody, "#EXT-X-STREAM-INF") {
-		// Check if filtered manifest exists
-		if _, err := os.Stat(filteredManifestPath); err == nil {
-			fmt.Println("Found cached filtered manifest, using it...")
-			data, err := os.ReadFile(filteredManifestPath)
-			if err == nil {
-				// Use the filtered manifest as the main manifest
-				// The proxy will rewrite URLs on-the-fly when serving
-				result.ManifestBody = string(data)
-			}
-		} else {
-			// Interactive selection
-			fmt.Println("Master playlist detected. Please select tracks:")
-			newManifest, err := SelectTracksInteractive(result.ManifestBody)
-			if err != nil {
-				fmt.Printf("Error selecting tracks: %v\n", err)
-			} else {
-				// Save the filtered manifest with ORIGINAL URLs
-				// The proxy will rewrite them to clean URLs when serving
-				result.ManifestBody = newManifest
-				os.WriteFile(filteredManifestPath, []byte(newManifest), 0644)
-			}
-		}
-	}
-
 	fmt.Printf("\n✅ HLS stream ready:\n")
 	fmt.Printf("  URL: %s\n", result.URL)
 
-	// Create and configure proxy
-	proxy := stream.NewRemoteHLSProxy(m.LocalIP, m.ProxyPort, cacheDir)
-	proxy.SetExtractor(result)
-
-	// Start the proxy server
-	err := proxy.Start()
-	if err != nil {
-		return nil, fmt.Errorf("failed to start proxy: %w", err)
-	}
+	// Create and configure handler
+	handler := stream.NewRemoteHandler(m.LocalIP, cacheDir, options)
+	handler.SetExtractor(result)
 
 	// Get the served manifest and update the result
-	servedManifest := proxy.GetServedManifest()
+	servedManifest := handler.GetServedManifest()
 	result.ManifestBody = servedManifest
 
-	// Save the served manifest for caching
-	os.WriteFile(filteredManifestPath, []byte(servedManifest), 0644)
-
-	return proxy, nil
+	return handler, nil
 }
 
-func (m *CastManager) waitForStop() {
-	stopCh := make(chan struct{})
-	go func() {
-		fmt.Println("\nPress Enter to stop...")
-		fmt.Scanln()
-		close(stopCh)
-	}()
+// GetRemoteTrackInfo extracts track information from a remote HLS stream
+func (m *CastManager) GetRemoteTrackInfo(videoURL string) (*mediainfo.MediaTrackInfo, error) {
+	result, err := extractor.ExtractVideo(videoURL)
+	if err != nil {
+		return nil, fmt.Errorf("failed to extract video: %w", err)
+	}
 
-	<-stopCh
-	fmt.Println("Stopping...")
+	mediaTrackInfo := hls.ExtractTracksFromMaster(result.ManifestBody)
+	return &mediaTrackInfo, nil
 }

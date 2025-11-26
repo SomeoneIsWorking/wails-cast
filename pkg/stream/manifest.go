@@ -33,7 +33,7 @@ type Manifest struct {
 }
 
 // getOrAssignID returns the ID for a URL, assigning a new one if necessary
-func (p *RemoteHLSProxy) getOrAssignID(url string, prefix string) string {
+func (p *RemoteHandler) getOrAssignID(url string, prefix string) string {
 	p.ManifestData.mu.Lock()
 	defer p.ManifestData.mu.Unlock()
 
@@ -69,7 +69,7 @@ func (p *RemoteHLSProxy) getOrAssignID(url string, prefix string) string {
 }
 
 // saveManifest saves the manifest to disk
-func (p *RemoteHLSProxy) saveManifest() {
+func (p *RemoteHandler) saveManifest() {
 	p.ManifestData.mu.Lock()
 	defer p.ManifestData.mu.Unlock()
 
@@ -86,7 +86,7 @@ func (p *RemoteHLSProxy) saveManifest() {
 }
 
 // updateManifest updates the manifest with a new item
-func (p *RemoteHLSProxy) updateManifest(url string, item *ManifestItem) {
+func (p *RemoteHandler) updateManifest(url string, item *ManifestItem) {
 	p.ManifestData.mu.Lock()
 	p.ManifestData.Items[url] = item
 	p.ManifestData.mu.Unlock()

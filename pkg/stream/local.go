@@ -11,18 +11,19 @@ import (
 	"wails-cast/pkg/hls"
 )
 
-// LocalHLSServer represents a local file HLS streaming server
-type LocalHLSServer struct {
+// LocalHandler represents a local file HLS streaming server
+type LocalHandler struct {
 	VideoPath    string
 	SubtitlePath string
+	Options      StreamOptions
 	OutputDir    string
 	Duration     float64
 	SegmentSize  int
 	LocalIP      string
 }
 
-// NewLocalHLSServer creates a new local HLS server
-func NewLocalHLSServer(videoPath, subtitlePath, localIP string) *LocalHLSServer {
+// NewLocalHandler creates a new local HLS handler
+func NewLocalHandler(videoPath string, options StreamOptions, localIP string) *LocalHandler {
 	duration, err := hls.GetVideoDuration(videoPath)
 	if err != nil {
 		duration = 0
@@ -33,9 +34,10 @@ func NewLocalHLSServer(videoPath, subtitlePath, localIP string) *LocalHLSServer 
 	outputDir := filepath.Join(baseDir, sessionID)
 	hls.EnsureCacheDir(outputDir)
 
-	return &LocalHLSServer{
+	return &LocalHandler{
 		VideoPath:    videoPath,
-		SubtitlePath: subtitlePath,
+		SubtitlePath: options.SubtitlePath,
+		Options:      options,
 		OutputDir:    outputDir,
 		Duration:     duration,
 		SegmentSize:  8,
@@ -44,7 +46,7 @@ func NewLocalHLSServer(videoPath, subtitlePath, localIP string) *LocalHLSServer 
 }
 
 // ServePlaylist generates and serves the HLS playlist
-func (s *LocalHLSServer) ServePlaylist(w http.ResponseWriter, r *http.Request) {
+func (s *LocalHandler) ServePlaylist(w http.ResponseWriter, r *http.Request) {
 	playlistContent := hls.GenerateVODPlaylist(s.Duration, s.SegmentSize, s.LocalIP, 8888)
 
 	w.Header().Set("Access-Control-Allow-Origin", "*")
@@ -57,7 +59,9 @@ func (s *LocalHLSServer) ServePlaylist(w http.ResponseWriter, r *http.Request) {
 }
 
 // ServeSegment transcodes and serves a segment
-func (s *LocalHLSServer) ServeSegment(w http.ResponseWriter, r *http.Request, segmentName string) {
+func (s *LocalHandler) ServeSegment(w http.ResponseWriter, r *http.Request) {
+	segmentName := filepath.Base(r.URL.Path)
+
 	hls.EnsureCacheDir(s.OutputDir)
 
 	segmentNum, err := strconv.Atoi(strings.TrimSuffix(strings.TrimPrefix(segmentName, "segment"), ".ts"))
@@ -81,12 +85,17 @@ func (s *LocalHLSServer) ServeSegment(w http.ResponseWriter, r *http.Request, se
 
 	if !hls.CacheExists(s.OutputDir, segmentName) || needsRegeneration {
 		opts := hls.TranscodeOptions{
-			InputPath:    s.VideoPath,
-			OutputPath:   segmentPath,
-			StartTime:    startTime,
-			Duration:     s.SegmentSize,
-			SubtitlePath: s.SubtitlePath,
-			Preset:       "fast",
+			InputPath:     s.VideoPath,
+			OutputPath:    segmentPath,
+			StartTime:     startTime,
+			Duration:      s.SegmentSize,
+			SubtitlePath:  s.Options.SubtitlePath,
+			SubtitleTrack: s.Options.SubtitleTrack,
+			VideoTrack:    s.Options.VideoTrack,
+			AudioTrack:    s.Options.AudioTrack,
+			BurnIn:        s.Options.BurnIn,
+			Quality:       s.Options.Quality,
+			Preset:        "fast",
 		}
 
 		err := hls.TranscodeSegment(r.Context(), opts)
@@ -101,7 +110,7 @@ func (s *LocalHLSServer) ServeSegment(w http.ResponseWriter, r *http.Request, se
 		manifest := hls.SegmentManifest{
 			SegmentNumber: segmentNum,
 			Duration:      segmentDuration,
-			SubtitlePath:  s.SubtitlePath,
+			SubtitlePath:  s.Options.SubtitlePath,
 			SubtitleStyle: "FontSize=24",
 			VideoCodec:    "libx264",
 			AudioCodec:    "aac",
@@ -122,7 +131,7 @@ func (s *LocalHLSServer) ServeSegment(w http.ResponseWriter, r *http.Request, se
 }
 
 // Cleanup removes session files
-func (s *LocalHLSServer) Cleanup() {
+func (s *LocalHandler) Cleanup() {
 	if s.OutputDir != "" {
 		os.RemoveAll(s.OutputDir)
 	}

@@ -3,7 +3,6 @@ package main
 import (
 	"fmt"
 	"net/http"
-	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -17,7 +16,7 @@ type Server struct {
 	localIP        string
 	currentMedia   string
 	subtitlePath   string
-	hlsServer      *stream.LocalHLSServer
+	streamHandler  stream.StreamHandler
 	httpServer     *http.Server
 	seekTime       int
 	sleepInhibitor *sleepinhibit.Inhibitor
@@ -48,18 +47,16 @@ func NewServer(port int, localIP string) *Server {
 	return s
 }
 
-// SetCurrentMedia sets the media file to serve
-func (s *Server) SetCurrentMedia(filePath string) {
+// SetHandler sets the stream handler
+func (s *Server) SetHandler(handler stream.StreamHandler) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	// Clean up old session if exists
-	if s.hlsServer != nil {
-		s.hlsServer.Cleanup()
+	if s.streamHandler != nil {
+		s.streamHandler.Cleanup()
 	}
-
-	s.currentMedia = filePath
-	logger.Info("Server now serving", "file", filePath)
+	s.streamHandler = handler
+	logger.Info("Server handler set")
 }
 
 // SetSubtitlePath sets the subtitle file
@@ -68,12 +65,33 @@ func (s *Server) SetSubtitlePath(path string) {
 	defer s.mu.Unlock()
 	s.subtitlePath = path
 
-	// Create new session with current media and subtitle
-	if s.currentMedia != "" {
-		if s.hlsServer != nil {
-			s.hlsServer.Cleanup()
+	// If currently serving local media, update the handler
+	if s.currentMedia != "" && s.currentMedia != "remote" {
+		if s.streamHandler != nil {
+			s.streamHandler.Cleanup()
 		}
-		s.hlsServer = stream.NewLocalHLSServer(s.currentMedia, s.subtitlePath, s.localIP)
+		// We need options to recreate the handler.
+		// Since we don't store full options, we might lose track selection if we just re-init.
+		// Ideally, we should update the existing handler or store options.
+		// For now, let's assume default options or try to preserve what we can.
+		// But LocalHandler stores options now.
+
+		// Better approach: Cast LocalHandler and update its options.
+		if handler, ok := s.streamHandler.(*stream.LocalHandler); ok {
+			handler.Options.SubtitlePath = path
+			// Also update internal subtitle path if needed
+			handler.SubtitlePath = path
+			// We don't need to recreate the handler, just update it.
+			// But LocalHandler might need to clear cache or something.
+			// LocalHandler.ServeSegment checks if manifest matches subtitle path.
+			// So updating the struct field should be enough.
+			return
+		}
+
+		// If not LocalHandler (or if we want to be safe), we recreate.
+		// But we don't have options here.
+		// Let's just log warning if we can't update.
+		logger.Warn("Could not update subtitle path on current handler")
 	}
 
 	if path != "" {
@@ -101,8 +119,8 @@ func (s *Server) Stop() error {
 		s.sleepInhibitor.Stop()
 	}
 
-	if s.hlsServer != nil {
-		s.hlsServer.Cleanup()
+	if s.streamHandler != nil {
+		s.streamHandler.Cleanup()
 	}
 	if s.httpServer != nil {
 		return s.httpServer.Close()
@@ -113,15 +131,15 @@ func (s *Server) Stop() error {
 // handleRequest routes requests to appropriate handlers
 func (s *Server) handleRequest(w http.ResponseWriter, r *http.Request) {
 	s.mu.RLock()
-	videoPath := s.currentMedia
+	handler := s.streamHandler
 	subtitlePath := s.subtitlePath
 	s.mu.RUnlock()
 
-	logger.Info("HTTP request", "path", r.URL.Path, "method", r.Method, "videoPath", videoPath)
+	logger.Info("HTTP request", "path", r.URL.Path, "method", r.Method)
 
-	if videoPath == "" {
-		logger.Warn("Request rejected: no media file set")
-		http.Error(w, "No media file set", http.StatusNotFound)
+	if handler == nil {
+		logger.Warn("Request rejected: no media handler set")
+		http.Error(w, "No media handler set", http.StatusNotFound)
 		return
 	}
 
@@ -147,22 +165,31 @@ func (s *Server) handleRequest(w http.ResponseWriter, r *http.Request) {
 			s.sleepInhibitor.Refresh(30 * time.Second)
 		}
 
-		if s.hlsServer == nil {
-			s.hlsServer = stream.NewLocalHLSServer(videoPath, subtitlePath, s.localIP)
-		}
-		s.hlsServer.ServePlaylist(w, r)
+		handler.ServePlaylist(w, r)
 		return
 	}
 
 	// Handle HLS segment request
-	if strings.HasSuffix(path, ".ts") {
-		segmentName := filepath.Base(path)
-		logger.Info("Routing to HLS segment handler", "segmentName", segmentName)
-		if s.hlsServer == nil {
-			s.hlsServer = stream.NewLocalHLSServer(videoPath, subtitlePath, s.localIP)
+	if strings.HasSuffix(path, ".ts") || strings.Contains(path, "/segment/") {
+		// Briefly inhibit sleep on streaming requests
+		if s.sleepInhibitor != nil {
+			s.sleepInhibitor.Refresh(30 * time.Second)
 		}
-		s.hlsServer.ServeSegment(w, r, segmentName)
+
+		handler.ServeSegment(w, r)
 		return
+	}
+
+	// Handle debug log (for remote)
+	if path == "/debug/log" {
+		// We might need to cast to RemoteHandler to access handleDebugLog if it's not in the interface
+		// Or we can add HandleDebugLog to the interface?
+		// For now, let's check if it's a RemoteHandler
+		if rh, ok := handler.(*stream.RemoteHandler); ok {
+			rh.HandleDebugLog(w, r)
+		}
+		// Actually, I can just not handle it here if not needed, or export it.
+		// I will export it in debug_handler.go as HandleDebugLog.
 	}
 
 	http.NotFound(w, r)

@@ -3,6 +3,10 @@ export namespace main {
 	export class CastOptions {
 	    SubtitlePath: string;
 	    SubtitleTrack: number;
+	    VideoTrack: number;
+	    AudioTrack: number;
+	    BurnIn: boolean;
+	    Quality: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new CastOptions(source);
@@ -12,6 +16,10 @@ export namespace main {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.SubtitlePath = source["SubtitlePath"];
 	        this.SubtitleTrack = source["SubtitleTrack"];
+	        this.VideoTrack = source["VideoTrack"];
+	        this.AudioTrack = source["AudioTrack"];
+	        this.BurnIn = source["BurnIn"];
+	        this.Quality = source["Quality"];
 	    }
 	}
 	export class Device {
@@ -66,6 +74,41 @@ export namespace main {
 	        this.canSeek = source["canSeek"];
 	    }
 	}
+
+}
+
+export namespace mediainfo {
+	
+	export class AudioTrack {
+	    index: number;
+	    language: string;
+	    codec: string;
+	    Type: string;
+	    URI: string;
+	    GroupID: string;
+	    Name: string;
+	    IsDefault: boolean;
+	    Bandwidth: number;
+	    Codecs: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new AudioTrack(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.index = source["index"];
+	        this.language = source["language"];
+	        this.codec = source["codec"];
+	        this.Type = source["Type"];
+	        this.URI = source["URI"];
+	        this.GroupID = source["GroupID"];
+	        this.Name = source["Name"];
+	        this.IsDefault = source["IsDefault"];
+	        this.Bandwidth = source["Bandwidth"];
+	        this.Codecs = source["Codecs"];
+	    }
+	}
 	export class SubtitleTrack {
 	    index: number;
 	    language: string;
@@ -84,6 +127,71 @@ export namespace main {
 	        this.codec = source["codec"];
 	    }
 	}
+	export class VideoTrack {
+	    index: number;
+	    codec: string;
+	    resolution?: string;
+	    Type: string;
+	    URI: string;
+	    GroupID: string;
+	    Name: string;
+	    IsDefault: boolean;
+	    Bandwidth: number;
+	    Codecs: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new VideoTrack(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.index = source["index"];
+	        this.codec = source["codec"];
+	        this.resolution = source["resolution"];
+	        this.Type = source["Type"];
+	        this.URI = source["URI"];
+	        this.GroupID = source["GroupID"];
+	        this.Name = source["Name"];
+	        this.IsDefault = source["IsDefault"];
+	        this.Bandwidth = source["Bandwidth"];
+	        this.Codecs = source["Codecs"];
+	    }
+	}
+	export class MediaTrackInfo {
+	    videoTracks: VideoTrack[];
+	    audioTracks: AudioTrack[];
+	    subtitleTracks: SubtitleTrack[];
+	
+	    static createFrom(source: any = {}) {
+	        return new MediaTrackInfo(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.videoTracks = this.convertValues(source["videoTracks"], VideoTrack);
+	        this.audioTracks = this.convertValues(source["audioTracks"], AudioTrack);
+	        this.subtitleTracks = this.convertValues(source["subtitleTracks"], SubtitleTrack);
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	
 
 }
 

@@ -18,27 +18,26 @@ import (
 	"wails-cast/pkg/sleepinhibit"
 )
 
-// RemoteHLSProxy is a proxy server that serves HLS manifests and segments
+// RemoteHandler is a handler that serves HLS manifests and segments
 // with captured cookies and headers
-type RemoteHLSProxy struct {
+type RemoteHandler struct {
 	BaseURL             string
 	Manifest            string
 	Cookies             map[string]string
 	Headers             map[string]string
 	LocalIP             string
-	Port                int
 	CacheDir            string // Directory for caching transcoded segments
 	ManifestData        *Manifest
 	ManifestPath        string
-	httpServer          *http.Server
 	AudioPlaylistURL    string // For demuxed HLS: URL of audio playlist
 	VideoPlaylistURL    string // For demuxed HLS: URL of video playlist
 	IsManifestRewritten bool
 	sleepInhibitor      *sleepinhibit.Inhibitor
+	Options             StreamOptions
 }
 
-// NewRemoteHLSProxy creates a new HLS proxy server
-func NewRemoteHLSProxy(localIP string, port int, cacheDir string) *RemoteHLSProxy {
+// NewRemoteHandler creates a new HLS handler
+func NewRemoteHandler(localIP string, cacheDir string, options StreamOptions) *RemoteHandler {
 	// Create cache directory if it doesn't exist
 	if cacheDir == "" {
 		cacheDir = filepath.Join(os.TempDir(), "hls-proxy-cache")
@@ -85,79 +84,34 @@ func NewRemoteHLSProxy(localIP string, port int, cacheDir string) *RemoteHLSProx
 		manifestData.Version = CurrentManifestVersion
 	}
 
-	return &RemoteHLSProxy{
+	return &RemoteHandler{
 		LocalIP:        localIP,
-		Port:           port,
 		CacheDir:       cacheDir,
 		ManifestData:   manifestData,
 		ManifestPath:   manifestPath,
 		sleepInhibitor: sleepinhibit.NewInhibitor(nil), // nil logger for stream package
+		Options:        options,
 	}
 }
 
 // SetExtractor sets the extractor result for the proxy
-func (p *RemoteHLSProxy) SetExtractor(result *extractor.ExtractResult) {
+func (p *RemoteHandler) SetExtractor(result *extractor.ExtractResult) {
 	p.BaseURL = result.BaseURL
 	p.Manifest = result.ManifestBody
 	p.Cookies = result.Cookies
 	p.Headers = result.Headers
 }
 
-// Start starts the proxy HTTP server
-func (p *RemoteHLSProxy) Start() error {
-	mux := http.NewServeMux()
-	mux.HandleFunc("/playlist.m3u8", p.handleManifest)
-	mux.HandleFunc("/audio.m3u8", p.handleAudioPlaylist)
-	mux.HandleFunc("/video.m3u8", p.handleVideoPlaylist)
-	mux.HandleFunc("/segment/", p.handleSegment)
-	mux.HandleFunc("/debug/log", p.handleDebugLog) // Remote logging from receiver
-
-	// Catch-all for debugging
-	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		fmt.Printf("⚠️ Unhandled request: %s\n", r.URL.Path)
-		http.NotFound(w, r)
-	})
-
-	p.httpServer = &http.Server{
-		Addr:         fmt.Sprintf(":%d", p.Port),
-		Handler:      mux,
-		ReadTimeout:  60 * time.Second,
-		WriteTimeout: 0, // No write timeout for streaming
-		IdleTimeout:  120 * time.Second,
-	}
-
-	fmt.Printf("Starting HLS proxy on port %d\n", p.Port)
-	go func() {
-		if err := p.httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			fmt.Printf("Proxy server error: %v\n", err)
-		}
-	}()
-
-	// Give server time to start
-	time.Sleep(100 * time.Millisecond)
-	return nil
-}
-
-// Stop stops the proxy server
-func (p *RemoteHLSProxy) Stop() error {
+// Cleanup cleans up resources
+func (p *RemoteHandler) Cleanup() {
 	// Stop sleep inhibition
 	if p.sleepInhibitor != nil {
 		p.sleepInhibitor.Stop()
 	}
-
-	if p.httpServer != nil {
-		return p.httpServer.Close()
-	}
-	return nil
-}
-
-// GetProxyURL returns the URL to cast to Chromecast
-func (p *RemoteHLSProxy) GetProxyURL() string {
-	return fmt.Sprintf("http://%s:%d/playlist.m3u8", p.LocalIP, p.Port)
 }
 
 // GetServedManifest returns the manifest as it would be served
-func (p *RemoteHLSProxy) GetServedManifest() string {
+func (p *RemoteHandler) GetServedManifest() string {
 	if p.IsManifestRewritten {
 		return p.Manifest
 	}
@@ -166,12 +120,12 @@ func (p *RemoteHLSProxy) GetServedManifest() string {
 
 	// Detect if this is a master playlist with separate audio/video	// Check if it's a master playlist
 	if hls.ParsePlaylistType(p.Manifest) == hls.PlaylistTypeMaster {
-		audioTracks, videoTracks := hls.ExtractTracksFromMaster(p.Manifest)
+		mi := hls.ExtractTracksFromMaster(p.Manifest)
 
 		// Use first available tracks
-		if len(audioTracks) > 0 {
-			p.AudioPlaylistURL = hls.ResolveURL(p.BaseURL, audioTracks[0].URI)
-			p.VideoPlaylistURL = hls.ResolveURL(p.BaseURL, videoTracks[0].URI)
+		if len(mi.AudioTracks) > 0 {
+			p.AudioPlaylistURL = hls.ResolveURL(p.BaseURL, mi.AudioTracks[0].URI)
+			p.VideoPlaylistURL = hls.ResolveURL(p.BaseURL, mi.VideoTracks[0].URI)
 
 			// Cache the nested playlists
 			p.downloadAndParseNestedPlaylists()
@@ -192,8 +146,18 @@ func (p *RemoteHLSProxy) GetServedManifest() string {
 	return rewrittenManifest
 }
 
-// handleManifest serves the m3u8 manifest with rewritten URLs
-func (p *RemoteHLSProxy) handleManifest(w http.ResponseWriter, r *http.Request) {
+// ServePlaylist serves the m3u8 manifest with rewritten URLs
+func (p *RemoteHandler) ServePlaylist(w http.ResponseWriter, r *http.Request) {
+	// Check if specific playlist requested
+	if r.URL.Path == "/audio.m3u8" {
+		p.handleAudioPlaylist(w, r)
+		return
+	}
+	if r.URL.Path == "/video.m3u8" {
+		p.handleVideoPlaylist(w, r)
+		return
+	}
+
 	// Briefly inhibit sleep on streaming requests (auto-stops after 30s of inactivity)
 	if p.sleepInhibitor != nil {
 		p.sleepInhibitor.Refresh(30 * time.Second)
@@ -226,7 +190,7 @@ func (p *RemoteHLSProxy) handleManifest(w http.ResponseWriter, r *http.Request) 
 }
 
 // handleAudioPlaylist serves the audio playlist
-func (p *RemoteHLSProxy) handleAudioPlaylist(w http.ResponseWriter, r *http.Request) {
+func (p *RemoteHandler) handleAudioPlaylist(w http.ResponseWriter, r *http.Request) {
 	audioPath := filepath.Join(p.CacheDir, "audio.m3u8")
 	if _, err := os.Stat(audioPath); os.IsNotExist(err) {
 		http.Error(w, "Audio playlist not cached", http.StatusNotFound)
@@ -237,7 +201,7 @@ func (p *RemoteHLSProxy) handleAudioPlaylist(w http.ResponseWriter, r *http.Requ
 }
 
 // handleVideoPlaylist serves the video playlist
-func (p *RemoteHLSProxy) handleVideoPlaylist(w http.ResponseWriter, r *http.Request) {
+func (p *RemoteHandler) handleVideoPlaylist(w http.ResponseWriter, r *http.Request) {
 	videoPath := filepath.Join(p.CacheDir, "video.m3u8")
 	if _, err := os.Stat(videoPath); os.IsNotExist(err) {
 		http.Error(w, "Video playlist not cached", http.StatusNotFound)
@@ -248,12 +212,12 @@ func (p *RemoteHLSProxy) handleVideoPlaylist(w http.ResponseWriter, r *http.Requ
 }
 
 // servePlaylist serves a local playlist file
-func (p *RemoteHLSProxy) servePlaylist(w http.ResponseWriter, path string, originalURL string) {
+func (p *RemoteHandler) servePlaylist(w http.ResponseWriter, path string, originalURL string) {
 	p.servePlaylistWithPrefix(w, path, originalURL, "")
 }
 
 // servePlaylistWithPrefix serves a local playlist file with a specific segment prefix
-func (p *RemoteHLSProxy) servePlaylistWithPrefix(w http.ResponseWriter, path string, originalURL string, prefix string) {
+func (p *RemoteHandler) servePlaylistWithPrefix(w http.ResponseWriter, path string, originalURL string, prefix string) {
 	content, err := os.ReadFile(path)
 	if err != nil {
 		http.Error(w, "Failed to read playlist", http.StatusInternalServerError)
@@ -277,7 +241,7 @@ func (p *RemoteHLSProxy) servePlaylistWithPrefix(w http.ResponseWriter, path str
 }
 
 // downloadAndParseNestedPlaylists downloads audio and video playlists and caches them
-func (p *RemoteHLSProxy) downloadAndParseNestedPlaylists() {
+func (p *RemoteHandler) downloadAndParseNestedPlaylists() {
 	fmt.Println("Downloading nested playlists to cache them...")
 
 	// Download audio playlist
@@ -336,7 +300,7 @@ func (p *RemoteHLSProxy) downloadAndParseNestedPlaylists() {
 }
 
 // rewriteManifest rewrites URLs in the manifest to point to the proxy
-func (p *RemoteHLSProxy) rewriteManifest(manifest string, baseURL string, segmentPrefix string) string {
+func (p *RemoteHandler) rewriteManifest(manifest string, baseURL string, segmentPrefix string) string {
 	isMaster := strings.Contains(manifest, "#EXT-X-STREAM-INF")
 	lines := strings.Split(manifest, "\n")
 
@@ -403,7 +367,7 @@ func (p *RemoteHLSProxy) rewriteManifest(manifest string, baseURL string, segmen
 }
 
 // rewriteDemuxedMaster rewrites a demuxed master playlist to use /audio.m3u8 and /video.m3u8
-func (p *RemoteHLSProxy) rewriteDemuxedMaster(manifest string, baseURL string) string {
+func (p *RemoteHandler) rewriteDemuxedMaster(manifest string, baseURL string) string {
 	lines := strings.Split(manifest, "\n")
 	var result []string
 	expectingVideoURI := false
@@ -453,7 +417,7 @@ func (p *RemoteHLSProxy) rewriteDemuxedMaster(manifest string, baseURL string) s
 }
 
 // ensureHLSTags adds required HLS tags if missing for better Chromecast compatibility
-func (p *RemoteHLSProxy) ensureHLSTags(playlist string) string {
+func (p *RemoteHandler) ensureHLSTags(playlist string) string {
 	lines := strings.Split(playlist, "\n")
 	var result []string
 

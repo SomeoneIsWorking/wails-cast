@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -13,34 +12,35 @@ import (
 	"time"
 
 	"github.com/vishen/go-chromecast/application"
+	"github.com/vishen/go-chromecast/cast"
 	cast_proto "github.com/vishen/go-chromecast/cast/proto"
 	wails_runtime "github.com/wailsapp/wails/v2/pkg/runtime"
 
-	"wails-cast/pkg/cast"
+	localcast "wails-cast/pkg/cast"
+	"wails-cast/pkg/hls"
+	"wails-cast/pkg/mediainfo"
 	"wails-cast/pkg/sleepinhibit"
+	"wails-cast/pkg/stream"
 )
 
 // CastOptions holds options for casting
 type CastOptions struct {
 	SubtitlePath  string
-	SubtitleTrack int // -1 for external file, >= 0 for embedded track index
-}
-
-// SubtitleTrack represents a subtitle track in a video file
-type SubtitleTrack struct {
-	Index    int    `json:"index"`
-	Language string `json:"language"`
-	Title    string `json:"title"`
-	Codec    string `json:"codec"`
+	SubtitleTrack int    // -1 for external file, >= 0 for embedded track index
+	VideoTrack    int    // -1 for default
+	AudioTrack    int    // -1 for default
+	BurnIn        bool   // true to burn subtitles into video
+	Quality       string // "low", "medium", "high", "original"
 }
 
 type App struct {
 	ctx             context.Context
 	discovery       *DeviceDiscovery
 	mediaServer     *Server
+	castManager     *localcast.CastManager
 	playbackState   PlaybackState
 	currentSubtitle string
-	chromecastApp   *cast.ChromecastApp
+	chromecastApp   *localcast.ChromecastApp
 	sleepInhibitor  *sleepinhibit.Inhibitor
 	mu              sync.RWMutex
 }
@@ -61,10 +61,12 @@ func NewApp() *App {
 	discovery := NewDeviceDiscovery()
 	localIP := discovery.GetLocalIP()
 	server := NewServer(8888, localIP)
+	castManager := localcast.NewCastManager(localIP, 8888)
 
 	return &App{
 		discovery:      discovery,
 		mediaServer:    server,
+		castManager:    castManager,
 		sleepInhibitor: sleepinhibit.NewInhibitor(logger),
 		playbackState: PlaybackState{
 			CanSeek: true,
@@ -79,13 +81,6 @@ func (a *App) startup(ctx context.Context) {
 	go a.mediaServer.Start()
 
 	logger.Info("App started")
-}
-
-// startSleepInhibition prevents system sleep during streaming
-func (a *App) startSleepInhibition() {
-	if a.sleepInhibitor != nil {
-		a.sleepInhibitor.Start()
-	}
 }
 
 // stopSleepInhibition allows system sleep again
@@ -136,71 +131,12 @@ func (a *App) GetSubtitleURL(subtitlePath string) string {
 
 // GetVideoDuration returns the duration of a video file in seconds
 func GetVideoDuration(videoPath string) (float64, error) {
-	cmd := exec.Command("ffprobe",
-		"-v", "error",
-		"-show_entries", "format=duration",
-		"-of", "default=noprint_wrappers=1:nokey=1",
-		videoPath,
-	)
-
-	output, err := cmd.Output()
-	if err != nil {
-		return 0, err
-	}
-
-	durationStr := strings.TrimSpace(string(output))
-	duration, err := strconv.ParseFloat(durationStr, 64)
-	if err != nil {
-		return 0, err
-	}
-
-	return duration, nil
+	return hls.GetVideoDuration(videoPath)
 }
 
 // GetSubtitleTracks extracts subtitle tracks from a video file
-func (a *App) GetSubtitleTracks(videoPath string) ([]SubtitleTrack, error) {
-	cmd := exec.Command("ffprobe",
-		"-v", "error",
-		"-select_streams", "s",
-		"-show_entries", "stream=index:stream_tags=language,title:stream=codec_name",
-		"-of", "json",
-		videoPath,
-	)
-
-	output, err := cmd.Output()
-	if err != nil {
-		return nil, err
-	}
-
-	// Parse JSON output
-	var result struct {
-		Streams []struct {
-			Index     int    `json:"index"`
-			CodecName string `json:"codec_name"`
-			Tags      struct {
-				Language string `json:"language"`
-				Title    string `json:"title"`
-			} `json:"tags"`
-		} `json:"streams"`
-	}
-
-	if err := json.Unmarshal(output, &result); err != nil {
-		return nil, err
-	}
-
-	tracks := make([]SubtitleTrack, 0, len(result.Streams))
-	for i, stream := range result.Streams {
-		track := SubtitleTrack{
-			Index:    i, // Use relative subtitle index (0, 1, 2...) not absolute stream index
-			Language: stream.Tags.Language,
-			Title:    stream.Tags.Title,
-			Codec:    stream.CodecName,
-		}
-		tracks = append(tracks, track)
-		logger.Info("Subtitle track found", "relativeIndex", i, "absoluteStreamIndex", stream.Index, "language", stream.Tags.Language, "title", stream.Tags.Title)
-	}
-
-	return tracks, nil
+func (a *App) GetSubtitleTracks(videoPath string) ([]mediainfo.SubtitleTrack, error) {
+	return mediainfo.GetSubtitleTracks(videoPath)
 }
 
 // OpenSubtitleDialog opens a file picker dialog for subtitle files
@@ -216,45 +152,24 @@ func (a *App) OpenSubtitleDialog() (string, error) {
 	})
 }
 
-// CastToDevice casts media to a device
-func (a *App) CastToDevice(deviceURL, mediaPath string, options CastOptions) error {
-	// Set media on server
-	a.mediaServer.SetCurrentMedia(mediaPath)
+// GetMediaTrackInfo gets all track information for a media file
+func (a *App) GetMediaTrackInfo(mediaPath string) (*mediainfo.MediaTrackInfo, error) {
+	return mediainfo.GetMediaTrackInfo(mediaPath)
+}
 
-	// Handle subtitle path - for embedded tracks, use special format
-	subtitlePath := options.SubtitlePath
-	if options.SubtitleTrack >= 0 {
-		// Embedded subtitle track - use video file path with track index
-		subtitlePath = fmt.Sprintf("%s:si=%d", mediaPath, options.SubtitleTrack)
-	}
-	a.mediaServer.SetSubtitlePath(subtitlePath)
+// GetRemoteTrackInfo gets track information from a remote HLS stream
+func (a *App) GetRemoteTrackInfo(videoURL string) (*mediainfo.MediaTrackInfo, error) {
+	return a.castManager.GetRemoteTrackInfo(videoURL)
+}
 
-	// Store current subtitle
-	a.currentSubtitle = subtitlePath
+// CastToDevice casts media (local file or remote URL) to a device
+func (a *App) CastToDevice(deviceURL, fileNameOrUrl string, options CastOptions) error {
+	// Determine if input is a local file or remote URL
+	isRemote := strings.HasPrefix(fileNameOrUrl, "http://") || strings.HasPrefix(fileNameOrUrl, "https://")
 
-	// Get duration
-	duration, err := GetVideoDuration(mediaPath)
-	if err != nil {
-		logger.Warn("Failed to get duration", "error", err)
-		duration = 0
-	}
-
-	// Update playback state
-	a.mu.Lock()
-	a.playbackState.IsPlaying = true
-	a.playbackState.MediaPath = mediaPath
-	a.playbackState.MediaName = filepath.Base(mediaPath)
-	a.playbackState.DeviceURL = deviceURL
-	a.playbackState.DeviceName = extractDeviceName(deviceURL)
-	a.playbackState.Duration = duration
-	a.mu.Unlock()
-
-	// Get media URL
-	mediaURL := a.GetMediaURL(mediaPath)
-
-	// Cast to device - connect directly for local files
-	app := application.NewApplication()
-	app.SetRequestTimeout(30 * time.Second)
+	var mediaPath string
+	var duration float64
+	var err error
 
 	// Extract host and port from deviceURL
 	// deviceURL could be "http://192.168.1.21:8009", "192.168.1.21:8009", or "192.168.1.21"
@@ -281,6 +196,71 @@ func (a *App) CastToDevice(deviceURL, mediaPath string, options CastOptions) err
 		}
 	}
 
+	streamOpts := stream.StreamOptions{
+		SubtitlePath:  options.SubtitlePath,
+		SubtitleTrack: options.SubtitleTrack,
+		VideoTrack:    options.VideoTrack,
+		AudioTrack:    options.AudioTrack,
+		BurnIn:        options.BurnIn,
+		Quality:       options.Quality,
+	}
+
+	if isRemote {
+		mediaPath = fileNameOrUrl
+		// For remote URLs, we might not know duration immediately or it might be live
+		duration = 0
+
+		// Use CastManager to prepare remote stream
+		logger.Info("Preparing remote stream", "url", mediaPath)
+		handler, err := a.castManager.StartCasting(mediaPath, host, port, streamOpts)
+		if err != nil {
+			return fmt.Errorf("failed to prepare remote stream: %w", err)
+		}
+
+		// Set handler on server
+		a.mediaServer.SetHandler(handler)
+
+	} else {
+		mediaPath = fileNameOrUrl
+		// Get duration for local files
+		duration, err = hls.GetVideoDuration(mediaPath)
+		if err != nil {
+			logger.Warn("Failed to get duration", "error", err)
+			duration = 0
+		}
+
+		// Handle subtitle path - for embedded tracks, use video file path with track index
+		// This logic is also in LocalHandler/ffmpeg but we set it here for reference
+		subtitlePath := options.SubtitlePath
+		if options.SubtitleTrack >= 0 {
+			subtitlePath = fmt.Sprintf("%s:si=%d", mediaPath, options.SubtitleTrack)
+		}
+
+		// Create local handler
+		handler := stream.NewLocalHandler(mediaPath, streamOpts, a.GetLocalIP())
+		a.mediaServer.SetHandler(handler)
+
+		// Set subtitle path (for legacy/compatibility, though options has it)
+		a.mediaServer.SetSubtitlePath(subtitlePath)
+		a.currentSubtitle = subtitlePath
+	}
+
+	// Update playback state
+	a.mu.Lock()
+	a.playbackState.IsPlaying = true
+	a.playbackState.MediaPath = mediaPath
+	a.playbackState.MediaName = filepath.Base(mediaPath)
+	a.playbackState.DeviceURL = deviceURL
+	a.playbackState.DeviceName = extractDeviceName(deviceURL)
+	a.playbackState.Duration = duration
+	a.mu.Unlock()
+
+	mediaURL := a.GetMediaURL(mediaPath)
+
+	// Cast to device
+	app := application.NewApplication()
+	app.SetRequestTimeout(30 * time.Second)
+
 	err = app.Start(host, port)
 	if err != nil {
 		a.mu.Lock()
@@ -299,7 +279,26 @@ func (a *App) CastToDevice(deviceURL, mediaPath string, options CastOptions) err
 
 	// Load media with custom receiver
 	customAppID := "4C4BFD9F"
-	err = app.LoadApp(customAppID, mediaURL)
+
+	// Ensure we're running the custom app
+	if err := app.EnsureIsAppID(customAppID); err != nil {
+		a.mu.Lock()
+		a.playbackState.IsPlaying = false
+		a.mu.Unlock()
+		return fmt.Errorf("failed to launch custom receiver app: %w", err)
+	}
+
+	// Send load command without waiting (LoadApp blocks with MediaWait)
+	// We just want to start playback and return immediately
+	err = app.SendMediaRecv(&cast.LoadMediaCommand{
+		PayloadHeader: cast.LoadHeader,
+		CurrentTime:   0,
+		Autoplay:      true,
+		Media: cast.MediaItem{
+			ContentId:  mediaURL,
+			StreamType: "BUFFERED",
+		},
+	})
 	if err != nil {
 		a.mu.Lock()
 		a.playbackState.IsPlaying = false
@@ -308,7 +307,7 @@ func (a *App) CastToDevice(deviceURL, mediaPath string, options CastOptions) err
 	}
 
 	// Store the chromecast app
-	ccApp := &cast.ChromecastApp{
+	ccApp := &localcast.ChromecastApp{
 		App:  app,
 		Host: host,
 		Port: port,
@@ -326,9 +325,6 @@ func (a *App) CastToDevice(deviceURL, mediaPath string, options CastOptions) err
 	if err := ccApp.App.Update(); err != nil {
 		logger.Warn("Failed initial chromecast status update", "error", err)
 	}
-
-	// Prevent system sleep while streaming
-	a.startSleepInhibition()
 
 	logger.Info("Cast successful",
 		"message", fmt.Sprintf("Casting %s to %s via %s", filepath.Base(mediaPath), deviceURL, mediaURL),
@@ -572,12 +568,13 @@ func (a *App) OpenDirectoryDialog() (string, error) {
 
 // ClearCache clears the HLS segment cache
 func (a *App) ClearCache() error {
-	if a.mediaServer != nil && a.mediaServer.hlsServer != nil {
-		a.mediaServer.hlsServer.Cleanup()
-		logger.Info("Cache cleared")
-		return nil
-	}
-	return fmt.Errorf("no active session to clear")
+	// if a.mediaServer != nil && a.mediaServer.hlsServer != nil {
+	// 	a.mediaServer.hlsServer.Cleanup()
+	// 	logger.Info("Cache cleared")
+	// 	return nil
+	// }
+	// return fmt.Errorf("no active session to clear")
+	return nil
 }
 
 // LogInfo logs an info message from frontend
