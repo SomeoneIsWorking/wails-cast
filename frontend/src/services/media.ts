@@ -1,24 +1,20 @@
 import { GetMediaURL, CastToDevice, GetMediaFiles, SeekTo, GetPlaybackState, UpdatePlaybackState, StopPlayback, Pause, Unpause, UpdateSubtitleSettings, GetSubtitleURL } from '../../wailsjs/go/main/App'
-import type { main } from '../../wailsjs/go/models'
+import type { main, mediainfo } from '../../wailsjs/go/models'
+
+export type CastOptions = main.CastOptions;
+export type PlaybackState = main.PlaybackState;
+export type MediaTrackInfo = mediainfo.MediaTrackInfo;
 
 export const mediaService = {
   async getMediaURL(filePath: string): Promise<string> {
     return await GetMediaURL(filePath)
   },
 
-  async castToDevice(deviceURL: string, mediaPath: string, subtitlePath?: string, subtitleTrack?: number): Promise<void> {
-    const options: main.CastOptions = {
-      SubtitlePath: subtitlePath || '',
-      SubtitleTrack: subtitleTrack ?? -1
-    }
+  async castToDevice(deviceURL: string, mediaPath: string, options: main.CastOptions): Promise<void> {
     return await CastToDevice(deviceURL, mediaPath, options)
   },
 
-  async updateSubtitleSettings(subtitlePath?: string, subtitleTrack?: number): Promise<void> {
-    const options: main.CastOptions = {
-      SubtitlePath: subtitlePath || '',
-      SubtitleTrack: subtitleTrack ?? -1
-    }
+  async updateSubtitleSettings(options: main.CastOptions): Promise<void> {
     return await UpdateSubtitleSettings(options)
   },
 
@@ -52,6 +48,26 @@ export const mediaService = {
 
   async unpause(): Promise<void> {
     return await Unpause()
+  },
+
+  async openSubtitleDialog(): Promise<string> {
+    const { OpenSubtitleDialog } = await import('../../wailsjs/go/main/App')
+    return await OpenSubtitleDialog()
+  },
+
+  async getSubtitleTracks(videoPath: string): Promise<Array<{ index: number, language: string, title: string, codec: string }>> {
+    const { GetSubtitleTracks } = await import('../../wailsjs/go/main/App')
+    return await GetSubtitleTracks(videoPath)
+  },
+
+  async getMediaTrackInfo(mediaPath: string): Promise<mediainfo.MediaTrackInfo> {
+    const { GetMediaTrackInfo } = await import('../../wailsjs/go/main/App')
+    return await GetMediaTrackInfo(mediaPath)
+  },
+
+  async getRemoteTrackInfo(mediaPath: string): Promise<mediainfo.MediaTrackInfo> {
+    const { GetRemoteTrackInfo } = await import('../../wailsjs/go/main/App')
+    return await GetRemoteTrackInfo(mediaPath)
   },
 
   isMediaFile(filePath: string): boolean {

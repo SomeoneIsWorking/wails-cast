@@ -12,9 +12,9 @@ import (
 	"wails-cast/pkg/hls"
 )
 
-// handleSegment proxies segment requests with captured cookies and headers,
+// ServeSegment proxies segment requests with captured cookies and headers,
 // and transcodes them using ffmpeg for compatibility
-func (p *RemoteHLSProxy) handleSegment(w http.ResponseWriter, r *http.Request) {
+func (p *RemoteHandler) ServeSegment(w http.ResponseWriter, r *http.Request) {
 	// Briefly inhibit sleep on streaming requests (auto-stops after 30s of inactivity)
 	if p.sleepInhibitor != nil {
 		p.sleepInhibitor.Refresh(30 * time.Second)
@@ -101,7 +101,7 @@ func (p *RemoteHLSProxy) handleSegment(w http.ResponseWriter, r *http.Request) {
 }
 
 // serveSegment serves a segment by URL and key
-func (p *RemoteHLSProxy) serveSegment(w http.ResponseWriter, r *http.Request, fullURL string, key string) {
+func (p *RemoteHandler) serveSegment(w http.ResponseWriter, r *http.Request, fullURL string, key string) {
 	fmt.Printf("Proxying request: %s (Key: %s)\n", fullURL, key)
 
 	// Check manifest
@@ -193,7 +193,7 @@ func (p *RemoteHLSProxy) serveSegment(w http.ResponseWriter, r *http.Request, fu
 }
 
 // serveFile serves a local file
-func (p *RemoteHLSProxy) serveFile(w http.ResponseWriter, path string, contentType string) {
+func (p *RemoteHandler) serveFile(w http.ResponseWriter, path string, contentType string) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		http.Error(w, "Failed to read file", http.StatusInternalServerError)
@@ -211,7 +211,7 @@ func (p *RemoteHLSProxy) serveFile(w http.ResponseWriter, path string, contentTy
 }
 
 // transcodeAndServe transcodes a segment and serves it
-func (p *RemoteHLSProxy) transcodeAndServe(w http.ResponseWriter, r *http.Request, item *ManifestItem) {
+func (p *RemoteHandler) transcodeAndServe(w http.ResponseWriter, r *http.Request, item *ManifestItem) {
 	transcodedPath := item.LocalPath + "_transcoded.ts"
 
 	// If already transcoded, serve it

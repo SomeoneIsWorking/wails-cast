@@ -9,7 +9,7 @@ import (
 )
 
 // downloadFile downloads a file with cookies and headers
-func (p *RemoteHLSProxy) downloadFile(ctx context.Context, url string) (*http.Response, error) {
+func (p *RemoteHandler) downloadFile(ctx context.Context, url string) (*http.Response, error) {
 	client := &http.Client{
 		Timeout: 30 * time.Second,
 	}

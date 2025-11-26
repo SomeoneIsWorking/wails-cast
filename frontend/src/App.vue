@@ -77,7 +77,7 @@ const handleCast = () => {
             </span>
           </button>
           <button
-            v-if="store.hasSelectedMedia"
+            v-if="store.isCasting"
             :class="[
               'px-4 py-2 font-medium transition-all duration-200 border-b-2',
               activeTab === 'player'
@@ -119,7 +119,7 @@ const handleCast = () => {
             v-if="store.hasSelectedDevice"
             class="mb-4 p-3 bg-gray-800 rounded-lg border border-gray-700"
           >
-            <strong class="text-gray-300">Selected Device:</strong>
+            <strong class="text-gray-300 mr-1">Selected Device:</strong>
             <span class="text-blue-400">{{ store.selectedDevice?.name }}</span>
           </div>
           <FileExplorer @select="selectMedia" />
@@ -129,7 +129,7 @@ const handleCast = () => {
         <section class="h-full" v-show="activeTab === 'player'">
           <MediaPlayer
             v-if="
-              store.isReadyToCast && store.selectedDevice && store.selectedMedia
+              store.isCasting
             "
             :device="store.selectedDevice"
             :mediaPath="store.selectedMedia"

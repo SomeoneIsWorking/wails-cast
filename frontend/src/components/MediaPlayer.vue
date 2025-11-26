@@ -1,264 +1,202 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, watch } from "vue";
-import { useCastStore } from "../stores/cast";
-import { mediaService } from "../services/media";
-import { FindSubtitleFile, GetSubtitleTracks, ClearCache } from "../../wailsjs/go/main/App";
-import type { main } from "../../wailsjs/go/models";
-import { ArrowLeft, Cast, Video, Loader2, Check, Languages, Trash2 } from 'lucide-vue-next';
-import FileSelector from "./FileSelector.vue";
-import { Device } from "@/services/device";
+import { ref, onMounted, computed, watch } from 'vue'
+import { useCastStore } from '../stores/cast'
+import { mediaService } from '../services/media'
+import { EventsOn } from '../../wailsjs/runtime/runtime'
 
-interface Props {
-  device: Device;
-  mediaPath: string;
-  isLoading: boolean;
+const castStore = useCastStore()
+
+// Local UI state
+const showSubtitleDialog = ref(false)
+const subtitleTracks = ref<Array<{index: number, language: string, title: string, codec: string}>>([])
+
+// Computed properties from store
+const isCasting = computed(() => castStore.isCasting)
+const playbackState = computed(() => castStore.playbackState)
+const castOptions = computed(() => castStore.castOptions)
+
+// Methods
+const handleCast = async () => {
+  if (!castStore.selectedDevice || !castStore.selectedMedia) return
+  await castStore.startCasting()
 }
 
-defineProps<Props>();
+const togglePlayback = async () => {
+  if (playbackState.value.isPlaying) {
+    if (playbackState.value.isPaused) {
+      await mediaService.unpause()
+    } else {
+      await mediaService.pause()
+    }
+  }
+}
 
-const emit = defineEmits<{
-  cast: [];
-  back: [];
-}>();
+const stopPlayback = async () => {
+  await mediaService.stopPlayback()
+}
 
-const store = useCastStore();
-const isCasting = ref(false);
-const castResult = ref<string | null>(null);
-const mediaURL = ref<string>("");
-const subtitlePath = ref<string>("");
-const subtitleTracks = ref<main.SubtitleTrack[]>([]);
-const selectedSubtitleSource = ref<string>("none"); // "none", "external", or track index as string
-const autoCastDone = ref(false);
+const seek = async (seconds: number) => {
+  await mediaService.seekTo(seconds)
+}
 
-const fileName = computed(() => store.selectedMedia?.split("/").pop() || "");
+const selectSubtitleFile = async () => {
+  try {
+    const path = await mediaService.openSubtitleDialog()
+    if (path) {
+      castStore.updateCastOptions({ SubtitlePath: path, SubtitleTrack: -1 })
+      if (isCasting.value) {
+        await mediaService.updateSubtitleSettings(castStore.castOptions)
+      }
+    }
+  } catch (err) {
+    console.error("Failed to select subtitle file", err)
+  }
+}
 
-// Auto-detect subtitle file and auto-cast on mount
-onMounted(async () => {
-  if (store.selectedMedia) {
+const selectSubtitleTrack = async (trackIndex: number) => {
+  castStore.updateCastOptions({ SubtitleTrack: trackIndex, SubtitlePath: '' })
+  if (isCasting.value) {
+    await mediaService.updateSubtitleSettings(castStore.castOptions)
+  }
+  showSubtitleDialog.value = false
+}
+
+const loadSubtitleTracks = async () => {
+  if (castStore.selectedMedia) {
     try {
-      // First priority: Try to find external subtitle file (e.g., .srt next to video)
-      const foundSub = await FindSubtitleFile(store.selectedMedia);
-      if (foundSub) {
-        subtitlePath.value = foundSub;
-        selectedSubtitleSource.value = "external";
-      }
-      
-      // Load subtitle tracks from video file
-      const tracks = await GetSubtitleTracks(store.selectedMedia);
-      subtitleTracks.value = tracks;
-      
-      // If no external subtitle found and embedded tracks exist, select the first one
-      if (!foundSub && tracks.length > 0) {
-        selectedSubtitleSource.value = tracks[0].index.toString();
-      }
+      const tracks = await mediaService.getSubtitleTracks(castStore.selectedMedia)
+      subtitleTracks.value = tracks
     } catch (err) {
-      console.error("Failed to load subtitles:", err);
+      console.error("Failed to load subtitle tracks", err)
     }
   }
-  await generateMediaURL();
+}
+
+// Watchers
+watch(() => castStore.selectedMedia, () => {
+  if (castStore.selectedMedia) {
+    loadSubtitleTracks()
+  } else {
+    subtitleTracks.value = []
+  }
+})
+
+// Lifecycle
+onMounted(() => {
+  // Listen for playback state updates from backend
+  EventsOn('playback:state', (state: any) => {
+    castStore.playbackState = state
+  })
   
-  // Auto-cast if not already done
-  if (!autoCastDone.value) {
-    autoCastDone.value = true;
-    await handleCast();
+  // Initial load
+  if (castStore.selectedMedia) {
+    loadSubtitleTracks()
   }
-});
-
-// Watch for subtitle source changes and apply immediately
-watch(selectedSubtitleSource, async () => {
-  if (autoCastDone.value) {
-    await applySubtitleSettings();
-  }
-});
-
-// Watch for subtitle path changes and apply immediately
-watch(subtitlePath, async () => {
-  if (autoCastDone.value && selectedSubtitleSource.value === "external") {
-    await applySubtitleSettings();
-  }
-});
-
-const applySubtitleSettings = async () => {
-  if (!store.selectedDevice || !store.selectedMedia) return;
-
-  try {
-    let finalSubtitlePath = "";
-    let subtitleTrack = -1;
-
-    if (selectedSubtitleSource.value === "external") {
-      finalSubtitlePath = subtitlePath.value;
-    } else if (selectedSubtitleSource.value !== "none") {
-      subtitleTrack = parseInt(selectedSubtitleSource.value);
-    }
-
-    // Update subtitle settings on the server (backend handles cache clearing and seek)
-    await mediaService.updateSubtitleSettings(finalSubtitlePath, subtitleTrack);
-  } catch (error: unknown) {
-    console.error("Failed to update subtitle settings:", error);
-    store.setError(error instanceof Error ? error.message : String(error));
-  }
-};
-
-const recast = async () => {
-  await handleCast(false);
-};
-
-const handleCast = async (emitCastEvent = true) => {
-  isCasting.value = true;
-  castResult.value = null;
-
-  try {
-    let finalSubtitlePath = "";
-    let subtitleTrack = -1;
-
-    if (selectedSubtitleSource.value === "external") {
-      finalSubtitlePath = subtitlePath.value;
-    } else if (selectedSubtitleSource.value !== "none") {
-      subtitleTrack = parseInt(selectedSubtitleSource.value);
-    }
-
-    await mediaService.castToDevice(
-      store.selectedDevice!.url,
-      store.selectedMedia!,
-      finalSubtitlePath,
-      subtitleTrack
-    );
-    castResult.value = "Casting to " + store.selectedDevice!.name;
-    store.clearError();
-    if (emitCastEvent) {
-      emit('cast');
-    }
-  } catch (error: unknown) {
-    const errorMsg = error instanceof Error ? error.message : String(error);
-    store.setError(errorMsg);
-    castResult.value = null;
-  } finally {
-    isCasting.value = false;
-  }
-};
-
-const generateMediaURL = async () => {
-  try {
-    const url = await mediaService.getMediaURL(store.selectedMedia!);
-    mediaURL.value = url;
-  } catch (error: unknown) {
-    store.setError("Failed to generate media URL");
-  }
-};
-
-const clearCache = async () => {
-  try {
-    await ClearCache();
-    store.clearError();
-  } catch (error: unknown) {
-    const errorMsg = error instanceof Error ? error.message : String(error);
-    store.setError(errorMsg);
-  }
-};
-
+})
 </script>
 
 <template>
-  <div class="media-player h-full flex flex-col">
-    <div class="flex items-center justify-between mb-4">
-      <button @click="$emit('back')" class="btn-secondary flex items-center gap-2">
-        <ArrowLeft :size="18" />
-        Back
-      </button>
-      <div></div>
-      <div class="w-20"></div>
-    </div>
-    <div class="flex-1 overflow-auto space-y-6">
-      <!-- Casting Status -->
-      <div v-if="isCasting || isLoading" class="flex flex-col items-center justify-center py-8 bg-blue-900/20 rounded-lg border border-blue-700">
-        <Loader2 :size="56" class="text-blue-400 mb-4 animate-spin" />
-        <p class="text-lg font-medium text-blue-400">Starting playback...</p>
-        <p class="text-sm text-gray-400 mt-1">Initializing stream</p>
-      </div>
-
-      <!-- Media Info -->
-      <div class="flex items-center gap-4 p-4 bg-gray-700 rounded-lg">
-        <div class="p-3 bg-purple-600 rounded-lg">
-          <Video :size="32" />
+  <div class="media-player p-4 bg-gray-800 rounded-lg shadow-lg">
+    <div v-if="castStore.isCasting" class="mb-4">
+      <h3 class="text-xl font-bold text-white mb-2">Selected Media</h3>
+      <p class="text-gray-300 break-all">{{ castStore.selectedMedia }}</p>
+      
+      <!-- Subtitle Selection -->
+      <div class="mt-4">
+        <h4 class="text-lg font-semibold text-white mb-2">Subtitles</h4>
+        <div class="flex gap-2">
+          <button 
+            @click="selectSubtitleFile"
+            class="px-3 py-1 bg-blue-600 text-white rounded hover:bg-blue-700 transition"
+          >
+            Select File
+          </button>
+          <button 
+            @click="showSubtitleDialog = !showSubtitleDialog"
+            class="px-3 py-1 bg-gray-600 text-white rounded hover:bg-gray-700 transition"
+            v-if="subtitleTracks.length > 0"
+          >
+            Select Track
+          </button>
         </div>
-        <div class="flex-1 min-w-0">
-          <h3 class="font-semibold text-lg truncate">{{ fileName }}</h3>
-          <p class="text-sm text-gray-400 truncate">{{ mediaPath }}</p>
-        </div>
-      </div>
-
-      <!-- Device Info -->
-      <div class="flex items-center gap-4 p-4 bg-gray-700 rounded-lg">
-        <div class="p-3 bg-blue-600 rounded-lg">
-          <Cast :size="32" />
-        </div>
-        <div class="flex-1 min-w-0">
-          <h3 class="font-semibold text-lg truncate">{{ device.name }}</h3>
-          <p class="text-sm text-gray-400">{{ device.type }}</p>
-          <p class="text-xs text-gray-500">{{ device.address }}</p>
-        </div>
-      </div>
-
-      <!-- Subtitles Section -->
-      <div class="space-y-3">
-        <label class="flex items-center gap-2 text-sm font-medium text-gray-300">
-          <Languages :size="20" />
-          Subtitles
-        </label>
         
-        <select 
-          v-model="selectedSubtitleSource" 
-          class="select-field"
-        >
-          <option value="none">No Subtitles</option>
-          <option value="external">External File...</option>
-          <option 
+        <div v-if="castOptions.SubtitlePath" class="mt-2 text-sm text-green-400">
+          Using file: {{ castOptions.SubtitlePath }}
+        </div>
+        <div v-if="castOptions.SubtitleTrack >= 0" class="mt-2 text-sm text-green-400">
+          Using track: #{{ castOptions.SubtitleTrack }}
+        </div>
+
+        <!-- Track Selection Dialog -->
+        <div v-if="showSubtitleDialog" class="mt-2 p-2 bg-gray-700 rounded">
+          <div 
             v-for="track in subtitleTracks" 
-            :key="track.index" 
-            :value="track.index.toString()"
+            :key="track.index"
+            @click="selectSubtitleTrack(track.index)"
+            class="cursor-pointer p-1 hover:bg-gray-600 rounded text-sm text-gray-200"
+            :class="{ 'bg-blue-900': castOptions.SubtitleTrack === track.index }"
           >
-            Embedded Track {{ track.index }}
-            <template v-if="track.language"> ({{ track.language }})</template>
-            <template v-if="track.title"> - {{ track.title }}</template>
-          </option>
-        </select>
-
-        <div v-if="selectedSubtitleSource === 'external'" class="mt-3">
-          <FileSelector
-            v-model="subtitlePath"
-            :accepted-extensions="['srt', 'vtt', 'ass', 'ssa']"
-            placeholder="Select subtitle file"
-            dialog-title="Select Subtitle File"
-          />
+            {{ track.title || track.language || `Track ${track.index}` }} ({{ track.codec }})
+          </div>
+          <div 
+            @click="selectSubtitleTrack(-1)"
+            class="cursor-pointer p-1 hover:bg-gray-600 rounded text-sm text-gray-400 mt-1 border-t border-gray-600"
+          >
+            None / External File
+          </div>
         </div>
-
-        <p v-if="selectedSubtitleSource !== 'none'" class="text-xs text-green-400 flex items-center gap-1">
-          <Check :size="14" />
-          Subtitles will be burned into video
-        </p>
       </div>
-
     </div>
-    <!-- Recast Button -->
-    <div class="flex justify-between gap-3 pt-4">
-        <button @click="clearCache" class="btn-secondary flex items-center gap-2">
-          <Trash2 :size="18" />
-          Clear Cache
+
+    <div v-if="castStore.selectedDevice" class="mb-4">
+      <h3 class="text-xl font-bold text-white mb-2">Device</h3>
+      <p class="text-gray-300">{{ castStore.selectedDevice.name }} ({{ castStore.selectedDevice.address }})</p>
+    </div>
+
+    <div v-if="castStore.isReadyToCast" class="mt-6">
+      <button 
+        @click="handleCast"
+        :disabled="isCasting"
+        class="w-full py-3 px-6 bg-green-600 text-white font-bold rounded-lg hover:bg-green-700 transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
+      >
+        <span v-if="isCasting" class="mr-2 animate-spin">⟳</span>
+        {{ isCasting ? 'Casting...' : 'Cast to Device' }}
+      </button>
+    </div>
+
+    <div v-if="castStore.error" class="mt-4 p-3 bg-red-900/50 border border-red-700 text-red-200 rounded">
+      {{ castStore.error }}
+    </div>
+
+    <!-- Playback Controls -->
+    <div v-if="playbackState.isPlaying || playbackState.isPaused" class="mt-6 p-4 bg-gray-900 rounded border border-gray-700">
+      <div class="flex items-center justify-between mb-2">
+        <span class="text-white font-bold">{{ playbackState.mediaName }}</span>
+        <span class="text-gray-400 text-sm">{{ playbackState.deviceName }}</span>
+      </div>
+      
+      <!-- Progress Bar (Simple) -->
+      <div class="w-full bg-gray-700 h-2 rounded-full mb-4 overflow-hidden">
+        <div 
+          class="bg-blue-500 h-full transition-all duration-1000"
+          :style="{ width: `${(playbackState.currentTime / playbackState.duration) * 100}%` }"
+        ></div>
+      </div>
+      
+      <div class="flex justify-center gap-4">
+        <button @click="seek(playbackState.currentTime - 30)" class="text-gray-300 hover:text-white">
+          ⏪ 30s
         </button>
-        <div class="flex gap-3">
-          <button @click="$emit('back')" class="btn-secondary">
-            Cancel
-          </button>
-          <button
-            @click="recast"
-            :disabled="isCasting || isLoading"
-            class="btn-success flex items-center gap-2"
-          >
-            <Loader2 v-if="isCasting || isLoading" :size="18" class="animate-spin" />
-            <Cast v-else :size="18" />
-            {{ isCasting || isLoading ? "Casting..." : "Recast" }}
-          </button>
-        </div>
+        <button @click="togglePlayback" class="text-white text-2xl hover:text-blue-400">
+          {{ playbackState.isPaused ? '▶️' : '⏸️' }}
+        </button>
+        <button @click="stopPlayback" class="text-red-400 hover:text-red-300">
+          ⏹️ Stop
+        </button>
+        <button @click="seek(playbackState.currentTime + 30)" class="text-gray-300 hover:text-white">
+          30s ⏩
+        </button>
+      </div>
     </div>
   </div>
 </template>
