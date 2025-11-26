@@ -18,10 +18,14 @@ import (
 
 	localcast "wails-cast/pkg/cast"
 	"wails-cast/pkg/hls"
+	_inhibitor "wails-cast/pkg/inhibitor"
+	_logger "wails-cast/pkg/logger"
 	"wails-cast/pkg/mediainfo"
-	"wails-cast/pkg/sleepinhibit"
 	"wails-cast/pkg/stream"
 )
+
+var logger = _logger.Logger
+var inhibitor = _inhibitor.InhibitorInstance
 
 // CastOptions holds options for casting
 type CastOptions struct {
@@ -41,7 +45,6 @@ type App struct {
 	playbackState   PlaybackState
 	currentSubtitle string
 	chromecastApp   *localcast.ChromecastApp
-	sleepInhibitor  *sleepinhibit.Inhibitor
 	mu              sync.RWMutex
 }
 
@@ -54,7 +57,6 @@ type PlaybackState struct {
 	DeviceName  string  `json:"deviceName"`
 	CurrentTime float64 `json:"currentTime"`
 	Duration    float64 `json:"duration"`
-	CanSeek     bool    `json:"canSeek"`
 }
 
 func NewApp() *App {
@@ -64,13 +66,10 @@ func NewApp() *App {
 	castManager := localcast.NewCastManager(localIP, 8888)
 
 	return &App{
-		discovery:      discovery,
-		mediaServer:    server,
-		castManager:    castManager,
-		sleepInhibitor: sleepinhibit.NewInhibitor(logger),
-		playbackState: PlaybackState{
-			CanSeek: true,
-		},
+		discovery:     discovery,
+		mediaServer:   server,
+		castManager:   castManager,
+		playbackState: PlaybackState{},
 	}
 }
 
@@ -83,15 +82,8 @@ func (a *App) startup(ctx context.Context) {
 	logger.Info("App started")
 }
 
-// stopSleepInhibition allows system sleep again
-func (a *App) stopSleepInhibition() {
-	if a.sleepInhibitor != nil {
-		a.sleepInhibitor.Stop()
-	}
-}
-
 func (a *App) shutdown(ctx context.Context) {
-	a.stopSleepInhibition()
+	inhibitor.Stop()
 	a.mediaServer.Stop()
 }
 
@@ -163,7 +155,7 @@ func (a *App) GetRemoteTrackInfo(videoURL string) (*mediainfo.MediaTrackInfo, er
 }
 
 // CastToDevice casts media (local file or remote URL) to a device
-func (a *App) CastToDevice(deviceURL, fileNameOrUrl string, options CastOptions) error {
+func (a *App) CastToDevice(deviceURL, fileNameOrUrl string, options CastOptions) (*PlaybackState, error) {
 	// Determine if input is a local file or remote URL
 	isRemote := strings.HasPrefix(fileNameOrUrl, "http://") || strings.HasPrefix(fileNameOrUrl, "https://")
 
@@ -207,14 +199,12 @@ func (a *App) CastToDevice(deviceURL, fileNameOrUrl string, options CastOptions)
 
 	if isRemote {
 		mediaPath = fileNameOrUrl
-		// For remote URLs, we might not know duration immediately or it might be live
-		duration = 0
-
 		// Use CastManager to prepare remote stream
 		logger.Info("Preparing remote stream", "url", mediaPath)
-		handler, err := a.castManager.StartCasting(mediaPath, host, port, streamOpts)
+		handler, err := a.castManager.StartCasting(mediaPath, streamOpts)
+		duration = handler.Duration
 		if err != nil {
-			return fmt.Errorf("failed to prepare remote stream: %w", err)
+			return nil, fmt.Errorf("failed to prepare remote stream: %w", err)
 		}
 
 		// Set handler on server
@@ -260,13 +250,14 @@ func (a *App) CastToDevice(deviceURL, fileNameOrUrl string, options CastOptions)
 	// Cast to device
 	app := application.NewApplication()
 	app.SetRequestTimeout(30 * time.Second)
+	app.SetDebug(true)
 
 	err = app.Start(host, port)
 	if err != nil {
 		a.mu.Lock()
 		a.playbackState.IsPlaying = false
 		a.mu.Unlock()
-		return err
+		return nil, err
 	}
 
 	// Update to ensure receiver is ready
@@ -274,7 +265,7 @@ func (a *App) CastToDevice(deviceURL, fileNameOrUrl string, options CastOptions)
 		a.mu.Lock()
 		a.playbackState.IsPlaying = false
 		a.mu.Unlock()
-		return err
+		return nil, err
 	}
 
 	// Load media with custom receiver
@@ -285,7 +276,7 @@ func (a *App) CastToDevice(deviceURL, fileNameOrUrl string, options CastOptions)
 		a.mu.Lock()
 		a.playbackState.IsPlaying = false
 		a.mu.Unlock()
-		return fmt.Errorf("failed to launch custom receiver app: %w", err)
+		return nil, fmt.Errorf("failed to launch custom receiver app: %w", err)
 	}
 
 	// Send load command without waiting (LoadApp blocks with MediaWait)
@@ -303,7 +294,7 @@ func (a *App) CastToDevice(deviceURL, fileNameOrUrl string, options CastOptions)
 		a.mu.Lock()
 		a.playbackState.IsPlaying = false
 		a.mu.Unlock()
-		return err
+		return nil, err
 	}
 
 	// Store the chromecast app
@@ -333,7 +324,7 @@ func (a *App) CastToDevice(deviceURL, fileNameOrUrl string, options CastOptions)
 		"subtitle", options.SubtitlePath,
 	)
 
-	return nil
+	return &a.playbackState, nil
 }
 
 // GetMediaFiles returns media files from a directory
@@ -378,8 +369,7 @@ func (a *App) FindSubtitleFile(videoPath string) string {
 }
 
 // SeekTo seeks to a specific time
-func (a *App) SeekTo(deviceURL, mediaPath string, seekTime float64) error {
-	logger.Info("Seeking", "device", deviceURL, "media", mediaPath, "seekTime", seekTime)
+func (a *App) SeekTo(seekTime float64) error {
 
 	a.mu.Lock()
 	ccApp := a.chromecastApp
@@ -427,52 +417,6 @@ func (a *App) UpdateSubtitleSettings(options CastOptions) error {
 	}
 
 	return nil
-}
-
-// GetPlaybackState returns current playback state
-func (a *App) GetPlaybackState() PlaybackState {
-	a.mu.RLock()
-	defer a.mu.RUnlock()
-	return a.playbackState
-}
-
-// UpdatePlaybackState actively fetches current status from Chromecast
-func (a *App) UpdatePlaybackState() (PlaybackState, error) {
-	a.mu.RLock()
-	ccApp := a.chromecastApp
-	a.mu.RUnlock()
-
-	if ccApp == nil {
-		return a.GetPlaybackState(), nil
-	}
-
-	// Request current media status from Chromecast
-	if err := ccApp.App.Update(); err != nil {
-		logger.Warn("Failed to update chromecast status", "error", err)
-		return a.GetPlaybackState(), err
-	}
-
-	// Get updated status
-	_, media, _ := ccApp.App.Status()
-	if media != nil {
-		a.mu.Lock()
-		a.playbackState.CurrentTime = float64(media.CurrentTime)
-
-		switch media.PlayerState {
-		case "PAUSED":
-			a.playbackState.IsPaused = true
-		case "PLAYING":
-			a.playbackState.IsPaused = false
-		case "IDLE":
-			if media.IdleReason == "FINISHED" || media.IdleReason == "INTERRUPTED" {
-				a.playbackState.IsPlaying = false
-				a.playbackState.IsPaused = false
-			}
-		}
-		a.mu.Unlock()
-	}
-
-	return a.GetPlaybackState(), nil
 }
 
 // Pause pauses current playback
@@ -532,7 +476,7 @@ func (a *App) StopPlayback() {
 	a.mu.Unlock()
 
 	// Allow system sleep again
-	a.stopSleepInhibition()
+	inhibitor.Stop()
 }
 
 // OpenFileDialog opens a file picker dialog
@@ -564,17 +508,6 @@ func (a *App) OpenDirectoryDialog() (string, error) {
 	return wails_runtime.OpenDirectoryDialog(a.ctx, wails_runtime.OpenDialogOptions{
 		Title: "Select Directory",
 	})
-}
-
-// ClearCache clears the HLS segment cache
-func (a *App) ClearCache() error {
-	// if a.mediaServer != nil && a.mediaServer.hlsServer != nil {
-	// 	a.mediaServer.hlsServer.Cleanup()
-	// 	logger.Info("Cache cleared")
-	// 	return nil
-	// }
-	// return fmt.Errorf("no active session to clear")
-	return nil
 }
 
 // LogInfo logs an info message from frontend
@@ -636,7 +569,7 @@ func (a *App) handleChromecastMessage(msg *cast_proto.CastMessage) {
 					a.playbackState.IsPaused = false
 					a.mu.Unlock()
 					// Allow system sleep when playback finishes
-					a.stopSleepInhibition()
+					inhibitor.Stop()
 					return
 				}
 			}
@@ -649,8 +582,9 @@ func (a *App) handleChromecastMessage(msg *cast_proto.CastMessage) {
 		a.playbackState.IsPaused = false
 		a.mu.Unlock()
 		// Allow system sleep when playback closes/fails
-		a.stopSleepInhibition()
+		inhibitor.Stop()
 	}
+	wails_runtime.EventsEmit(a.ctx, "playback:state", a.playbackState)
 }
 
 // Helper functions

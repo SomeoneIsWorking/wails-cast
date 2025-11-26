@@ -12,7 +12,12 @@ export const useCastStore = defineStore("cast", () => {
   const isLoading = ref(false);
   const isCasting = ref(false);
   const error = ref<string | null>(null);
-
+  EventsOn("playback:state", (state: PlaybackState) => {
+    playbackState.value = state;
+    if (state.isPlaying || state.isPaused) {
+      isCasting.value = true;
+    }
+  });
   // Playback State
   const playbackState = ref<PlaybackState>({
     isPlaying: false,
@@ -23,7 +28,6 @@ export const useCastStore = defineStore("cast", () => {
     deviceName: "",
     currentTime: 0,
     duration: 0,
-    canSeek: false,
   });
 
   // Cast Options
@@ -54,16 +58,8 @@ export const useCastStore = defineStore("cast", () => {
     // Reset media if needed, or keep it
   };
 
-  const selectMedia = (mediaPath: string) => {
-    selectedMedia.value = mediaPath;
-  };
-
   const setLoading = (loading: boolean) => {
     isLoading.value = loading;
-  };
-
-  const setCasting = (casting: boolean) => {
-    isCasting.value = casting;
   };
 
   const setError = (errorMsg: string | null) => {
@@ -115,35 +111,18 @@ export const useCastStore = defineStore("cast", () => {
     }
   };
 
-  const startCasting = async () => {
-    if (!selectedDevice.value || !selectedMedia.value) return;
+  const startCasting = async (media: string, pCastOptions: CastOptions) => {
+    if (!selectedDevice.value) return;
 
-    setCasting(true);
-    clearError();
+    castOptions.value = pCastOptions;
+    selectedMedia.value = media;
 
-    try {
-      await mediaService.castToDevice(
-        selectedDevice.value.url,
-        selectedMedia.value,
-        castOptions.value
-      );
-      // Update playback state immediately? Backend sends events/updates but we can fetch it.
-      await fetchPlaybackState();
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : String(err);
-      setError(msg);
-    } finally {
-      setCasting(false);
-    }
-  };
-
-  const fetchPlaybackState = async () => {
-    try {
-      const state = await mediaService.getPlaybackState();
-      playbackState.value = state;
-    } catch (err) {
-      console.error("Failed to fetch playback state", err);
-    }
+    playbackState.value = await mediaService.castToDevice(
+      selectedDevice.value.url,
+      media,
+      castOptions.value
+    );
+    isCasting.value = true;
   };
 
   const reset = () => {
@@ -174,15 +153,12 @@ export const useCastStore = defineStore("cast", () => {
     // Actions
     setDevices,
     selectDevice,
-    selectMedia,
     setLoading,
-    setCasting,
     setError,
     clearError,
     updateCastOptions,
     discoverDevices,
     startCasting,
-    fetchPlaybackState,
     reset,
   };
 });

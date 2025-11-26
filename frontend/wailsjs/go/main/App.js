@@ -6,10 +6,6 @@ export function CastToDevice(arg1, arg2, arg3) {
   return window['go']['main']['App']['CastToDevice'](arg1, arg2, arg3);
 }
 
-export function ClearCache() {
-  return window['go']['main']['App']['ClearCache']();
-}
-
 export function DiscoverDevices() {
   return window['go']['main']['App']['DiscoverDevices']();
 }
@@ -32,10 +28,6 @@ export function GetMediaTrackInfo(arg1) {
 
 export function GetMediaURL(arg1) {
   return window['go']['main']['App']['GetMediaURL'](arg1);
-}
-
-export function GetPlaybackState() {
-  return window['go']['main']['App']['GetPlaybackState']();
 }
 
 export function GetRemoteTrackInfo(arg1) {
@@ -78,8 +70,8 @@ export function Pause() {
   return window['go']['main']['App']['Pause']();
 }
 
-export function SeekTo(arg1, arg2, arg3) {
-  return window['go']['main']['App']['SeekTo'](arg1, arg2, arg3);
+export function SeekTo(arg1) {
+  return window['go']['main']['App']['SeekTo'](arg1);
 }
 
 export function StopPlayback() {
@@ -88,10 +80,6 @@ export function StopPlayback() {
 
 export function Unpause() {
   return window['go']['main']['App']['Unpause']();
-}
-
-export function UpdatePlaybackState() {
-  return window['go']['main']['App']['UpdatePlaybackState']();
 }
 
 export function UpdateSubtitleSettings(arg1) {

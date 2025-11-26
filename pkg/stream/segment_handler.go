@@ -16,9 +16,7 @@ import (
 // and transcodes them using ffmpeg for compatibility
 func (p *RemoteHandler) ServeSegment(w http.ResponseWriter, r *http.Request) {
 	// Briefly inhibit sleep on streaming requests (auto-stops after 30s of inactivity)
-	if p.sleepInhibitor != nil {
-		p.sleepInhibitor.Refresh(30 * time.Second)
-	}
+	inhibitor.Refresh(3 * time.Second)
 
 	// Optional: Wait briefly to see if connection stays alive (avoid transcoding if seeking rapidly)
 	select {
@@ -114,26 +112,22 @@ func (p *RemoteHandler) serveSegment(w http.ResponseWriter, r *http.Request, ful
 		if _, err := os.Stat(item.LocalPath); err != nil {
 			fmt.Printf("⚠️ File missing on disk despite manifest entry: %s. Re-downloading.\n", item.LocalPath)
 			// Fall through to download logic
+		}
+
+		fmt.Printf("Found in manifest: %s (Playlist: %v, Transcoded: %v, Type: %s)\n", fullURL, item.IsPlaylist, item.Transcoded, item.ContentType)
+		if item.Transcoded {
+			// Verify transcoded file exists
+			if _, err := os.Stat(item.TranscodedPath); err == nil {
+				p.serveFile(w, item.TranscodedPath, "video/mp2t")
+				return
+			}
+			fmt.Printf("⚠️ Transcoded file missing on disk: %s. Re-transcoding.\n", item.TranscodedPath)
+			// Fall through to transcode logic (item.Transcoded will be overwritten)
 		} else {
-			fmt.Printf("Found in manifest: %s (Playlist: %v, Transcoded: %v, Type: %s)\n", fullURL, item.IsPlaylist, item.Transcoded, item.ContentType)
-			if item.IsPlaylist {
-				p.servePlaylist(w, item.LocalPath, fullURL)
-				return
-			}
-			if item.Transcoded {
-				// Verify transcoded file exists
-				if _, err := os.Stat(item.TranscodedPath); err == nil {
-					p.serveFile(w, item.TranscodedPath, "video/mp2t")
-					return
-				}
-				fmt.Printf("⚠️ Transcoded file missing on disk: %s. Re-transcoding.\n", item.TranscodedPath)
-				// Fall through to transcode logic (item.Transcoded will be overwritten)
-			} else {
-				// Not transcoded yet, or re-transcoding needed
-				// For non-playlist items, always try to transcode
-				p.transcodeAndServe(w, r, item)
-				return
-			}
+			// Not transcoded yet, or re-transcoding needed
+			// For non-playlist items, always try to transcode
+			p.transcodeAndServe(w, r, item)
+			return
 		}
 	}
 
@@ -182,7 +176,7 @@ func (p *RemoteHandler) serveSegment(w http.ResponseWriter, r *http.Request, ful
 		strings.HasSuffix(fullURL, ".m3u8") {
 		newItem.IsPlaylist = true
 		p.updateManifest(fullURL, newItem)
-		p.servePlaylist(w, localPath, fullURL)
+		p.servePlaylistWithPrefix(w, localPath, fullURL, "")
 		return
 	}
 
@@ -225,14 +219,12 @@ func (p *RemoteHandler) transcodeAndServe(w http.ResponseWriter, r *http.Request
 
 	// Determine segment type based on filename
 	isAudio := strings.Contains(filepath.Base(item.LocalPath), "audio_")
-	isVideo := strings.Contains(filepath.Base(item.LocalPath), "video_")
 
 	// Build transcode options using shared module
 	opts := hls.TranscodeOptions{
 		InputPath:   item.LocalPath,
 		OutputPath:  transcodedPath,
 		IsAudioOnly: isAudio,
-		IsVideoOnly: isVideo,
 		Preset:      "veryfast",
 	}
 

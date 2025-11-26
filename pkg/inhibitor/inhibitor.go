@@ -1,4 +1,4 @@
-package sleepinhibit
+package inhibitor
 
 import (
 	"fmt"
@@ -7,28 +7,18 @@ import (
 	"runtime"
 	"sync"
 	"time"
+	_logger "wails-cast/pkg/logger"
 )
 
-// Logger interface for logging
-type Logger interface {
-	Info(msg string, args ...interface{})
-	Warn(msg string, args ...interface{})
-}
+var InhibitorInstance = &Inhibitor{}
+var logger = _logger.Logger
 
 // Inhibitor manages brief system sleep inhibition during streaming
 type Inhibitor struct {
 	cmd      *exec.Cmd
 	mu       sync.Mutex
-	logger   Logger
 	timer    *time.Timer
 	autoStop bool
-}
-
-// NewInhibitor creates a new sleep inhibitor
-func NewInhibitor(logger Logger) *Inhibitor {
-	return &Inhibitor{
-		logger: logger,
-	}
 }
 
 // Refresh starts or refreshes sleep inhibition for a brief period (auto-stops after duration)
@@ -95,22 +85,22 @@ func (i *Inhibitor) startLocked() error {
 	}
 
 	if cmd == nil {
-		if i.logger != nil {
-			i.logger.Warn("Sleep inhibition not supported on this platform", "os", runtime.GOOS)
+		if logger != nil {
+			logger.Warn("Sleep inhibition not supported on this platform", "os", runtime.GOOS)
 		}
 		return fmt.Errorf("sleep inhibition not supported on %s", runtime.GOOS)
 	}
 
 	if err := cmd.Start(); err != nil {
-		if i.logger != nil {
-			i.logger.Warn("Failed to start sleep inhibition", "error", err)
+		if logger != nil {
+			logger.Warn("Failed to start sleep inhibition", "error", err)
 		}
 		return err
 	}
 
 	i.cmd = cmd
-	if i.logger != nil {
-		i.logger.Info("Sleep inhibition enabled", "os", runtime.GOOS)
+	if logger != nil {
+		logger.Info("Sleep inhibition enabled", "os", runtime.GOOS)
 	}
 	return nil
 }
@@ -129,8 +119,8 @@ func (i *Inhibitor) Stop() {
 	if i.cmd != nil && i.cmd.Process != nil {
 		i.cmd.Process.Kill()
 		i.cmd = nil
-		if i.logger != nil {
-			i.logger.Info("Sleep inhibition disabled")
+		if logger != nil {
+			logger.Info("Sleep inhibition disabled")
 		}
 	}
 }

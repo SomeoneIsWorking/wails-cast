@@ -55,7 +55,6 @@ export namespace main {
 	    deviceName: string;
 	    currentTime: number;
 	    duration: number;
-	    canSeek: boolean;
 	
 	    static createFrom(source: any = {}) {
 	        return new PlaybackState(source);
@@ -71,7 +70,6 @@ export namespace main {
 	        this.deviceName = source["deviceName"];
 	        this.currentTime = source["currentTime"];
 	        this.duration = source["duration"];
-	        this.canSeek = source["canSeek"];
 	    }
 	}
 
@@ -82,8 +80,6 @@ export namespace mediainfo {
 	export class AudioTrack {
 	    index: number;
 	    language: string;
-	    codec: string;
-	    Type: string;
 	    URI: string;
 	    GroupID: string;
 	    Name: string;
@@ -99,8 +95,6 @@ export namespace mediainfo {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.index = source["index"];
 	        this.language = source["language"];
-	        this.codec = source["codec"];
-	        this.Type = source["Type"];
 	        this.URI = source["URI"];
 	        this.GroupID = source["GroupID"];
 	        this.Name = source["Name"];
@@ -113,7 +107,6 @@ export namespace mediainfo {
 	    index: number;
 	    language: string;
 	    title: string;
-	    codec: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new SubtitleTrack(source);
@@ -124,7 +117,6 @@ export namespace mediainfo {
 	        this.index = source["index"];
 	        this.language = source["language"];
 	        this.title = source["title"];
-	        this.codec = source["codec"];
 	    }
 	}
 	export class VideoTrack {

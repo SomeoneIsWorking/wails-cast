@@ -1,16 +1,17 @@
-import { GetMediaURL, CastToDevice, GetMediaFiles, SeekTo, GetPlaybackState, UpdatePlaybackState, StopPlayback, Pause, Unpause, UpdateSubtitleSettings, GetSubtitleURL } from '../../wailsjs/go/main/App'
+import { GetMediaURL, CastToDevice, GetMediaFiles, SeekTo, StopPlayback, Pause, Unpause, UpdateSubtitleSettings, GetSubtitleURL } from '../../wailsjs/go/main/App'
 import type { main, mediainfo } from '../../wailsjs/go/models'
 
 export type CastOptions = main.CastOptions;
-export type PlaybackState = main.PlaybackState;
 export type MediaTrackInfo = mediainfo.MediaTrackInfo;
+export type PlaybackState = main.PlaybackState;
+export type SubtitleTrack = mediainfo.SubtitleTrack;
 
 export const mediaService = {
   async getMediaURL(filePath: string): Promise<string> {
     return await GetMediaURL(filePath)
   },
 
-  async castToDevice(deviceURL: string, mediaPath: string, options: main.CastOptions): Promise<void> {
+  async castToDevice(deviceURL: string, mediaPath: string, options: main.CastOptions): Promise<PlaybackState> {
     return await CastToDevice(deviceURL, mediaPath, options)
   },
 
@@ -26,16 +27,8 @@ export const mediaService = {
     return await GetMediaFiles(dirPath)
   },
 
-  async seekTo(deviceURL: string, mediaPath: string, seekTime: number): Promise<void> {
-    return await SeekTo(deviceURL, mediaPath, seekTime)
-  },
-
-  async getPlaybackState(): Promise<main.PlaybackState> {
-    return await GetPlaybackState()
-  },
-
-  async updatePlaybackState(): Promise<main.PlaybackState> {
-    return await UpdatePlaybackState()
+  async seekTo(seekTime: number): Promise<void> {
+    return await SeekTo(seekTime)
   },
 
   async stopPlayback(): Promise<void> {
@@ -55,7 +48,7 @@ export const mediaService = {
     return await OpenSubtitleDialog()
   },
 
-  async getSubtitleTracks(videoPath: string): Promise<Array<{ index: number, language: string, title: string, codec: string }>> {
+  async getSubtitleTracks(videoPath: string): Promise<mediainfo.SubtitleTrack[]> {
     const { GetSubtitleTracks } = await import('../../wailsjs/go/main/App')
     return await GetSubtitleTracks(videoPath)
   },

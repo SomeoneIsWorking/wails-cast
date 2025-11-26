@@ -15,8 +15,10 @@ import (
 
 	"wails-cast/pkg/extractor"
 	"wails-cast/pkg/hls"
-	"wails-cast/pkg/sleepinhibit"
+	_inhibitor "wails-cast/pkg/inhibitor"
 )
+
+var inhibitor = _inhibitor.InhibitorInstance
 
 // RemoteHandler is a handler that serves HLS manifests and segments
 // with captured cookies and headers
@@ -32,8 +34,8 @@ type RemoteHandler struct {
 	AudioPlaylistURL    string // For demuxed HLS: URL of audio playlist
 	VideoPlaylistURL    string // For demuxed HLS: URL of video playlist
 	IsManifestRewritten bool
-	sleepInhibitor      *sleepinhibit.Inhibitor
 	Options             StreamOptions
+	Duration            float64 // Total duration of the stream in seconds
 }
 
 // NewRemoteHandler creates a new HLS handler
@@ -65,7 +67,6 @@ func NewRemoteHandler(localIP string, cacheDir string, options StreamOptions) *R
 					Version:     CurrentManifestVersion,
 					Items:       make(map[string]*ManifestItem),
 					SegmentMap:  make(map[string]string),
-					URLMap:      make(map[string]string),
 					NextID:      0,
 					AudioNextID: 0,
 					VideoNextID: 0,
@@ -85,12 +86,11 @@ func NewRemoteHandler(localIP string, cacheDir string, options StreamOptions) *R
 	}
 
 	return &RemoteHandler{
-		LocalIP:        localIP,
-		CacheDir:       cacheDir,
-		ManifestData:   manifestData,
-		ManifestPath:   manifestPath,
-		sleepInhibitor: sleepinhibit.NewInhibitor(nil), // nil logger for stream package
-		Options:        options,
+		LocalIP:      localIP,
+		CacheDir:     cacheDir,
+		ManifestData: manifestData,
+		ManifestPath: manifestPath,
+		Options:      options,
 	}
 }
 
@@ -105,9 +105,7 @@ func (p *RemoteHandler) SetExtractor(result *extractor.ExtractResult) {
 // Cleanup cleans up resources
 func (p *RemoteHandler) Cleanup() {
 	// Stop sleep inhibition
-	if p.sleepInhibitor != nil {
-		p.sleepInhibitor.Stop()
-	}
+	inhibitor.Stop()
 }
 
 // GetServedManifest returns the manifest as it would be served
@@ -123,20 +121,15 @@ func (p *RemoteHandler) GetServedManifest() string {
 		mi := hls.ExtractTracksFromMaster(p.Manifest)
 
 		// Use first available tracks
-		if len(mi.AudioTracks) > 0 {
-			p.AudioPlaylistURL = hls.ResolveURL(p.BaseURL, mi.AudioTracks[0].URI)
-			p.VideoPlaylistURL = hls.ResolveURL(p.BaseURL, mi.VideoTracks[0].URI)
+		p.VideoPlaylistURL = hls.ResolveURL(p.BaseURL, mi.VideoTracks[p.Options.VideoTrack].URI)
+		p.AudioPlaylistURL = hls.ResolveURL(p.BaseURL, mi.AudioTracks[p.Options.AudioTrack].URI)
 
-			// Cache the nested playlists
-			p.downloadAndParseNestedPlaylists()
+		// Cache the nested playlists
+		p.downloadAndParseNestedPlaylists()
 
-			// Rewrite the master playlist to use /audio.m3u8 and /video.m3u8
-			rewrittenManifest = p.rewriteDemuxedMaster(p.Manifest, p.BaseURL)
-		} else {
-			// Not demuxed, proceed with normal rewriting
-			rewrittenManifest = p.rewriteManifest(p.Manifest, p.BaseURL, "")
-		}
-	} else {
+		// Rewrite the master playlist to use /audio.m3u8 and /video.m3u8
+		rewrittenManifest = p.rewriteDemuxedMaster(p.Manifest, p.BaseURL)
+
 		// Not master, proceed with normal rewriting
 		rewrittenManifest = p.rewriteManifest(p.Manifest, p.BaseURL, "")
 	}
@@ -159,9 +152,7 @@ func (p *RemoteHandler) ServePlaylist(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Briefly inhibit sleep on streaming requests (auto-stops after 30s of inactivity)
-	if p.sleepInhibitor != nil {
-		p.sleepInhibitor.Refresh(30 * time.Second)
-	}
+	inhibitor.Refresh(3 * time.Second)
 
 	fmt.Printf("Serving manifest to %s\n", r.RemoteAddr)
 
@@ -211,11 +202,6 @@ func (p *RemoteHandler) handleVideoPlaylist(w http.ResponseWriter, r *http.Reque
 	p.servePlaylistWithPrefix(w, videoPath, p.VideoPlaylistURL, "video_")
 }
 
-// servePlaylist serves a local playlist file
-func (p *RemoteHandler) servePlaylist(w http.ResponseWriter, path string, originalURL string) {
-	p.servePlaylistWithPrefix(w, path, originalURL, "")
-}
-
 // servePlaylistWithPrefix serves a local playlist file with a specific segment prefix
 func (p *RemoteHandler) servePlaylistWithPrefix(w http.ResponseWriter, path string, originalURL string, prefix string) {
 	content, err := os.ReadFile(path)
@@ -241,15 +227,14 @@ func (p *RemoteHandler) servePlaylistWithPrefix(w http.ResponseWriter, path stri
 }
 
 // downloadAndParseNestedPlaylists downloads audio and video playlists and caches them
-func (p *RemoteHandler) downloadAndParseNestedPlaylists() {
+func (p *RemoteHandler) downloadAndParseNestedPlaylists() error {
 	fmt.Println("Downloading nested playlists to cache them...")
-
 	// Download audio playlist
 	if p.AudioPlaylistURL != "" {
 		resp, err := p.downloadFile(context.Background(), p.AudioPlaylistURL)
 		if err != nil {
 			fmt.Printf("Failed to download audio playlist: %v\n", err)
-			return
+			return err
 		}
 		defer resp.Body.Close()
 
@@ -276,12 +261,13 @@ func (p *RemoteHandler) downloadAndParseNestedPlaylists() {
 		resp, err := p.downloadFile(context.Background(), p.VideoPlaylistURL)
 		if err != nil {
 			fmt.Printf("Failed to download video playlist: %v\n", err)
-			return
+			return err
 		}
 		defer resp.Body.Close()
 
 		body, _ := io.ReadAll(resp.Body)
 		videoPlaylist := string(body)
+		p.Duration = hls.CalculateTotalDuration(videoPlaylist)
 
 		// Save video playlist to cache
 		videoLocalPath := filepath.Join(p.CacheDir, "video.m3u8")
@@ -297,6 +283,7 @@ func (p *RemoteHandler) downloadAndParseNestedPlaylists() {
 
 		fmt.Printf("Cached video playlist as video.m3u8\n")
 	}
+	return nil
 }
 
 // rewriteManifest rewrites URLs in the manifest to point to the proxy

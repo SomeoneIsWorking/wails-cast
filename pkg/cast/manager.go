@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"time"
 
 	"github.com/vishen/go-chromecast/application"
 
@@ -42,32 +41,8 @@ func NewCastManager(localIP string, proxyPort int) *CastManager {
 	}
 }
 
-// NewChromecastApp creates a new ChromecastApp wrapper
-func NewChromecastApp(host string, port int) *ChromecastApp {
-	app := application.NewApplication()
-	app.SetRequestTimeout(60 * time.Second)
-	app.SetDebug(true)
-
-	return &ChromecastApp{
-		App:  app,
-		Host: host,
-		Port: port,
-	}
-}
-
-// Start starts the Chromecast connection
-func (c *ChromecastApp) Start() error {
-	return c.App.Start(c.Host, c.Port)
-}
-
-// Load loads a media URL
-func (c *ChromecastApp) Load(url string) error {
-	customAppID := "4C4BFD9F"
-	return c.App.LoadApp(customAppID, url)
-}
-
 // StartCasting prepares the stream for a remote video URL
-func (m *CastManager) StartCasting(videoURL string, deviceHost string, devicePort int, options stream.StreamOptions) (*stream.RemoteHandler, error) {
+func (m *CastManager) StartCasting(videoURL string, options stream.StreamOptions) (*stream.RemoteHandler, error) {
 	handler, err := m.prepareStream(videoURL, options)
 	if err != nil {
 		return nil, err
@@ -80,12 +55,38 @@ func (m *CastManager) StartCasting(videoURL string, deviceHost string, devicePor
 
 func (m *CastManager) prepareStream(videoURL string, options stream.StreamOptions) (*stream.RemoteHandler, error) {
 	// 1. Calculate hash of video URL for cache key
+	cacheDir := m.cacheDir(videoURL)
+
+	// 2. Check cache or extract
+	result, err := getExtractionJson(videoURL, cacheDir)
+	if err != nil {
+		return nil, err
+	}
+
+	fmt.Printf("\n✅ HLS stream ready:\n")
+	fmt.Printf("  URL: %s\n", result.URL)
+
+	// Create and configure handler
+	handler := stream.NewRemoteHandler(m.LocalIP, cacheDir, options)
+	handler.SetExtractor(result)
+
+	// Get the served manifest and update the result
+	servedManifest := handler.GetServedManifest()
+	result.ManifestBody = servedManifest
+
+	return handler, nil
+}
+
+func (m *CastManager) cacheDir(videoURL string) string {
 	hash := md5.Sum([]byte(videoURL))
 	cacheKey := hex.EncodeToString(hash[:])
 	cacheDir := filepath.Join(m.CacheRoot, cacheKey)
+	return cacheDir
+}
+
+func getExtractionJson(videoURL string, cacheDir string) (*extractor.ExtractResult, error) {
 	extractionFile := filepath.Join(cacheDir, "extraction.json")
 
-	// 2. Check cache or extract
 	var result *extractor.ExtractResult
 
 	if _, err := os.Stat(extractionFile); err == nil {
@@ -117,24 +118,12 @@ func (m *CastManager) prepareStream(videoURL string, options stream.StreamOption
 			os.WriteFile(extractionFile, data, 0644)
 		}
 	}
-
-	fmt.Printf("\n✅ HLS stream ready:\n")
-	fmt.Printf("  URL: %s\n", result.URL)
-
-	// Create and configure handler
-	handler := stream.NewRemoteHandler(m.LocalIP, cacheDir, options)
-	handler.SetExtractor(result)
-
-	// Get the served manifest and update the result
-	servedManifest := handler.GetServedManifest()
-	result.ManifestBody = servedManifest
-
-	return handler, nil
+	return result, nil
 }
 
 // GetRemoteTrackInfo extracts track information from a remote HLS stream
 func (m *CastManager) GetRemoteTrackInfo(videoURL string) (*mediainfo.MediaTrackInfo, error) {
-	result, err := extractor.ExtractVideo(videoURL)
+	result, err := getExtractionJson(videoURL, m.cacheDir(videoURL))
 	if err != nil {
 		return nil, fmt.Errorf("failed to extract video: %w", err)
 	}
