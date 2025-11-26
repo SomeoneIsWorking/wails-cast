@@ -15,6 +15,11 @@ import (
 // handleSegment proxies segment requests with captured cookies and headers,
 // and transcodes them using ffmpeg for compatibility
 func (p *RemoteHLSProxy) handleSegment(w http.ResponseWriter, r *http.Request) {
+	// Briefly inhibit sleep on streaming requests (auto-stops after 30s of inactivity)
+	if p.sleepInhibitor != nil {
+		p.sleepInhibitor.Refresh(30 * time.Second)
+	}
+
 	// Optional: Wait briefly to see if connection stays alive (avoid transcoding if seeking rapidly)
 	select {
 	case <-r.Context().Done():

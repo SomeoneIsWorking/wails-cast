@@ -7,26 +7,29 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"wails-cast/pkg/sleepinhibit"
 	"wails-cast/pkg/stream"
 )
 
 // Server is an HTTP server for serving media
 type Server struct {
-	port         int
-	localIP      string
-	currentMedia string
-	subtitlePath string
-	hlsServer    *stream.LocalHLSServer
-	httpServer   *http.Server
-	seekTime     int
-	mu           sync.RWMutex
+	port           int
+	localIP        string
+	currentMedia   string
+	subtitlePath   string
+	hlsServer      *stream.LocalHLSServer
+	httpServer     *http.Server
+	seekTime       int
+	sleepInhibitor *sleepinhibit.Inhibitor
+	mu             sync.RWMutex
 }
 
 // NewServer creates a new media server
 func NewServer(port int, localIP string) *Server {
 	s := &Server{
-		port:    port,
-		localIP: localIP,
+		port:           port,
+		localIP:        localIP,
+		sleepInhibitor: sleepinhibit.NewInhibitor(logger),
 	}
 
 	mux := http.NewServeMux()
@@ -93,6 +96,11 @@ func (s *Server) Start() error {
 
 // Stop stops the HTTP server
 func (s *Server) Stop() error {
+	// Stop sleep inhibition
+	if s.sleepInhibitor != nil {
+		s.sleepInhibitor.Stop()
+	}
+
 	if s.hlsServer != nil {
 		s.hlsServer.Cleanup()
 	}
@@ -134,6 +142,11 @@ func (s *Server) handleRequest(w http.ResponseWriter, r *http.Request) {
 
 	// Handle HLS playlist request
 	if strings.HasSuffix(path, ".m3u8") || path == "/media.mp4" {
+		// Briefly inhibit sleep on streaming requests (auto-stops after 30s of inactivity)
+		if s.sleepInhibitor != nil {
+			s.sleepInhibitor.Refresh(30 * time.Second)
+		}
+
 		if s.hlsServer == nil {
 			s.hlsServer = stream.NewLocalHLSServer(videoPath, subtitlePath, s.localIP)
 		}

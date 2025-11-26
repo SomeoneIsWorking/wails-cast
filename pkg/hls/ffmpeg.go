@@ -86,6 +86,9 @@ func buildTranscodeArgs(opts TranscodeOptions) []string {
 			"-profile:v", "high",
 			"-level", "4.2",
 			"-preset", getPreset(opts.Preset),
+			"-crf", "28",
+			"-maxrate", "3M",
+			"-bufsize", "10M",
 			"-pix_fmt", "yuv420p",
 		)
 	} else {
@@ -93,6 +96,9 @@ func buildTranscodeArgs(opts TranscodeOptions) []string {
 		args = append(args,
 			"-c:v", "libx264",
 			"-preset", getPreset(opts.Preset),
+			"-crf", "28",
+			"-maxrate", "3M",
+			"-bufsize", "10M",
 			"-tune", "zerolatency",
 			"-pix_fmt", "yuv420p",
 			"-sc_threshold", "0",
@@ -110,7 +116,7 @@ func buildTranscodeArgs(opts TranscodeOptions) []string {
 		// Audio encoding
 		args = append(args,
 			"-c:a", "aac",
-			"-b:a", "192k",
+			"-b:a", "96k",
 			"-ac", "2",
 		)
 	}

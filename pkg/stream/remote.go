@@ -15,6 +15,7 @@ import (
 
 	"wails-cast/pkg/extractor"
 	"wails-cast/pkg/hls"
+	"wails-cast/pkg/sleepinhibit"
 )
 
 // RemoteHLSProxy is a proxy server that serves HLS manifests and segments
@@ -33,6 +34,7 @@ type RemoteHLSProxy struct {
 	AudioPlaylistURL    string // For demuxed HLS: URL of audio playlist
 	VideoPlaylistURL    string // For demuxed HLS: URL of video playlist
 	IsManifestRewritten bool
+	sleepInhibitor      *sleepinhibit.Inhibitor
 }
 
 // NewRemoteHLSProxy creates a new HLS proxy server
@@ -84,11 +86,12 @@ func NewRemoteHLSProxy(localIP string, port int, cacheDir string) *RemoteHLSProx
 	}
 
 	return &RemoteHLSProxy{
-		LocalIP:      localIP,
-		Port:         port,
-		CacheDir:     cacheDir,
-		ManifestData: manifestData,
-		ManifestPath: manifestPath,
+		LocalIP:        localIP,
+		Port:           port,
+		CacheDir:       cacheDir,
+		ManifestData:   manifestData,
+		ManifestPath:   manifestPath,
+		sleepInhibitor: sleepinhibit.NewInhibitor(nil), // nil logger for stream package
 	}
 }
 
@@ -137,6 +140,11 @@ func (p *RemoteHLSProxy) Start() error {
 
 // Stop stops the proxy server
 func (p *RemoteHLSProxy) Stop() error {
+	// Stop sleep inhibition
+	if p.sleepInhibitor != nil {
+		p.sleepInhibitor.Stop()
+	}
+
 	if p.httpServer != nil {
 		return p.httpServer.Close()
 	}
@@ -186,6 +194,11 @@ func (p *RemoteHLSProxy) GetServedManifest() string {
 
 // handleManifest serves the m3u8 manifest with rewritten URLs
 func (p *RemoteHLSProxy) handleManifest(w http.ResponseWriter, r *http.Request) {
+	// Briefly inhibit sleep on streaming requests (auto-stops after 30s of inactivity)
+	if p.sleepInhibitor != nil {
+		p.sleepInhibitor.Refresh(30 * time.Second)
+	}
+
 	fmt.Printf("Serving manifest to %s\n", r.RemoteAddr)
 
 	limit := 500
