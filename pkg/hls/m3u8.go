@@ -73,35 +73,25 @@ func ExtractTracksFromMaster(content string) mediainfo.MediaTrackInfo {
 
 		// Parse #EXT-X-MEDIA (audio tracks)
 		if strings.HasPrefix(line, "#EXT-X-MEDIA:") {
-			track := mediainfo.AudioTrack{}
-			track.Type = extractAttribute(line, "TYPE")
-			track.URI = extractAttribute(line, "URI")
-			track.GroupID = extractAttribute(line, "GROUP-ID")
-			track.Name = extractAttribute(line, "NAME")
-			track.Language = extractAttribute(line, "LANGUAGE")
-			track.IsDefault = extractAttribute(line, "DEFAULT") == "YES"
+			_type := extractAttribute(line, "TYPE")
 
-			switch track.Type {
+			switch _type {
 			case "AUDIO":
-				// Add to audioTracks and to media info structured type
+				track := mediainfo.AudioTrack{}
+				track.URI = extractAttribute(line, "URI")
+				track.GroupID = extractAttribute(line, "GROUP-ID")
+				track.Name = extractAttribute(line, "NAME")
+				track.Language = extractAttribute(line, "LANGUAGE")
+				track.IsDefault = extractAttribute(line, "DEFAULT") == "YES"
+				track.Index = len(mi.AudioTracks)
 				mi.AudioTracks = append(mi.AudioTracks, track)
-				// Create mediainfo.AudioTrack
-				ai := mediainfo.AudioTrack{
-					Index:    len(mi.AudioTracks),
-					Language: track.Language,
-					Codec:    "",
-				}
-				mi.AudioTracks = append(mi.AudioTracks, ai)
 
 			case "SUBTITLES":
-
-				si := mediainfo.SubtitleTrack{
-					Index:    len(mi.SubtitleTracks),
-					Language: track.Language,
-					Title:    track.Name,
-					Codec:    "",
-				}
-				mi.SubtitleTracks = append(mi.SubtitleTracks, si)
+				track := mediainfo.SubtitleTrack{}
+				track.Title = extractAttribute(line, "NAME")
+				track.Language = extractAttribute(line, "LANGUAGE")
+				track.Index = len(mi.SubtitleTracks)
+				mi.SubtitleTracks = append(mi.SubtitleTracks, track)
 			}
 		}
 
@@ -118,8 +108,6 @@ func ExtractTracksFromMaster(content string) mediainfo.MediaTrackInfo {
 				track.URI = strings.TrimSpace(lines[i+1])
 			}
 
-			mi.VideoTracks = append(mi.VideoTracks, track)
-			// Create mediainfo.VideoTrack
 			codec := ""
 			if track.Codecs != "" {
 				// Take first codec before comma
@@ -128,12 +116,9 @@ func ExtractTracksFromMaster(content string) mediainfo.MediaTrackInfo {
 					codec = strings.TrimSpace(parts[0])
 				}
 			}
-			vi := mediainfo.VideoTrack{
-				Index:      len(mi.VideoTracks),
-				Codec:      codec,
-				Resolution: track.Resolution,
-			}
-			mi.VideoTracks = append(mi.VideoTracks, vi)
+			track.Codec = codec
+			track.Index = len(mi.VideoTracks)
+			mi.VideoTracks = append(mi.VideoTracks, track)
 		}
 	}
 
@@ -198,4 +183,26 @@ func extractIntAttribute(line, attr string) int {
 	var result int
 	fmt.Sscanf(val, "%d", &result)
 	return result
+}
+
+// CalculateTotalDuration calculates the total duration of a video M3U8 playlist by summing all segment durations
+func CalculateTotalDuration(content string) float64 {
+	lines := strings.Split(content, "\n")
+	var total float64
+
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if strings.HasPrefix(line, "#EXTINF:") {
+			// Extract duration from #EXTINF:duration,
+			parts := strings.Split(line, ":")
+			if len(parts) > 1 {
+				durationStr := strings.TrimSuffix(parts[1], ",")
+				var dur float64
+				fmt.Sscanf(durationStr, "%f", &dur)
+				total += dur
+			}
+		}
+	}
+
+	return total
 }

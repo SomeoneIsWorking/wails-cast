@@ -3,9 +3,7 @@
 import {main} from '../models';
 import {mediainfo} from '../models';
 
-export function CastToDevice(arg1:string,arg2:string,arg3:main.CastOptions):Promise<void>;
-
-export function ClearCache():Promise<void>;
+export function CastToDevice(arg1:string,arg2:string,arg3:main.CastOptions):Promise<main.PlaybackState>;
 
 export function DiscoverDevices():Promise<Array<main.Device>>;
 
@@ -18,8 +16,6 @@ export function GetMediaFiles(arg1:string):Promise<Array<string>>;
 export function GetMediaTrackInfo(arg1:string):Promise<mediainfo.MediaTrackInfo>;
 
 export function GetMediaURL(arg1:string):Promise<string>;
-
-export function GetPlaybackState():Promise<main.PlaybackState>;
 
 export function GetRemoteTrackInfo(arg1:string):Promise<mediainfo.MediaTrackInfo>;
 
@@ -41,12 +37,10 @@ export function OpenSubtitleDialog():Promise<string>;
 
 export function Pause():Promise<void>;
 
-export function SeekTo(arg1:string,arg2:string,arg3:number):Promise<void>;
+export function SeekTo(arg1:number):Promise<void>;
 
 export function StopPlayback():Promise<void>;
 
 export function Unpause():Promise<void>;
-
-export function UpdatePlaybackState():Promise<main.PlaybackState>;
 
 export function UpdateSubtitleSettings(arg1:main.CastOptions):Promise<void>;

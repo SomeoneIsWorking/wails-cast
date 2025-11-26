@@ -14,9 +14,9 @@ const emit = defineEmits<{
   'confirm': [options: main.CastOptions]
 }>()
 
-const selectedVideoTrack = ref(-1)
-const selectedAudioTrack = ref(-1)
-const selectedSubtitleTrack = ref(-1)
+const selectedVideoTrack = ref(0)
+const selectedAudioTrack = ref(0)
+const selectedSubtitleTrack = ref(0)
 const subtitleSource = ref<'none' | 'embedded' | 'external'>('none')
 const externalSubtitlePath = ref('')
 const burnSubtitles = ref(false)
@@ -71,7 +71,7 @@ const handleCancel = () => {
         <select v-model="selectedAudioTrack" class="w-full bg-gray-700 text-white rounded p-2">
           <option :value="-1">Default</option>
           <option v-for="track in trackInfo.audioTracks" :key="track.index" :value="track.index">
-            Track {{ track.index }} - {{ track.language || 'Unknown' }} ({{ track.codec }})
+            Track {{ track.index }} - {{ track.language || 'Unknown' }}
           </option>
         </select>
       </div>
@@ -87,7 +87,7 @@ const handleCancel = () => {
 
         <select v-if="subtitleSource === 'embedded'" v-model="selectedSubtitleTrack" class="w-full bg-gray-700 text-white rounded p-2 mb-2">
           <option v-for="track in trackInfo.subtitleTracks" :key="track.index" :value="track.index">
-            {{ track.title || track.language || `Track ${track.index}` }} ({{ track.codec }})
+            {{ track.title || track.language || `Track ${track.index}` }}
           </option>
         </select>
 
