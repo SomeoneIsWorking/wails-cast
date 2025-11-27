@@ -123,7 +123,6 @@ export namespace mediainfo {
 	    index: number;
 	    codec: string;
 	    resolution?: string;
-	    Type: string;
 	    URI: string;
 	    GroupID: string;
 	    Name: string;
@@ -140,7 +139,6 @@ export namespace mediainfo {
 	        this.index = source["index"];
 	        this.codec = source["codec"];
 	        this.resolution = source["resolution"];
-	        this.Type = source["Type"];
 	        this.URI = source["URI"];
 	        this.GroupID = source["GroupID"];
 	        this.Name = source["Name"];

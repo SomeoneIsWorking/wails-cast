@@ -7,22 +7,6 @@ import (
 	"wails-cast/pkg/mediainfo"
 )
 
-// PlaylistType represents the type of HLS playlist
-type PlaylistType int
-
-const (
-	PlaylistTypeMaster PlaylistType = iota
-	PlaylistTypeMedia
-)
-
-// ParsePlaylistType determines if a playlist is master or media
-func ParsePlaylistType(content string) PlaylistType {
-	if strings.Contains(content, "#EXT-X-STREAM-INF") || strings.Contains(content, "#EXT-X-MEDIA:") {
-		return PlaylistTypeMaster
-	}
-	return PlaylistTypeMedia
-}
-
 // GenerateVODPlaylist generates a complete HLS VOD playlist
 func GenerateVODPlaylist(duration float64, segmentSize int, localIP string, port int) string {
 	var playlist strings.Builder
@@ -58,71 +42,68 @@ func GenerateVODPlaylist(duration float64, segmentSize int, localIP string, port
 	return playlist.String()
 }
 
-// ExtractTracksFromMaster extracts all audio and video tracks from a master playlist
-func ExtractTracksFromMaster(content string) mediainfo.MediaTrackInfo {
-	lines := strings.Split(content, "\n")
-
+// ExtractTracksFromMain extracts all audio and video tracks from a main playlist
+// This is a convenience wrapper around the structured playlist parser
+func ExtractTracksFromMain(playlist *MainPlaylist) (*mediainfo.MediaTrackInfo, error) {
 	mi := mediainfo.MediaTrackInfo{
 		VideoTracks:    make([]mediainfo.VideoTrack, 0),
 		AudioTracks:    make([]mediainfo.AudioTrack, 0),
 		SubtitleTracks: make([]mediainfo.SubtitleTrack, 0),
 	}
 
-	for i := 0; i < len(lines); i++ {
-		line := strings.TrimSpace(lines[i])
+	// Try to use the structured parser
+	for i, variant := range playlist.VideoVariants {
+		track := mediainfo.VideoTrack{
+			URI:        variant.URI,
+			Resolution: variant.Resolution,
+			Bandwidth:  variant.Bandwidth,
+			Codecs:     variant.Codecs,
+			Index:      i,
+		}
 
-		// Parse #EXT-X-MEDIA (audio tracks)
-		if strings.HasPrefix(line, "#EXT-X-MEDIA:") {
-			_type := extractAttribute(line, "TYPE")
-
-			switch _type {
-			case "AUDIO":
-				track := mediainfo.AudioTrack{}
-				track.URI = extractAttribute(line, "URI")
-				track.GroupID = extractAttribute(line, "GROUP-ID")
-				track.Name = extractAttribute(line, "NAME")
-				track.Language = extractAttribute(line, "LANGUAGE")
-				track.IsDefault = extractAttribute(line, "DEFAULT") == "YES"
-				track.Index = len(mi.AudioTracks)
-				mi.AudioTracks = append(mi.AudioTracks, track)
-
-			case "SUBTITLES":
-				track := mediainfo.SubtitleTrack{}
-				track.Title = extractAttribute(line, "NAME")
-				track.Language = extractAttribute(line, "LANGUAGE")
-				track.Index = len(mi.SubtitleTracks)
-				mi.SubtitleTracks = append(mi.SubtitleTracks, track)
+		// Extract first codec
+		if variant.Codecs != "" {
+			parts := strings.Split(variant.Codecs, ",")
+			if len(parts) > 0 {
+				track.Codec = strings.TrimSpace(parts[0])
 			}
 		}
 
-		// Parse #EXT-X-STREAM-INF (video tracks)
-		if strings.HasPrefix(line, "#EXT-X-STREAM-INF:") {
-			track := mediainfo.VideoTrack{}
-			track.Type = "VIDEO"
-			track.Resolution = extractAttribute(line, "RESOLUTION")
-			track.Bandwidth = extractIntAttribute(line, "BANDWIDTH")
-			track.Codecs = extractAttribute(line, "CODECS")
+		mi.VideoTracks = append(mi.VideoTracks, track)
+	}
 
-			// Next line is the URI
-			if i+1 < len(lines) {
-				track.URI = strings.TrimSpace(lines[i+1])
+	// Flatten audio groups
+	audioIdx := 0
+	for _, audioTracks := range playlist.AudioGroups {
+		for _, audio := range audioTracks {
+			track := mediainfo.AudioTrack{
+				URI:       audio.URI,
+				GroupID:   audio.GroupID,
+				Name:      audio.Name,
+				Language:  audio.Language,
+				IsDefault: audio.Default,
+				Index:     audioIdx,
 			}
-
-			codec := ""
-			if track.Codecs != "" {
-				// Take first codec before comma
-				parts := strings.Split(track.Codecs, ",")
-				if len(parts) > 0 {
-					codec = strings.TrimSpace(parts[0])
-				}
-			}
-			track.Codec = codec
-			track.Index = len(mi.VideoTracks)
-			mi.VideoTracks = append(mi.VideoTracks, track)
+			mi.AudioTracks = append(mi.AudioTracks, track)
+			audioIdx++
 		}
 	}
 
-	return mi
+	// Flatten subtitle groups
+	subtitleIdx := 0
+	for _, subtitleTracks := range playlist.SubtitleGroups {
+		for _, subtitle := range subtitleTracks {
+			track := mediainfo.SubtitleTrack{
+				Title:    subtitle.Name,
+				Language: subtitle.Language,
+				Index:    subtitleIdx,
+			}
+			mi.SubtitleTracks = append(mi.SubtitleTracks, track)
+			subtitleIdx++
+		}
+
+	}
+	return &mi, nil
 }
 
 // ResolveURL resolves a relative URL against a base URL

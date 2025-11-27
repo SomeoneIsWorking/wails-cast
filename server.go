@@ -3,7 +3,6 @@ package main
 import (
 	"fmt"
 	"net/http"
-	"strings"
 	"sync"
 	"time"
 	"wails-cast/pkg/stream"
@@ -13,7 +12,6 @@ import (
 type Server struct {
 	port          int
 	localIP       string
-	currentMedia  string
 	subtitlePath  string
 	streamHandler stream.StreamHandler
 	httpServer    *http.Server
@@ -29,7 +27,6 @@ func NewServer(port int, localIP string) *Server {
 	}
 
 	mux := http.NewServeMux()
-	mux.HandleFunc("/playlist.m3u8", s.handlePlaylist)
 	mux.HandleFunc("/", s.handleRequest)
 
 	s.httpServer = &http.Server{
@@ -50,9 +47,6 @@ func (s *Server) SetHandler(handler stream.StreamHandler) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	if s.streamHandler != nil {
-		s.streamHandler.Cleanup()
-	}
 	s.streamHandler = handler
 	logger.Info("Server handler set")
 }
@@ -60,37 +54,8 @@ func (s *Server) SetHandler(handler stream.StreamHandler) {
 // SetSubtitlePath sets the subtitle file
 func (s *Server) SetSubtitlePath(path string) {
 	s.mu.Lock()
-	defer s.mu.Unlock()
 	s.subtitlePath = path
-
-	// If currently serving local media, update the handler
-	if s.currentMedia != "" && s.currentMedia != "remote" {
-		if s.streamHandler != nil {
-			s.streamHandler.Cleanup()
-		}
-		// We need options to recreate the handler.
-		// Since we don't store full options, we might lose track selection if we just re-init.
-		// Ideally, we should update the existing handler or store options.
-		// For now, let's assume default options or try to preserve what we can.
-		// But LocalHandler stores options now.
-
-		// Better approach: Cast LocalHandler and update its options.
-		if handler, ok := s.streamHandler.(*stream.LocalHandler); ok {
-			handler.Options.SubtitlePath = path
-			// Also update internal subtitle path if needed
-			handler.SubtitlePath = path
-			// We don't need to recreate the handler, just update it.
-			// But LocalHandler might need to clear cache or something.
-			// LocalHandler.ServeSegment checks if manifest matches subtitle path.
-			// So updating the struct field should be enough.
-			return
-		}
-
-		// If not LocalHandler (or if we want to be safe), we recreate.
-		// But we don't have options here.
-		// Let's just log warning if we can't update.
-		logger.Warn("Could not update subtitle path on current handler")
-	}
+	defer s.mu.Unlock()
 
 	if path != "" {
 		logger.Info("Subtitle path set", "path", path)
@@ -115,97 +80,72 @@ func (s *Server) Stop() error {
 	// Stop sleep inhibition
 	inhibitor.Stop()
 
-	if s.streamHandler != nil {
-		s.streamHandler.Cleanup()
-	}
 	if s.httpServer != nil {
 		return s.httpServer.Close()
 	}
 	return nil
 }
 
-// handlePlaylist handles playlist requests
-func (s *Server) handlePlaylist(w http.ResponseWriter, r *http.Request) {
-	s.mu.RLock()
-	handler := s.streamHandler
-	s.mu.RUnlock()
-
-	if handler == nil {
-		http.Error(w, "No media handler set", http.StatusNotFound)
-		return
-	}
-
-	// Briefly inhibit sleep on streaming requests (auto-stops after 30s of inactivity)
-	inhibitor.Refresh(3 * time.Second)
-
-	handler.ServePlaylist(w, r)
-}
-
-// handleSegment handles segment requests
-func (s *Server) handleSegment(w http.ResponseWriter, r *http.Request) {
-	s.mu.RLock()
-	handler := s.streamHandler
-	s.mu.RUnlock()
-
-	if handler == nil {
-		http.Error(w, "No media handler set", http.StatusNotFound)
-		return
-	}
-
-	// Briefly inhibit sleep on streaming requests
-	inhibitor.Refresh(3 * time.Second)
-
-	handler.ServeSegment(w, r)
-}
-
 // handleRequest routes requests to appropriate handlers
 func (s *Server) handleRequest(w http.ResponseWriter, r *http.Request) {
 	path := r.URL.Path
 	logger.Info("HTTP request", "path", path, "method", r.Method)
+	s.mu.RLock()
+	handler := s.streamHandler
+	s.mu.RUnlock()
 
-	// Dispatch based on path patterns that couldn't be registered directly
-
-	// Video/Audio playlists: /video_{index}.m3u8, /audio_{index}.m3u8
-	if (strings.HasPrefix(path, "/video_") || strings.HasPrefix(path, "/audio_")) && strings.HasSuffix(path, ".m3u8") {
-		s.handlePlaylist(w, r)
+	if handler == nil {
+		http.Error(w, "No media handler set", http.StatusNotFound)
 		return
 	}
 
-	// Subtitles: /subtitle_{index}.vtt
-	if strings.HasPrefix(path, "/subtitle_") && strings.HasSuffix(path, ".vtt") {
-		// Extract index
-		parts := strings.Split(strings.TrimSuffix(path, ".vtt"), "_")
-		if len(parts) == 2 {
-			if parts[1] == "-1" {
-				s.mu.RLock()
-				subtitlePath := s.subtitlePath
-				s.mu.RUnlock()
-				if subtitlePath != "" && !strings.Contains(subtitlePath, ":si=") {
-					w.Header().Set("Access-Control-Allow-Origin", "*")
-					w.Header().Set("Content-Type", "text/vtt")
-					http.ServeFile(w, r, subtitlePath)
-					return
-				}
-			}
+	inhibitor.Refresh(3 * time.Second)
+
+	// Main playlist: /playlist.m3u8 or /media.mp4
+	if path == "/playlist.m3u8" {
+		handler.ServeMainPlaylist(w, r)
+		return
+	}
+	var trackIndex int
+
+	// Video track playlists: /video_{i}.m3u8
+	if _, err := fmt.Sscanf(path, "/video_%d.m3u8", &trackIndex); err == nil {
+		handler.ServeTrackPlaylist(w, r, "video", trackIndex)
+		return
+	}
+
+	// Audio track playlists: /audio_{i}.m3u8
+	if _, err := fmt.Sscanf(path, "/audio_%d.m3u8", &trackIndex); err == nil {
+		handler.ServeTrackPlaylist(w, r, "audio", trackIndex)
+		return
+	}
+
+	var segmentIndex int
+
+	// Video segments: /video_{i}/segment_{i}.ts
+	if _, err := fmt.Sscanf(path, "/video_%d/segment_%d.ts", &trackIndex, &segmentIndex); err == nil {
+		shouldReturn := EnsureRequestDuration(r)
+		if shouldReturn {
+			return
 		}
-		// TODO: Delegate to handler for other indices if supported
-		http.NotFound(w, r)
+
+		handler.ServeSegment(w, r, "video", trackIndex, segmentIndex)
 		return
 	}
 
-	// Handle HLS segment request
-	// /video_{index}/segment_{id}.ts
-	// /audio_{index}/segment_{id}.ts
-	if strings.HasSuffix(path, ".ts") {
-		s.handleSegment(w, r)
+	// Audio segments: /audio_{i}/segment_{i}.ts
+	if _, err := fmt.Sscanf(path, "/audio_%d/segment_%d.ts", &trackIndex, &segmentIndex); err == nil {
+		shouldReturn := EnsureRequestDuration(r)
+		if shouldReturn {
+			return
+		}
+
+		handler.ServeSegment(w, r, "audio", trackIndex, segmentIndex)
 		return
 	}
 
 	// Debug log
 	if path == "/debug/log" {
-		s.mu.RLock()
-		handler := s.streamHandler
-		s.mu.RUnlock()
 		if rh, ok := handler.(*stream.RemoteHandler); ok {
 			rh.HandleDebugLog(w, r)
 			return
@@ -213,4 +153,15 @@ func (s *Server) handleRequest(w http.ResponseWriter, r *http.Request) {
 	}
 
 	http.NotFound(w, r)
+}
+
+func EnsureRequestDuration(r *http.Request) bool {
+	select {
+	case <-r.Context().Done():
+		// Client disconnected/cancelled - don't transcode
+		return true
+	case <-time.After(100 * time.Millisecond):
+		// Connection still alive, proceed with transcode
+	}
+	return false
 }
