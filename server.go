@@ -29,6 +29,7 @@ func NewServer(port int, localIP string) *Server {
 	}
 
 	mux := http.NewServeMux()
+	mux.HandleFunc("/playlist.m3u8", s.handlePlaylist)
 	mux.HandleFunc("/", s.handleRequest)
 
 	s.httpServer = &http.Server{
@@ -123,64 +124,92 @@ func (s *Server) Stop() error {
 	return nil
 }
 
-// handleRequest routes requests to appropriate handlers
-func (s *Server) handleRequest(w http.ResponseWriter, r *http.Request) {
+// handlePlaylist handles playlist requests
+func (s *Server) handlePlaylist(w http.ResponseWriter, r *http.Request) {
 	s.mu.RLock()
 	handler := s.streamHandler
-	subtitlePath := s.subtitlePath
 	s.mu.RUnlock()
 
-	logger.Info("HTTP request", "path", r.URL.Path, "method", r.Method)
-
 	if handler == nil {
-		logger.Warn("Request rejected: no media handler set")
 		http.Error(w, "No media handler set", http.StatusNotFound)
 		return
 	}
 
-	path := r.URL.Path
+	// Briefly inhibit sleep on streaming requests (auto-stops after 30s of inactivity)
+	inhibitor.Refresh(3 * time.Second)
 
-	// Handle subtitle request
-	if path == "/subtitle.vtt" || strings.HasSuffix(path, ".vtt") || strings.HasSuffix(path, ".srt") {
-		if subtitlePath != "" && !strings.Contains(subtitlePath, ":si=") {
-			// Serve external subtitle file
-			w.Header().Set("Access-Control-Allow-Origin", "*")
-			w.Header().Set("Content-Type", "text/vtt")
-			http.ServeFile(w, r, subtitlePath)
-			return
+	handler.ServePlaylist(w, r)
+}
+
+// handleSegment handles segment requests
+func (s *Server) handleSegment(w http.ResponseWriter, r *http.Request) {
+	s.mu.RLock()
+	handler := s.streamHandler
+	s.mu.RUnlock()
+
+	if handler == nil {
+		http.Error(w, "No media handler set", http.StatusNotFound)
+		return
+	}
+
+	// Briefly inhibit sleep on streaming requests
+	inhibitor.Refresh(3 * time.Second)
+
+	handler.ServeSegment(w, r)
+}
+
+// handleRequest routes requests to appropriate handlers
+func (s *Server) handleRequest(w http.ResponseWriter, r *http.Request) {
+	path := r.URL.Path
+	logger.Info("HTTP request", "path", path, "method", r.Method)
+
+	// Dispatch based on path patterns that couldn't be registered directly
+
+	// Video/Audio playlists: /video_{index}.m3u8, /audio_{index}.m3u8
+	if (strings.HasPrefix(path, "/video_") || strings.HasPrefix(path, "/audio_")) && strings.HasSuffix(path, ".m3u8") {
+		s.handlePlaylist(w, r)
+		return
+	}
+
+	// Subtitles: /subtitle_{index}.vtt
+	if strings.HasPrefix(path, "/subtitle_") && strings.HasSuffix(path, ".vtt") {
+		// Extract index
+		parts := strings.Split(strings.TrimSuffix(path, ".vtt"), "_")
+		if len(parts) == 2 {
+			if parts[1] == "-1" {
+				s.mu.RLock()
+				subtitlePath := s.subtitlePath
+				s.mu.RUnlock()
+				if subtitlePath != "" && !strings.Contains(subtitlePath, ":si=") {
+					w.Header().Set("Access-Control-Allow-Origin", "*")
+					w.Header().Set("Content-Type", "text/vtt")
+					http.ServeFile(w, r, subtitlePath)
+					return
+				}
+			}
 		}
+		// TODO: Delegate to handler for other indices if supported
 		http.NotFound(w, r)
 		return
 	}
 
-	// Handle HLS playlist request
-	if strings.HasSuffix(path, ".m3u8") || path == "/media.mp4" {
-		// Briefly inhibit sleep on streaming requests (auto-stops after 30s of inactivity)
-		inhibitor.Refresh(3 * time.Second)
-
-		handler.ServePlaylist(w, r)
-		return
-	}
-
 	// Handle HLS segment request
-	if strings.HasSuffix(path, ".ts") || strings.Contains(path, "/segment/") {
-		// Briefly inhibit sleep on streaming requests
-		inhibitor.Refresh(3 * time.Second)
-
-		handler.ServeSegment(w, r)
+	// /video_{index}/segment_{id}.ts
+	// /audio_{index}/segment_{id}.ts
+	if strings.HasSuffix(path, ".ts") {
+		s.handleSegment(w, r)
 		return
 	}
 
-	// Handle debug log (for remote)
+	// Debug log
 	if path == "/debug/log" {
-		// We might need to cast to RemoteHandler to access handleDebugLog if it's not in the interface
-		// Or we can add HandleDebugLog to the interface?
-		// For now, let's check if it's a RemoteHandler
+		s.mu.RLock()
+		handler := s.streamHandler
+		s.mu.RUnlock()
 		if rh, ok := handler.(*stream.RemoteHandler); ok {
 			rh.HandleDebugLog(w, r)
+			return
 		}
-		// Actually, I can just not handle it here if not needed, or export it.
-		// I will export it in debug_handler.go as HandleDebugLog.
 	}
 
 	http.NotFound(w, r)

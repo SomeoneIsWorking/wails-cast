@@ -1,7 +1,6 @@
 package stream
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -10,12 +9,14 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
 	"wails-cast/pkg/extractor"
 	"wails-cast/pkg/hls"
 	_inhibitor "wails-cast/pkg/inhibitor"
+	"wails-cast/pkg/logger"
 )
 
 var inhibitor = _inhibitor.InhibitorInstance
@@ -36,6 +37,7 @@ type RemoteHandler struct {
 	IsManifestRewritten bool
 	Options             StreamOptions
 	Duration            float64 // Total duration of the stream in seconds
+	OriginalManifest    string  // Original manifest content before rewriting
 }
 
 // NewRemoteHandler creates a new HLS handler
@@ -48,12 +50,7 @@ func NewRemoteHandler(localIP string, cacheDir string, options StreamOptions) *R
 
 	manifestPath := filepath.Join(cacheDir, "manifest.json")
 	manifestData := &Manifest{
-		Items:       make(map[string]*ManifestItem),
-		SegmentMap:  make(map[string]string),
-		URLMap:      make(map[string]string),
-		NextID:      0,
-		AudioNextID: 0,
-		VideoNextID: 0,
+		Items: make(map[string]*ManifestItem),
 	}
 
 	// Load existing manifest if available
@@ -64,12 +61,8 @@ func NewRemoteHandler(localIP string, cacheDir string, options StreamOptions) *R
 				fmt.Printf("⚠️ Manifest version mismatch (found %d, expected %d). Resetting cache.\n", manifestData.Version, CurrentManifestVersion)
 				// Reset manifest
 				manifestData = &Manifest{
-					Version:     CurrentManifestVersion,
-					Items:       make(map[string]*ManifestItem),
-					SegmentMap:  make(map[string]string),
-					NextID:      0,
-					AudioNextID: 0,
-					VideoNextID: 0,
+					Version: CurrentManifestVersion,
+					Items:   make(map[string]*ManifestItem),
 				}
 				// Clear cache directory contents (preserve directory itself)
 				dirEntries, _ := os.ReadDir(cacheDir)
@@ -98,6 +91,7 @@ func NewRemoteHandler(localIP string, cacheDir string, options StreamOptions) *R
 func (p *RemoteHandler) SetExtractor(result *extractor.ExtractResult) {
 	p.BaseURL = result.BaseURL
 	p.Manifest = result.ManifestBody
+	p.OriginalManifest = result.ManifestBody
 	p.Cookies = result.Cookies
 	p.Headers = result.Headers
 }
@@ -116,22 +110,21 @@ func (p *RemoteHandler) GetServedManifest() string {
 
 	var rewrittenManifest string
 
-	// Detect if this is a master playlist with separate audio/video	// Check if it's a master playlist
+	// Check if it's a master playlist
 	if hls.ParsePlaylistType(p.Manifest) == hls.PlaylistTypeMaster {
-		mi := hls.ExtractTracksFromMaster(p.Manifest)
-
-		// Use first available tracks
-		p.VideoPlaylistURL = hls.ResolveURL(p.BaseURL, mi.VideoTracks[p.Options.VideoTrack].URI)
-		p.AudioPlaylistURL = hls.ResolveURL(p.BaseURL, mi.AudioTracks[p.Options.AudioTrack].URI)
-
-		// Cache the nested playlists
-		p.downloadAndParseNestedPlaylists()
-
-		// Rewrite the master playlist to use /audio.m3u8 and /video.m3u8
-		rewrittenManifest = p.rewriteDemuxedMaster(p.Manifest, p.BaseURL)
-
-		// Not master, proceed with normal rewriting
-		rewrittenManifest = p.rewriteManifest(p.Manifest, p.BaseURL, "")
+		// Rewrite the master playlist to use /audio_{i}.m3u8 and /video_{i}.m3u8
+		rewrittenManifest = p.rewriteMasterPlaylist(p.Manifest)
+		// Save rewritten master
+		// Ensure directory exists (cacheMasterPlaylist should have created it, but GetServedManifest might be called first?)
+		// Actually serveMasterPlaylist calls cacheMasterPlaylist first.
+		// But let's be safe.
+		dirPath := filepath.Join(p.CacheDir, "playlist")
+		os.MkdirAll(dirPath, 0755)
+		os.WriteFile(filepath.Join(dirPath, "playlist.m3u8"), []byte(rewrittenManifest), 0644)
+	} else {
+		// Not master, proceed with normal rewriting (treat as video_0)
+		// This path is likely unused if we always start with master, but good for safety
+		rewrittenManifest, _ = p.cachePlaylist("playlist", p.Manifest, p.BaseURL, "video_0_")
 	}
 
 	p.Manifest = rewrittenManifest
@@ -141,84 +134,191 @@ func (p *RemoteHandler) GetServedManifest() string {
 
 // ServePlaylist serves the m3u8 manifest with rewritten URLs
 func (p *RemoteHandler) ServePlaylist(w http.ResponseWriter, r *http.Request) {
-	// Check if specific playlist requested
-	if r.URL.Path == "/audio.m3u8" {
-		p.handleAudioPlaylist(w, r)
-		return
-	}
-	if r.URL.Path == "/video.m3u8" {
-		p.handleVideoPlaylist(w, r)
+	path := r.URL.Path
+
+	// Master Playlist
+	if path == "/playlist.m3u8" || path == "/media.mp4" {
+		p.serveMasterPlaylist(w, r)
 		return
 	}
 
+	// Video Track Playlist
+	if strings.HasPrefix(path, "/video_") {
+		// Extract index
+		parts := strings.Split(strings.TrimSuffix(path, ".m3u8"), "_")
+		if len(parts) == 2 {
+			index, err := strconv.Atoi(parts[1])
+			if err == nil {
+				p.serveVideoPlaylist(w, r, index)
+				return
+			}
+		}
+	}
+
+	// Audio Track Playlist
+	if strings.HasPrefix(path, "/audio_") {
+		// Extract index
+		parts := strings.Split(strings.TrimSuffix(path, ".m3u8"), "_")
+		if len(parts) == 2 {
+			index, err := strconv.Atoi(parts[1])
+			if err == nil {
+				p.serveAudioPlaylist(w, r, index)
+				return
+			}
+		}
+	}
+
+	http.NotFound(w, r)
+}
+
+// serveMasterPlaylist serves the master playlist with rewritten URLs
+func (p *RemoteHandler) serveMasterPlaylist(w http.ResponseWriter, _ *http.Request) {
 	// Briefly inhibit sleep on streaming requests (auto-stops after 30s of inactivity)
 	inhibitor.Refresh(3 * time.Second)
 
-	fmt.Printf("Serving manifest to %s\n", r.RemoteAddr)
+	// Rewrite and Cache
+	// For master playlist, we don't have a segment prefix per se, but we want to map tracks?
+	// Actually, master playlist doesn't have segments, it has tracks.
+	// rewriteMasterPlaylist handles track indices.
+	// cachePlaylist uses rewriteManifestWithMap which is for segments.
+	// We should probably just use rewriteMasterPlaylist here and cache it manually if needed.
+	// But wait, the user asked to "write it to cache, write the raw one to cache AND write a json to cache that maps the indices to raw URLs".
+	// For master playlist, the "indices" are track indices.
+	// So we should probably implement a similar logic for master playlist.
 
-	limit := 500
-	if len(p.Manifest) < limit {
-		limit = len(p.Manifest)
-	}
-	fmt.Printf("Original manifest (first %d chars): %s\n", limit, p.Manifest[:limit])
+	// Save Raw
+	p.cacheMasterPlaylist("playlist", p.Manifest, p.BaseURL)
 
 	rewrittenManifest := p.GetServedManifest()
 
-	limit = 500
-	if len(rewrittenManifest) < limit {
-		limit = len(rewrittenManifest)
-	}
-	fmt.Printf("Rewritten main manifest (first %d chars): %s\n", limit, rewrittenManifest[:limit])
-
-	// Set CORS headers
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	w.Header().Set("Access-Control-Allow-Methods", "GET, OPTIONS")
 	w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
-	w.Header().Set("Content-Type", "application/x-mpegURL")
+	w.Header().Set("Content-Type", "application/vnd.apple.mpegurl")
 	w.Header().Set("Cache-Control", "no-cache")
 
 	w.Write([]byte(rewrittenManifest))
 }
 
-// handleAudioPlaylist serves the audio playlist
-func (p *RemoteHandler) handleAudioPlaylist(w http.ResponseWriter, r *http.Request) {
-	audioPath := filepath.Join(p.CacheDir, "audio.m3u8")
-	if _, err := os.Stat(audioPath); os.IsNotExist(err) {
-		http.Error(w, "Audio playlist not cached", http.StatusNotFound)
+// cacheMasterPlaylist caches the master playlist and its track map
+func (p *RemoteHandler) cacheMasterPlaylist(name string, content string, baseURL string) {
+	// Create directory
+	dirPath := filepath.Join(p.CacheDir, name)
+	if err := os.MkdirAll(dirPath, 0755); err != nil {
+		logger.Logger.Error("Failed to create master playlist directory", "err", err)
 		return
 	}
 
-	p.servePlaylistWithPrefix(w, audioPath, p.AudioPlaylistURL, "audio_")
-}
-
-// handleVideoPlaylist serves the video playlist
-func (p *RemoteHandler) handleVideoPlaylist(w http.ResponseWriter, r *http.Request) {
-	videoPath := filepath.Join(p.CacheDir, "video.m3u8")
-	if _, err := os.Stat(videoPath); os.IsNotExist(err) {
-		http.Error(w, "Video playlist not cached", http.StatusNotFound)
-		return
+	// 1. Save Raw
+	rawPath := filepath.Join(dirPath, "raw.m3u8")
+	if err := os.WriteFile(rawPath, []byte(content), 0644); err != nil {
+		logger.Logger.Error("Failed to save raw master playlist", "err", err)
 	}
 
-	p.servePlaylistWithPrefix(w, videoPath, p.VideoPlaylistURL, "video_")
+	// 2. Generate Map (Track Indices -> URLs)
+	// We can reuse ExtractTracksFromMaster logic
+	mi := hls.ExtractTracksFromMaster(content)
+
+	// We need to map video_0 -> URL, audio_0 -> URL
+	// Let's create a map structure
+	type MasterMap struct {
+		Video []string `json:"video"`
+		Audio []string `json:"audio"`
+	}
+
+	mm := MasterMap{
+		Video: make([]string, len(mi.VideoTracks)),
+		Audio: make([]string, len(mi.AudioTracks)),
+	}
+
+	for i, t := range mi.VideoTracks {
+		mm.Video[i] = hls.ResolveURL(baseURL, t.URI)
+	}
+	for i, t := range mi.AudioTracks {
+		mm.Audio[i] = hls.ResolveURL(baseURL, t.URI)
+	}
+
+	// 3. Save Map
+	mapPath := filepath.Join(dirPath, "map.json")
+	mapData, err := json.MarshalIndent(mm, "", "  ")
+	if err == nil {
+		if err := os.WriteFile(mapPath, mapData, 0644); err != nil {
+			logger.Logger.Error("Failed to save master map", "err", err)
+		}
+	}
+
+	// 4. Save Rewritten (we get it from GetServedManifest which calls rewriteMasterPlaylist)
+	// We can't easily get it here without calling rewriteMasterPlaylist again or relying on p.Manifest if updated.
+	// But GetServedManifest updates p.Manifest.
+	// Let's just save what we serve.
+	// The caller calls GetServedManifest.
 }
 
-// servePlaylistWithPrefix serves a local playlist file with a specific segment prefix
-func (p *RemoteHandler) servePlaylistWithPrefix(w http.ResponseWriter, path string, originalURL string, prefix string) {
-	content, err := os.ReadFile(path)
+// serveVideoPlaylist serves a specific video track
+func (p *RemoteHandler) serveVideoPlaylist(w http.ResponseWriter, r *http.Request, index int) {
+	// We need to get the URL for this track
+	// If the original was a master playlist, we extract the track URL.
+	// If the original was a media playlist, and index is 0, we use the original URL.
+
+	targetURL := ""
+
+	// Use the *original* manifest to extract tracks, as p.Manifest might be rewritten
+	manifestToUse := p.OriginalManifest
+	if manifestToUse == "" {
+		manifestToUse = p.Manifest
+	}
+
+	playlistType := hls.ParsePlaylistType(manifestToUse)
+	if playlistType == hls.PlaylistTypeMaster {
+		mi := hls.ExtractTracksFromMaster(manifestToUse)
+		if index >= 0 && index < len(mi.VideoTracks) {
+			targetURL = hls.ResolveURL(p.BaseURL, mi.VideoTracks[index].URI)
+		} else {
+			http.Error(w, "Track not found", http.StatusNotFound)
+			return
+		}
+	} else {
+		if index == 0 {
+			targetURL = p.BaseURL // It's the manifest itself
+		} else {
+			http.Error(w, "Track not found", http.StatusNotFound)
+			return
+		}
+	}
+
+	var playlistContent string
+
+	// Let's assume we need to download it if it's a track from master.
+	if targetURL != "" {
+		// Download
+		resp, err := p.downloadFile(r.Context(), targetURL)
+		if err != nil {
+			http.Error(w, "Failed to download playlist", http.StatusBadGateway)
+			logger.Logger.Error("Failed to download playlist", "err", err, "url", targetURL)
+			return
+		}
+		defer resp.Body.Close()
+		body, _ := io.ReadAll(resp.Body)
+		playlistContent = string(body)
+	} else {
+		// Use p.Manifest (only if media playlist)
+		playlistContent = p.Manifest
+		targetURL = p.BaseURL // Approximation
+	}
+
+	// Rewrite and Cache
+	baseURL := targetURL
+	if idx := strings.LastIndex(targetURL, "/"); idx != -1 {
+		baseURL = targetURL[:idx+1]
+	}
+
+	rewritten, err := p.cachePlaylist(fmt.Sprintf("video_%d", index), playlistContent, baseURL, fmt.Sprintf("video_%d_", index))
 	if err != nil {
-		http.Error(w, "Failed to read playlist", http.StatusInternalServerError)
+		logger.Logger.Error("Failed to cache playlist", "err", err)
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 		return
 	}
 
-	// Derive base URL from original URL
-	baseURL := originalURL
-	if idx := strings.LastIndex(originalURL, "/"); idx != -1 {
-		baseURL = originalURL[:idx+1]
-	}
-
-	rewritten := p.rewriteManifest(string(content), baseURL, prefix)
-
-	// Ensure proper HLS tags for Chromecast compatibility
 	rewritten = p.ensureHLSTags(rewritten)
 
 	w.Header().Set("Access-Control-Allow-Origin", "*")
@@ -226,114 +326,186 @@ func (p *RemoteHandler) servePlaylistWithPrefix(w http.ResponseWriter, path stri
 	w.Write([]byte(rewritten))
 }
 
-// downloadAndParseNestedPlaylists downloads audio and video playlists and caches them
-func (p *RemoteHandler) downloadAndParseNestedPlaylists() error {
-	fmt.Println("Downloading nested playlists to cache them...")
-	// Download audio playlist
-	if p.AudioPlaylistURL != "" {
-		resp, err := p.downloadFile(context.Background(), p.AudioPlaylistURL)
-		if err != nil {
-			fmt.Printf("Failed to download audio playlist: %v\n", err)
-			return err
-		}
-		defer resp.Body.Close()
-
-		body, _ := io.ReadAll(resp.Body)
-		audioPlaylist := string(body)
-
-		// Save audio playlist to cache
-		audioLocalPath := filepath.Join(p.CacheDir, "audio.m3u8")
-		if err := os.WriteFile(audioLocalPath, []byte(audioPlaylist), 0644); err == nil {
-			audioItem := &ManifestItem{
-				URL:         p.AudioPlaylistURL,
-				ContentType: "application/vnd.apple.mpegurl",
-				LocalPath:   audioLocalPath,
-				IsPlaylist:  true,
-			}
-			p.updateManifest(p.AudioPlaylistURL, audioItem)
-		}
-
-		fmt.Printf("Cached audio playlist as audio.m3u8\n")
+// serveAudioPlaylist serves a specific audio track
+func (p *RemoteHandler) serveAudioPlaylist(w http.ResponseWriter, r *http.Request, index int) {
+	manifestToUse := p.OriginalManifest
+	if manifestToUse == "" {
+		manifestToUse = p.Manifest
 	}
 
-	// Download video playlist
-	if p.VideoPlaylistURL != "" {
-		resp, err := p.downloadFile(context.Background(), p.VideoPlaylistURL)
-		if err != nil {
-			fmt.Printf("Failed to download video playlist: %v\n", err)
-			return err
-		}
-		defer resp.Body.Close()
-
-		body, _ := io.ReadAll(resp.Body)
-		videoPlaylist := string(body)
-		p.Duration = hls.CalculateTotalDuration(videoPlaylist)
-
-		// Save video playlist to cache
-		videoLocalPath := filepath.Join(p.CacheDir, "video.m3u8")
-		if err := os.WriteFile(videoLocalPath, []byte(videoPlaylist), 0644); err == nil {
-			videoItem := &ManifestItem{
-				URL:         p.VideoPlaylistURL,
-				ContentType: "application/vnd.apple.mpegurl",
-				LocalPath:   videoLocalPath,
-				IsPlaylist:  true,
-			}
-			p.updateManifest(p.VideoPlaylistURL, videoItem)
-		}
-
-		fmt.Printf("Cached video playlist as video.m3u8\n")
+	playlistType := hls.ParsePlaylistType(manifestToUse)
+	if playlistType != hls.PlaylistTypeMaster {
+		http.Error(w, "No audio tracks in media playlist", http.StatusNotFound)
+		return
 	}
-	return nil
+
+	mi := hls.ExtractTracksFromMaster(manifestToUse)
+	if index < 0 || index >= len(mi.AudioTracks) {
+		http.Error(w, "Track not found", http.StatusNotFound)
+		return
+	}
+
+	targetURL := hls.ResolveURL(p.BaseURL, mi.AudioTracks[index].URI)
+
+	// Download
+	resp, err := p.downloadFile(r.Context(), targetURL)
+	if err != nil {
+		http.Error(w, "Failed to download playlist", http.StatusBadGateway)
+		return
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+	playlistContent := string(body)
+
+	// Rewrite and Cache
+	baseURL := targetURL
+	if idx := strings.LastIndex(targetURL, "/"); idx != -1 {
+		baseURL = targetURL[:idx+1]
+	}
+
+	rewritten, err := p.cachePlaylist(fmt.Sprintf("audio_%d", index), playlistContent, baseURL, fmt.Sprintf("audio_%d_", index))
+	if err != nil {
+		logger.Logger.Error("Failed to cache playlist", "err", err)
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		return
+	}
+
+	rewritten = p.ensureHLSTags(rewritten)
+
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Content-Type", "application/vnd.apple.mpegurl")
+	w.Write([]byte(rewritten))
 }
 
-// rewriteManifest rewrites URLs in the manifest to point to the proxy
-func (p *RemoteHandler) rewriteManifest(manifest string, baseURL string, segmentPrefix string) string {
-	isMaster := strings.Contains(manifest, "#EXT-X-STREAM-INF")
+// rewriteMasterPlaylist rewrites the master playlist to point to local endpoints
+func (p *RemoteHandler) rewriteMasterPlaylist(manifest string) string {
 	lines := strings.Split(manifest, "\n")
+	var result []string
 
-	base, err := url.Parse(baseURL)
-	if err != nil {
-		fmt.Printf("Error parsing base URL %s: %v\n", baseURL, err)
-		return manifest
+	// We need to track indices
+	videoIdx := 0
+	audioIdx := 0
+
+	// We can't just increment on every line, we need to match how ExtractTracksFromMaster counts.
+	// ExtractTracksFromMaster iterates and finds EXT-X-STREAM-INF for video, and EXT-X-MEDIA TYPE=AUDIO for audio.
+
+	// Let's do a pass to rewrite.
+	// Note: This simple parsing must match ExtractTracksFromMaster's logic to ensure indices align.
+
+	for i := 0; i < len(lines); i++ {
+		line := lines[i]
+		trimmed := strings.TrimSpace(line)
+
+		if strings.HasPrefix(trimmed, "#EXT-X-MEDIA") && strings.Contains(trimmed, "TYPE=AUDIO") {
+			// It's an audio track
+			// Replace URI="..." with /audio_{index}.m3u8
+			if strings.Contains(trimmed, `URI="`) {
+				uriPattern := regexp.MustCompile(`URI="([^"]+)"`)
+				line = uriPattern.ReplaceAllString(trimmed, fmt.Sprintf(`URI="/audio_%d.m3u8"`, audioIdx))
+				audioIdx++
+			}
+			result = append(result, line)
+			continue
+		}
+
+		if strings.HasPrefix(trimmed, "#EXT-X-STREAM-INF") {
+			// The next line (or URI attribute) is the video playlist
+			result = append(result, line)
+
+			// Check if next line is URL
+			if i+1 < len(lines) && !strings.HasPrefix(strings.TrimSpace(lines[i+1]), "#") {
+				i++
+				result = append(result, fmt.Sprintf("/video_%d.m3u8", videoIdx))
+				videoIdx++
+			}
+			continue
+		}
+
+		result = append(result, line)
 	}
 
-	for i, line := range lines {
+	return strings.Join(result, "\n")
+}
+
+// cachePlaylist saves raw/rewritten playlists and a segment map
+func (p *RemoteHandler) cachePlaylist(name string, content string, baseURL string, segmentPrefix string) (string, error) {
+	// Create directory
+	dirPath := filepath.Join(p.CacheDir, name)
+	if err := os.MkdirAll(dirPath, 0755); err != nil {
+		return "", err
+	}
+
+	// 1. Save Raw
+	rawPath := filepath.Join(dirPath, "raw.m3u8")
+	if err := os.WriteFile(rawPath, []byte(content), 0644); err != nil {
+		logger.Logger.Error("Failed to save raw playlist", "err", err, "path", rawPath)
+	}
+
+	// 2. Rewrite and Generate Map
+	rewritten, segmentMap, err := p.rewriteManifestWithMap(content, baseURL, segmentPrefix)
+	if err != nil {
+		return "", err
+	}
+
+	// 3. Save Map
+	mapPath := filepath.Join(dirPath, "map.json")
+	mapData, err := json.Marshal(segmentMap)
+	if err == nil {
+		if err := os.WriteFile(mapPath, mapData, 0644); err != nil {
+			logger.Logger.Error("Failed to save segment map", "err", err, "path", mapPath)
+		}
+	} else {
+		logger.Logger.Error("Failed to marshal segment map", "err", err)
+	}
+
+	// 4. Save Rewritten
+	rewrittenPath := filepath.Join(dirPath, "playlist.m3u8")
+	if err := os.WriteFile(rewrittenPath, []byte(rewritten), 0644); err != nil {
+		logger.Logger.Error("Failed to save rewritten playlist", "err", err, "path", rewrittenPath)
+	}
+
+	return rewritten, nil
+}
+
+// rewriteManifestWithMap rewrites URLs and returns the rewritten manifest and a map of index -> absolute URL
+func (p *RemoteHandler) rewriteManifestWithMap(manifest string, baseURL string, segmentPrefix string) (string, []string, error) {
+	lines := strings.Split(manifest, "\n")
+	base, err := url.Parse(baseURL)
+	if err != nil {
+		return "", nil, err
+	}
+
+	var segmentMap []string
+	var rewrittenLines []string
+
+	// segmentPrefix is expected to be like "video_0_" or "audio_0_"
+	pathPrefix := ""
+	if strings.HasPrefix(segmentPrefix, "video_") {
+		parts := strings.Split(segmentPrefix, "_")
+		if len(parts) >= 2 {
+			pathPrefix = fmt.Sprintf("/video_%s/segment_", parts[1])
+		}
+	} else if strings.HasPrefix(segmentPrefix, "audio_") {
+		parts := strings.Split(segmentPrefix, "_")
+		if len(parts) >= 2 {
+			pathPrefix = fmt.Sprintf("/audio_%s/segment_", parts[1])
+		}
+	}
+
+	if pathPrefix == "" {
+		pathPrefix = "/segment/" + segmentPrefix
+	}
+
+	segmentCount := 0
+	for _, line := range lines {
 		trimmed := strings.TrimSpace(line)
 		if trimmed == "" {
 			continue
 		}
 
 		// Skip if already rewritten
-		if strings.Contains(trimmed, p.LocalIP) || strings.Contains(trimmed, "/segment/") || strings.Contains(trimmed, "/playlist/") || strings.Contains(trimmed, "/audio.m3u8") || strings.Contains(trimmed, "/video.m3u8") {
-			continue
-		}
-
-		// Check for URI="..." pattern (e.g. for keys or subtitles)
-		if strings.Contains(line, `URI="`) {
-			uriPattern := regexp.MustCompile(`URI="([^"]+)"`)
-			line = uriPattern.ReplaceAllStringFunc(line, func(match string) string {
-				path := uriPattern.FindStringSubmatch(match)[1]
-
-				// Resolve to absolute URL
-				u, err := url.Parse(path)
-				if err == nil {
-					path = base.ResolveReference(u).String()
-				}
-
-				id := p.getOrAssignID(path, "")
-
-				if isMaster {
-					return fmt.Sprintf(`URI="/playlist/%s.m3u8"`, id)
-				}
-
-				// Determine extension based on path or default to .ts
-				ext := filepath.Ext(path)
-				if ext == "" {
-					ext = ".ts"
-				}
-				return fmt.Sprintf(`URI="/segment/%s%s%s"`, segmentPrefix, id, ext)
-			})
-			lines[i] = line
+		if strings.HasPrefix(trimmed, "/video_") || strings.HasPrefix(trimmed, "/audio_") {
+			rewrittenLines = append(rewrittenLines, line)
 			continue
 		}
 
@@ -341,66 +513,35 @@ func (p *RemoteHandler) rewriteManifest(manifest string, baseURL string, segment
 		if !strings.HasPrefix(trimmed, "#") {
 			// Resolve to absolute URL
 			u, err := url.Parse(trimmed)
+			absoluteURL := trimmed
 			if err == nil {
-				trimmed = base.ResolveReference(u).String()
+				absoluteURL = base.ResolveReference(u).String()
 			}
 
-			id := p.getOrAssignID(trimmed, segmentPrefix)
-			lines[i] = fmt.Sprintf("/segment/%s%s.ts", segmentPrefix, id)
-		}
-	}
-
-	return strings.Join(lines, "\n")
-}
-
-// rewriteDemuxedMaster rewrites a demuxed master playlist to use /audio.m3u8 and /video.m3u8
-func (p *RemoteHandler) rewriteDemuxedMaster(manifest string, baseURL string) string {
-	lines := strings.Split(manifest, "\n")
-	var result []string
-	expectingVideoURI := false
-
-	for _, line := range lines {
-		trimmed := strings.TrimSpace(line)
-		if trimmed == "" {
-			result = append(result, line)
-			continue
-		}
-
-		// Skip if already rewritten
-		if strings.Contains(trimmed, p.LocalIP) || strings.Contains(trimmed, "/segment/") || strings.Contains(trimmed, "/playlist/") || strings.Contains(trimmed, "/audio.m3u8") || strings.Contains(trimmed, "/video.m3u8") {
-			result = append(result, line)
-			expectingVideoURI = false
-			continue
-		}
-
-		// Check for URI="..." in EXT-X-MEDIA TYPE=AUDIO
-		if strings.Contains(line, `TYPE=AUDIO`) && strings.Contains(line, `URI="`) {
-			// Replace URI with /audio.m3u8
-			uriPattern := regexp.MustCompile(`URI="([^"]+)"`)
-			line = uriPattern.ReplaceAllString(line, `URI="/audio.m3u8"`)
-			result = append(result, line)
-			expectingVideoURI = false
-			continue
-		}
-
-		// If expecting video URI and this is not a comment/tag, replace with /video.m3u8
-		if expectingVideoURI && !strings.HasPrefix(trimmed, "#") {
-			result = append(result, "/video.m3u8")
-			expectingVideoURI = false
-			continue
-		}
-
-		// Check for #EXT-X-STREAM-INF
-		if strings.HasPrefix(trimmed, "#EXT-X-STREAM-INF") {
-			expectingVideoURI = true
+			segmentMap = append(segmentMap, absoluteURL)
+			rewrittenLines = append(rewrittenLines, fmt.Sprintf("%s%d.ts", pathPrefix, segmentCount))
+			segmentCount++
 		} else {
-			expectingVideoURI = false
+			// Handle URI="..." for encryption keys etc
+			if strings.Contains(line, `URI="`) && !strings.Contains(line, "TYPE=AUDIO") {
+				uriPattern := regexp.MustCompile(`URI="([^"]+)"`)
+				line = uriPattern.ReplaceAllStringFunc(line, func(match string) string {
+					path := uriPattern.FindStringSubmatch(match)[1]
+					if strings.HasPrefix(path, "http") {
+						return match
+					}
+					u, err := url.Parse(path)
+					if err == nil {
+						return fmt.Sprintf(`URI="%s"`, base.ResolveReference(u).String())
+					}
+					return match
+				})
+			}
+			rewrittenLines = append(rewrittenLines, line)
 		}
-
-		result = append(result, line)
 	}
 
-	return strings.Join(result, "\n")
+	return strings.Join(rewrittenLines, "\n"), segmentMap, nil
 }
 
 // ensureHLSTags adds required HLS tags if missing for better Chromecast compatibility

@@ -105,7 +105,7 @@ func (a *App) DiscoverDevices() []Device {
 // GetMediaURL returns the URL for a media file to be cast
 func (a *App) GetMediaURL(filePath string) string {
 	localIP := a.discovery.GetLocalIP()
-	return fmt.Sprintf("http://%s:%d/media.m3u8", localIP, 8888)
+	return fmt.Sprintf("http://%s:%d/playlist.m3u8", localIP, 8888)
 }
 
 // GetLocalIP returns the local IP address

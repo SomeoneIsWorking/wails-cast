@@ -1,9 +1,11 @@
 package stream
 
 import (
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -26,81 +28,162 @@ func (p *RemoteHandler) ServeSegment(w http.ResponseWriter, r *http.Request) {
 	case <-time.After(100 * time.Millisecond):
 		// Connection still alive, proceed with transcode
 	}
-	// Parse key from path
+
 	path := r.URL.Path
-	if !strings.HasPrefix(path, "/segment/") {
-		http.Error(w, "Invalid path", http.StatusBadRequest)
+	// Expected formats:
+	// /video_{trackIdx}/segment_{segIdx}.ts
+	// /video_{trackIdx}/segment_{segIdx}_raw.ts
+	// /audio_{trackIdx}/segment_{segIdx}.ts
+	// /audio_{trackIdx}/segment_{segIdx}_raw.ts
+
+	parts := strings.Split(strings.TrimPrefix(path, "/"), "/")
+	if len(parts) != 2 {
+		http.Error(w, "Invalid path structure", http.StatusBadRequest)
 		return
 	}
 
-	key := path[len("/segment/"):]
-	// Remove extension
-	if idx := strings.LastIndex(key, "."); idx != -1 {
-		key = key[:idx]
-	}
+	trackPart := parts[0]   // e.g. video_0
+	segmentPart := parts[1] // e.g. segment_1.ts or segment_1_raw.ts
 
-	// Parse key: e.g. "video_0" -> type="video", index=0
-	var segType string
-	var index int
-	if strings.Contains(key, "_") {
-		parts := strings.SplitN(key, "_", 2)
-		segType = parts[0]
-		fmt.Sscanf(parts[1], "%d", &index)
+	// Parse track type and index
+	var trackType string
+	var trackIdx int
+	if strings.HasPrefix(trackPart, "video_") {
+		trackType = "video"
+		fmt.Sscanf(strings.TrimPrefix(trackPart, "video_"), "%d", &trackIdx)
+	} else if strings.HasPrefix(trackPart, "audio_") {
+		trackType = "audio"
+		fmt.Sscanf(strings.TrimPrefix(trackPart, "audio_"), "%d", &trackIdx)
 	} else {
-		fmt.Sscanf(key, "%d", &index)
-	}
-
-	// Get URL from cached playlist
-	var playlistPath string
-	switch segType {
-	case "audio":
-		playlistPath = filepath.Join(p.CacheDir, "audio.m3u8")
-	case "video":
-		playlistPath = filepath.Join(p.CacheDir, "video.m3u8")
-	default:
-		// For regular segments, use the map
-		p.ManifestData.mu.RLock()
-		fullURL, ok := p.ManifestData.SegmentMap[key]
-		p.ManifestData.mu.RUnlock()
-
-		if !ok {
-			fmt.Printf("❌ Segment not found for key: %s\n", key)
-			http.Error(w, "Segment not found", http.StatusNotFound)
-			return
-		}
-
-		p.serveSegment(w, r, fullURL, key)
+		http.Error(w, "Invalid track type", http.StatusBadRequest)
 		return
 	}
 
-	// Read playlist
+	// Parse segment index and raw flag
+	isRaw := strings.Contains(segmentPart, "_raw.ts")
+	var segIdx int
+	// Remove extension and prefix
+	segStr := strings.TrimPrefix(segmentPart, "segment_")
+	if isRaw {
+		segStr = strings.TrimSuffix(segStr, "_raw.ts")
+	} else {
+		segStr = strings.TrimSuffix(segStr, ".ts")
+	}
+
+	if _, err := fmt.Sscanf(segStr, "%d", &segIdx); err != nil {
+		http.Error(w, "Invalid segment index", http.StatusBadRequest)
+		return
+	}
+
+	// Resolve segment URL from playlist
+	fullURL, err := p.resolveSegmentURL(trackType, trackIdx, segIdx)
+	if err != nil {
+		fmt.Printf("❌ Failed to resolve segment URL: %v\n", err)
+		http.Error(w, "Segment not found", http.StatusNotFound)
+		return
+	}
+
+	// Create a unique key for this segment
+	key := fmt.Sprintf("%s_%d_segment_%d", trackType, trackIdx, segIdx)
+
+	p.serveSegment(w, r, fullURL, key, isRaw, trackType, trackIdx, segIdx)
+}
+
+// resolveSegmentURL finds the absolute URL of a segment by index
+func (p *RemoteHandler) resolveSegmentURL(trackType string, trackIdx int, segIdx int) (string, error) {
+	// 1. Try to load from JSON map (fastest, most reliable)
+	// Map is now at cache/track_idx/map.json
+	trackDir := filepath.Join(p.CacheDir, fmt.Sprintf("%s_%d", trackType, trackIdx))
+	mapPath := filepath.Join(trackDir, "map.json")
+
+	if mapData, err := os.ReadFile(mapPath); err == nil {
+		var segmentMap []string
+		if err := json.Unmarshal(mapData, &segmentMap); err == nil {
+			if segIdx >= 0 && segIdx < len(segmentMap) {
+				return segmentMap[segIdx], nil
+			}
+			return "", fmt.Errorf("segment index %d out of range (map size: %d)", segIdx, len(segmentMap))
+		}
+		fmt.Printf("⚠️ Failed to parse segment map %s: %v\n", mapPath, err)
+	}
+
+	// 2. Fallback to parsing the cached playlist (slower, fragile)
+	// Playlist is now at cache/track_idx/playlist.m3u8
+	playlistPath := filepath.Join(trackDir, "playlist.m3u8")
+
+	if _, err := os.Stat(playlistPath); os.IsNotExist(err) {
+		return "", fmt.Errorf("playlist not cached: %s", playlistPath)
+	}
+
 	content, err := os.ReadFile(playlistPath)
 	if err != nil {
-		http.Error(w, "Playlist not found", http.StatusNotFound)
-		return
+		return "", err
 	}
 
-	// Parse playlist to find the index-th segment
+	// Parse playlist to find the Nth segment
 	lines := strings.Split(string(content), "\n")
 	segmentCount := 0
+
+	// We need to resolve relative URLs against the playlist's base URL.
+	// But wait, we don't have the base URL handy here easily without re-extracting.
+	// However, if we are in fallback mode, it means we failed to generate the map?
+	// Or maybe the map generation failed?
+	// Let's try to re-derive the track URL.
+
+	trackURL := ""
+	// Use OriginalManifest if available
+	manifestToUse := p.OriginalManifest
+	if manifestToUse == "" {
+		manifestToUse = p.Manifest
+	}
+
+	if hls.ParsePlaylistType(manifestToUse) == hls.PlaylistTypeMaster {
+		mi := hls.ExtractTracksFromMaster(manifestToUse)
+		if trackType == "video" && trackIdx < len(mi.VideoTracks) {
+			trackURL = hls.ResolveURL(p.BaseURL, mi.VideoTracks[trackIdx].URI)
+		} else if trackType == "audio" && trackIdx < len(mi.AudioTracks) {
+			trackURL = hls.ResolveURL(p.BaseURL, mi.AudioTracks[trackIdx].URI)
+		}
+	} else {
+		// Single stream
+		trackURL = p.BaseURL
+	}
+
+	if trackURL == "" {
+		return "", fmt.Errorf("could not determine track URL")
+	}
+
+	trackBaseURL := trackURL
+	if idx := strings.LastIndex(trackURL, "/"); idx != -1 {
+		trackBaseURL = trackURL[:idx+1]
+	}
+
+	base, err := url.Parse(trackBaseURL)
+	if err != nil {
+		return "", err
+	}
+
 	for _, line := range lines {
 		trimmed := strings.TrimSpace(line)
 		if !strings.HasPrefix(trimmed, "#") && trimmed != "" {
-			if segmentCount == index {
-				fullURL := trimmed
-				p.serveSegment(w, r, fullURL, key)
-				return
+			if segmentCount == segIdx {
+				// Resolve URL
+				u, err := url.Parse(trimmed)
+				if err == nil {
+					return base.ResolveReference(u).String(), nil
+				}
+				return trimmed, nil // Fallback
 			}
 			segmentCount++
 		}
 	}
 
-	http.Error(w, "Segment index out of range", http.StatusNotFound)
+	return "", fmt.Errorf("segment index %d out of range", segIdx)
 }
 
 // serveSegment serves a segment by URL and key
-func (p *RemoteHandler) serveSegment(w http.ResponseWriter, r *http.Request, fullURL string, key string) {
-	fmt.Printf("Proxying request: %s (Key: %s)\n", fullURL, key)
+func (p *RemoteHandler) serveSegment(w http.ResponseWriter, r *http.Request, fullURL string, key string, isRaw bool, trackType string, trackIdx int, segIdx int) {
+	fmt.Printf("Proxying request: %s (Key: %s, Raw: %v)\n", fullURL, key, isRaw)
 
 	// Check manifest
 	p.ManifestData.mu.RLock()
@@ -108,36 +191,44 @@ func (p *RemoteHandler) serveSegment(w http.ResponseWriter, r *http.Request, ful
 	p.ManifestData.mu.RUnlock()
 
 	if exists && item.LocalPath != "" {
-		// Verify file exists on disk (don't rely just on memory/manifest)
+		// Verify file exists on disk
 		if _, err := os.Stat(item.LocalPath); err != nil {
-			fmt.Printf("⚠️ File missing on disk despite manifest entry: %s. Re-downloading.\n", item.LocalPath)
+			fmt.Printf("⚠️ File missing on disk: %s. Re-downloading.\n", item.LocalPath)
 			// Fall through to download logic
-		}
-
-		fmt.Printf("Found in manifest: %s (Playlist: %v, Transcoded: %v, Type: %s)\n", fullURL, item.IsPlaylist, item.Transcoded, item.ContentType)
-		if item.Transcoded {
-			// Verify transcoded file exists
-			if _, err := os.Stat(item.TranscodedPath); err == nil {
-				p.serveFile(w, item.TranscodedPath, "video/mp2t")
+		} else {
+			// File exists
+			if isRaw {
+				// Serve raw file
+				p.serveFile(w, item.LocalPath, "video/mp2t")
 				return
 			}
-			fmt.Printf("⚠️ Transcoded file missing on disk: %s. Re-transcoding.\n", item.TranscodedPath)
-			// Fall through to transcode logic (item.Transcoded will be overwritten)
-		} else {
-			// Not transcoded yet, or re-transcoding needed
-			// For non-playlist items, always try to transcode
+
+			// Serve transcoded
+			if item.Transcoded {
+				if _, err := os.Stat(item.TranscodedPath); err == nil {
+					p.serveFile(w, item.TranscodedPath, "video/mp2t")
+					return
+				}
+			}
+
+			// Need to transcode
 			p.transcodeAndServe(w, r, item)
 			return
 		}
 	}
 
-	// Not in manifest, download it
-	fmt.Printf("⚠️ Not in manifest, downloading: %s (Key: %s)\n", fullURL, key)
+	// Not in manifest or missing, download it
+	fmt.Printf("⚠️ Not in manifest/disk, downloading: %s\n", fullURL)
 
 	// Create a cache key
-	cacheKey := key
+	// Store in directory: cache/track_idx/segment_idx.ts
+	trackDir := filepath.Join(p.CacheDir, fmt.Sprintf("%s_%d", trackType, trackIdx))
+	if err := os.MkdirAll(trackDir, 0755); err != nil {
+		http.Error(w, fmt.Sprintf("Failed to create track directory: %v", err), http.StatusInternalServerError)
+		return
+	}
 
-	localPath := filepath.Join(p.CacheDir, cacheKey+".ts")
+	localPath := filepath.Join(trackDir, fmt.Sprintf("segment_%d.ts", segIdx))
 
 	resp, err := p.downloadFile(r.Context(), fullURL)
 	if err != nil {
@@ -147,7 +238,6 @@ func (p *RemoteHandler) serveSegment(w http.ResponseWriter, r *http.Request, ful
 	defer resp.Body.Close()
 
 	contentType := resp.Header.Get("Content-Type")
-	fmt.Printf("Content-Type: %s\n", contentType)
 
 	// Save to file
 	outFile, err := os.Create(localPath)
@@ -170,20 +260,13 @@ func (p *RemoteHandler) serveSegment(w http.ResponseWriter, r *http.Request, ful
 		Transcoded:  false,
 	}
 
-	// Check if playlist
-	if strings.Contains(contentType, "application/vnd.apple.mpegurl") ||
-		strings.Contains(contentType, "application/x-mpegURL") ||
-		strings.HasSuffix(fullURL, ".m3u8") {
-		newItem.IsPlaylist = true
-		p.updateManifest(fullURL, newItem)
-		p.servePlaylistWithPrefix(w, localPath, fullURL, "")
-		return
-	}
-
-	// All other items are treated as segments and transcoded
-	newItem.IsPlaylist = false
 	p.updateManifest(fullURL, newItem)
-	p.transcodeAndServe(w, r, newItem)
+
+	if isRaw {
+		p.serveFile(w, localPath, "video/mp2t")
+	} else {
+		p.transcodeAndServe(w, r, newItem)
+	}
 }
 
 // serveFile serves a local file

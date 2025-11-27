@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"strconv"
 	"sync"
 )
 
@@ -22,50 +21,9 @@ const CurrentManifestVersion = 1
 
 // Manifest represents the tracking of cached files
 type Manifest struct {
-	Version     int                      `json:"version"`     // Schema version
-	Items       map[string]*ManifestItem `json:"items"`       // URL -> Item
-	SegmentMap  map[string]string        `json:"segment_map"` // ID -> URL
-	URLMap      map[string]string        `json:"url_map"`     // URL -> ID
-	NextID      int                      `json:"next_id"`
-	AudioNextID int                      `json:"audio_next_id"`
-	VideoNextID int                      `json:"video_next_id"`
-	mu          sync.RWMutex
-}
-
-// getOrAssignID returns the ID for a URL, assigning a new one if necessary
-func (p *RemoteHandler) getOrAssignID(url string, prefix string) string {
-	p.ManifestData.mu.Lock()
-	defer p.ManifestData.mu.Unlock()
-
-	if id, ok := p.ManifestData.URLMap[url]; ok {
-		return id
-	}
-
-	var id int
-	switch prefix {
-	case "audio_":
-		id = p.ManifestData.AudioNextID
-		p.ManifestData.AudioNextID++
-	case "video_":
-		id = p.ManifestData.VideoNextID
-		p.ManifestData.VideoNextID++
-	default:
-		id = p.ManifestData.NextID
-		p.ManifestData.NextID++
-	}
-
-	idStr := strconv.Itoa(id)
-	p.ManifestData.URLMap[url] = idStr
-	p.ManifestData.SegmentMap[idStr] = url
-
-	// Create initial item if not exists
-	if _, ok := p.ManifestData.Items[url]; !ok {
-		p.ManifestData.Items[url] = &ManifestItem{
-			URL: url,
-		}
-	}
-
-	return idStr
+	Version int                      `json:"version"` // Schema version
+	Items   map[string]*ManifestItem `json:"items"`   // URL -> Item
+	mu      sync.RWMutex
 }
 
 // saveManifest saves the manifest to disk
