@@ -16,7 +16,6 @@ type VideoTrack struct {
 	Index      int    `json:"index"`
 	Codec      string `json:"codec"`
 	Resolution string `json:"resolution,omitempty"`
-	Type       string // "AUDIO" or "VIDEO"
 	URI        string
 	GroupID    string
 	Name       string

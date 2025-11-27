@@ -5,8 +5,6 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
-	"strconv"
-	"strings"
 	"time"
 
 	"wails-cast/pkg/hls"
@@ -46,74 +44,55 @@ func NewLocalHandler(videoPath string, options StreamOptions, localIP string) *L
 	}
 }
 
-// ServePlaylist generates and serves the HLS playlist
-func (s *LocalHandler) ServePlaylist(w http.ResponseWriter, r *http.Request) {
-	path := r.URL.Path
+// ServeMainPlaylist generates and serves the master HLS playlist
+func (s *LocalHandler) ServeMainPlaylist(w http.ResponseWriter, r *http.Request) {
+	// Generate master playlist pointing to /video_0.m3u8
+	// Since local files usually have 1 video track, we just point to it.
+	// If we had multiple qualities, we would list them here.
 
-	// Master Playlist
-	if path == "/playlist.m3u8" || path == "/media.mp4" {
-		// Generate master playlist pointing to /video_0.m3u8
-		// Since local files usually have 1 video track, we just point to it.
-		// If we had multiple qualities, we would list them here.
+	masterPlaylist := "#EXTM3U\n#EXT-X-VERSION:3\n"
 
-		masterPlaylist := "#EXTM3U\n#EXT-X-VERSION:3\n"
+	// Add video track
+	// We can add bandwidth info if we knew it, or just default.
+	masterPlaylist += fmt.Sprintf("#EXT-X-STREAM-INF:BANDWIDTH=5000000,RESOLUTION=1920x1080\n%s/video_0.m3u8\n", s.LocalIP)
 
-		// Add video track
-		// We can add bandwidth info if we knew it, or just default.
-		masterPlaylist += fmt.Sprintf("#EXT-X-STREAM-INF:BANDWIDTH=5000000,RESOLUTION=1920x1080\n%s/video_0.m3u8\n", s.LocalIP)
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Content-Type", "application/vnd.apple.mpegurl")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Write([]byte(masterPlaylist))
+}
+
+// ServeTrackPlaylist generates and serves video or audio track playlists
+func (s *LocalHandler) ServeTrackPlaylist(w http.ResponseWriter, r *http.Request, trackType string, trackIndex int) {
+	if trackType == "video" && trackIndex == 0 {
+		// For local files, we only have video_0
+		playlistContent := hls.GenerateVODPlaylist(s.Duration, s.SegmentSize, s.LocalIP, 8888)
 
 		w.Header().Set("Access-Control-Allow-Origin", "*")
 		w.Header().Set("Content-Type", "application/vnd.apple.mpegurl")
 		w.Header().Set("Cache-Control", "no-cache")
-		w.Write([]byte(masterPlaylist))
+		w.Write([]byte(playlistContent))
 		return
-	}
-
-	// Video Track Playlist
-	if strings.HasPrefix(path, "/video_") {
-		// For local files, we only have video_0 usually.
-		if path == "/video_0.m3u8" {
-			playlistContent := hls.GenerateVODPlaylist(s.Duration, s.SegmentSize, s.LocalIP, 8888)
-			// Note: GenerateVODPlaylist generates segments like http://IP:PORT/segment0.ts
-			// We need to ensure it matches our /segment/ handler or we need to rewrite it?
-			// server.go handles /segment/ and *.ts.
-			// GenerateVODPlaylist usually generates absolute URLs.
-			// Let's check GenerateVODPlaylist.
-			// If it generates /segment%d.ts, we are good.
-			// If it generates http://..., we are also good if server handles it.
-
-			w.Header().Set("Access-Control-Allow-Origin", "*")
-			w.Header().Set("Content-Type", "application/vnd.apple.mpegurl")
-			w.Header().Set("Cache-Control", "no-cache")
-			w.Write([]byte(playlistContent))
-			return
-		}
 	}
 
 	http.NotFound(w, r)
 }
 
 // ServeSegment transcodes and serves a segment
-func (s *LocalHandler) ServeSegment(w http.ResponseWriter, r *http.Request) {
+func (s *LocalHandler) ServeSegment(w http.ResponseWriter, r *http.Request, trackType string, trackIndex int, segmentIndex int) {
 	segmentName := filepath.Base(r.URL.Path)
 
 	hls.EnsureCacheDir(s.OutputDir)
 
-	segmentNum, err := strconv.Atoi(strings.TrimSuffix(strings.TrimPrefix(segmentName, "segment"), ".ts"))
-	if err != nil {
-		http.Error(w, "Invalid segment name", http.StatusBadRequest)
-		return
-	}
-
 	segmentPath := hls.GetCachePath(s.OutputDir, segmentName)
 	segmentDuration := float64(s.SegmentSize)
-	startTime := float64(segmentNum * s.SegmentSize)
+	startTime := float64(segmentIndex * s.SegmentSize)
 	if startTime+segmentDuration > s.Duration {
 		segmentDuration = s.Duration - startTime
 	}
 
 	needsRegeneration := false
-	manifest, err := hls.LoadSegmentManifest(s.OutputDir, segmentNum)
+	manifest, err := hls.LoadSegmentManifest(s.OutputDir, segmentIndex)
 	if err != nil || !hls.ManifestMatches(manifest, s.SubtitlePath, segmentDuration) {
 		needsRegeneration = true
 	}
@@ -126,8 +105,6 @@ func (s *LocalHandler) ServeSegment(w http.ResponseWriter, r *http.Request) {
 			Duration:      s.SegmentSize,
 			SubtitlePath:  s.Options.SubtitlePath,
 			SubtitleTrack: s.Options.SubtitleTrack,
-			VideoTrack:    s.Options.VideoTrack,
-			AudioTrack:    s.Options.AudioTrack,
 			BurnIn:        s.Options.BurnIn,
 			Quality:       s.Options.Quality,
 		}
@@ -142,7 +119,7 @@ func (s *LocalHandler) ServeSegment(w http.ResponseWriter, r *http.Request) {
 		}
 
 		manifest := hls.SegmentManifest{
-			SegmentNumber: segmentNum,
+			SegmentNumber: segmentIndex,
 			Duration:      segmentDuration,
 			SubtitlePath:  s.Options.SubtitlePath,
 			SubtitleStyle: "FontSize=24",
