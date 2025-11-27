@@ -1,6 +1,7 @@
 package stream
 
 import (
+	"fmt"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -47,15 +48,49 @@ func NewLocalHandler(videoPath string, options StreamOptions, localIP string) *L
 
 // ServePlaylist generates and serves the HLS playlist
 func (s *LocalHandler) ServePlaylist(w http.ResponseWriter, r *http.Request) {
-	playlistContent := hls.GenerateVODPlaylist(s.Duration, s.SegmentSize, s.LocalIP, 8888)
+	path := r.URL.Path
 
-	w.Header().Set("Access-Control-Allow-Origin", "*")
-	w.Header().Set("Access-Control-Allow-Methods", "GET, OPTIONS")
-	w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
-	w.Header().Set("Content-Type", "application/vnd.apple.mpegurl")
-	w.Header().Set("Cache-Control", "no-cache")
+	// Master Playlist
+	if path == "/playlist.m3u8" || path == "/media.mp4" {
+		// Generate master playlist pointing to /video_0.m3u8
+		// Since local files usually have 1 video track, we just point to it.
+		// If we had multiple qualities, we would list them here.
 
-	w.Write([]byte(playlistContent))
+		masterPlaylist := "#EXTM3U\n#EXT-X-VERSION:3\n"
+
+		// Add video track
+		// We can add bandwidth info if we knew it, or just default.
+		masterPlaylist += fmt.Sprintf("#EXT-X-STREAM-INF:BANDWIDTH=5000000,RESOLUTION=1920x1080\n%s/video_0.m3u8\n", s.LocalIP)
+
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		w.Header().Set("Content-Type", "application/vnd.apple.mpegurl")
+		w.Header().Set("Cache-Control", "no-cache")
+		w.Write([]byte(masterPlaylist))
+		return
+	}
+
+	// Video Track Playlist
+	if strings.HasPrefix(path, "/video_") {
+		// For local files, we only have video_0 usually.
+		if path == "/video_0.m3u8" {
+			playlistContent := hls.GenerateVODPlaylist(s.Duration, s.SegmentSize, s.LocalIP, 8888)
+			// Note: GenerateVODPlaylist generates segments like http://IP:PORT/segment0.ts
+			// We need to ensure it matches our /segment/ handler or we need to rewrite it?
+			// server.go handles /segment/ and *.ts.
+			// GenerateVODPlaylist usually generates absolute URLs.
+			// Let's check GenerateVODPlaylist.
+			// If it generates /segment%d.ts, we are good.
+			// If it generates http://..., we are also good if server handles it.
+
+			w.Header().Set("Access-Control-Allow-Origin", "*")
+			w.Header().Set("Content-Type", "application/vnd.apple.mpegurl")
+			w.Header().Set("Cache-Control", "no-cache")
+			w.Write([]byte(playlistContent))
+			return
+		}
+	}
+
+	http.NotFound(w, r)
 }
 
 // ServeSegment transcodes and serves a segment
