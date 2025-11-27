@@ -16,13 +16,9 @@ type TranscodeOptions struct {
 	Duration      int
 	SubtitlePath  string
 	SubtitleTrack int // -1 for external/none, >= 0 for embedded
-	VideoTrack    int // -1 for default
-	AudioTrack    int // -1 for default
 	BurnIn        bool
 	Quality       string // "low", "medium", "high", "original"
-	StreamIndex   string // Deprecated: use SubtitleTrack
 	IsAudioOnly   bool
-	Preset        string
 }
 
 // EscapeFFmpegPath escapes special characters in paths that ffmpeg doesn't like
@@ -159,14 +155,6 @@ func buildSubtitleFilter(subtitlePath string, trackIndex int, videoPath string) 
 	}
 
 	return ""
-}
-
-// getPreset returns the ffmpeg preset, defaulting to "veryfast"
-func getPreset(preset string) string {
-	if preset == "" {
-		return "veryfast"
-	}
-	return preset
 }
 
 // GetVideoDuration gets the duration of a video file using ffprobe

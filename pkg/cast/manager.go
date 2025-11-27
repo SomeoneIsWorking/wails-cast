@@ -41,19 +41,7 @@ func NewCastManager(localIP string, proxyPort int) *CastManager {
 	}
 }
 
-// StartCasting prepares the stream for a remote video URL
-func (m *CastManager) StartCasting(videoURL string, options stream.StreamOptions) (*stream.RemoteHandler, error) {
-	handler, err := m.prepareStream(videoURL, options)
-	if err != nil {
-		return nil, err
-	}
-
-	// Return the handler so the App can set it on the Server
-	// The App will handle the actual Chromecast connection
-	return handler, nil
-}
-
-func (m *CastManager) prepareStream(videoURL string, options stream.StreamOptions) (*stream.RemoteHandler, error) {
+func (m *CastManager) CreateRemoteHandler(videoURL string, options stream.StreamOptions) (*stream.RemoteHandler, error) {
 	// 1. Calculate hash of video URL for cache key
 	cacheDir := m.cacheDir(videoURL)
 
@@ -69,10 +57,6 @@ func (m *CastManager) prepareStream(videoURL string, options stream.StreamOption
 	// Create and configure handler
 	handler := stream.NewRemoteHandler(m.LocalIP, cacheDir, options)
 	handler.SetExtractor(result)
-
-	// Get the served manifest and update the result
-	servedManifest := handler.GetServedManifest()
-	result.ManifestBody = servedManifest
 
 	return handler, nil
 }
@@ -96,27 +80,28 @@ func getExtractionJson(videoURL string, cacheDir string) (*extractor.ExtractResu
 			result = &extractor.ExtractResult{}
 			if err := json.Unmarshal(data, result); err != nil {
 				fmt.Printf("Error unmarshaling cached extraction: %v\n", err)
-				result = nil // Force re-extraction
+				result = nil
 			}
 		}
 	}
 
-	if result == nil {
-		fmt.Printf("Extracting video from: %s\n", videoURL)
-		fmt.Println("Please click the PLAY button in the browser window...")
+	if result != nil {
+		return result, nil
+	}
+	fmt.Printf("Extracting video from: %s\n", videoURL)
+	fmt.Println("Please click the PLAY button in the browser window...")
 
-		var err error
-		result, err = extractor.ExtractVideo(videoURL)
-		if err != nil {
-			return nil, fmt.Errorf("error extracting video: %w", err)
-		}
+	var err error
+	result, err = extractor.ExtractMainPlaylist(videoURL)
+	if err != nil {
+		return nil, fmt.Errorf("error extracting video: %w", err)
+	}
 
-		// Save extraction result
-		os.MkdirAll(cacheDir, 0755)
-		data, err := json.MarshalIndent(result, "", "  ")
-		if err == nil {
-			os.WriteFile(extractionFile, data, 0644)
-		}
+	// Save extraction result
+	os.MkdirAll(cacheDir, 0755)
+	data, err := json.MarshalIndent(result, "", "  ")
+	if err == nil {
+		os.WriteFile(extractionFile, data, 0644)
 	}
 	return result, nil
 }
@@ -128,6 +113,11 @@ func (m *CastManager) GetRemoteTrackInfo(videoURL string) (*mediainfo.MediaTrack
 		return nil, fmt.Errorf("failed to extract video: %w", err)
 	}
 
-	mediaTrackInfo := hls.ExtractTracksFromMaster(result.ManifestBody)
-	return &mediaTrackInfo, nil
+	manifestRaw, _ := hls.ParseMainPlaylist(result.ManifestRaw)
+
+	mediaTrackInfo, err := hls.ExtractTracksFromMain(manifestRaw)
+	if err != nil {
+		return nil, fmt.Errorf("failed to extract tracks from master playlist: %w", err)
+	}
+	return mediaTrackInfo, nil
 }

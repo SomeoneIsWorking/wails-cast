@@ -14,17 +14,17 @@ import (
 
 // ExtractResult contains the extracted video information
 type ExtractResult struct {
-	URL          string            // Original HLS URL
-	BaseURL      string            // Base URL (scheme + host) for resolving relative paths
-	ManifestBody string            // Raw m3u8 content
-	Cookies      map[string]string // Captured cookies
-	Headers      map[string]string // Captured headers
+	URL         string            // Original HLS URL
+	BaseURL     string            // Base URL (scheme + host) for resolving relative paths
+	ManifestRaw string            // Raw m3u8 content
+	Cookies     map[string]string // Captured cookies
+	Headers     map[string]string // Captured headers
 }
 
-// ExtractVideo opens a browser, navigates to the URL, and extracts the HLS stream
+// ExtractMainPlaylist opens a browser, navigates to the URL, and extracts the HLS stream
 // by intercepting network requests and checking Content-Type headers.
 // It captures cookies, headers, and saves the m3u8 manifest.
-func ExtractVideo(pageURL string) (*ExtractResult, error) {
+func ExtractMainPlaylist(pageURL string) (*ExtractResult, error) {
 	// Launch system browser (to ensure codecs) in headful mode
 	path, _ := launcher.LookPath()
 	u := launcher.New().Bin(path).Headless(false).MustLaunch()
@@ -93,11 +93,11 @@ func ExtractVideo(pageURL string) (*ExtractResult, error) {
 			fmt.Printf("Captured %d headers\n", len(headers))
 
 			result := &ExtractResult{
-				URL:          reqURL,
-				BaseURL:      baseURL,
-				ManifestBody: manifestContent,
-				Cookies:      cookies,
-				Headers:      headers,
+				URL:         reqURL,
+				BaseURL:     baseURL,
+				ManifestRaw: manifestContent,
+				Cookies:     cookies,
+				Headers:     headers,
 			}
 
 			select {

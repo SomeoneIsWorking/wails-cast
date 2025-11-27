@@ -201,7 +201,7 @@ func (a *App) CastToDevice(deviceURL, fileNameOrUrl string, options CastOptions)
 		mediaPath = fileNameOrUrl
 		// Use CastManager to prepare remote stream
 		logger.Info("Preparing remote stream", "url", mediaPath)
-		handler, err := a.castManager.StartCasting(mediaPath, streamOpts)
+		handler, err := a.castManager.CreateRemoteHandler(mediaPath, streamOpts)
 		duration = handler.Duration
 		if err != nil {
 			return nil, fmt.Errorf("failed to prepare remote stream: %w", err)
@@ -290,6 +290,7 @@ func (a *App) CastToDevice(deviceURL, fileNameOrUrl string, options CastOptions)
 			StreamType: "BUFFERED",
 		},
 	})
+
 	if err != nil {
 		a.mu.Lock()
 		a.playbackState.IsPlaying = false
