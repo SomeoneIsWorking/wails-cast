@@ -66,7 +66,7 @@ func (s *LocalHandler) ServeMainPlaylist(w http.ResponseWriter, r *http.Request)
 func (s *LocalHandler) ServeTrackPlaylist(w http.ResponseWriter, r *http.Request, trackType string, trackIndex int) {
 	if trackType == "video" && trackIndex == 0 {
 		// For local files, we only have video_0
-		playlistContent := hls.GenerateVODPlaylist(s.Duration, s.SegmentSize, s.LocalIP, 8888)
+		playlistContent := hls.GenerateVODPlaylist(s.Duration, s.SegmentSize)
 
 		w.Header().Set("Access-Control-Allow-Origin", "*")
 		w.Header().Set("Content-Type", "application/vnd.apple.mpegurl")

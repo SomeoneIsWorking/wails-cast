@@ -8,12 +8,12 @@ import (
 )
 
 // GenerateVODPlaylist generates a complete HLS VOD playlist
-func GenerateVODPlaylist(duration float64, segmentSize int, localIP string, port int) string {
+func GenerateVODPlaylist(duration float64, segmentSize int) string {
 	var playlist strings.Builder
 
 	playlist.WriteString("#EXTM3U\n")
 	playlist.WriteString("#EXT-X-VERSION:3\n")
-	playlist.WriteString(fmt.Sprintf("#EXT-X-TARGETDURATION:%d\n", segmentSize))
+	fmt.Fprintf(&playlist, "#EXT-X-TARGETDURATION:%d\n", segmentSize)
 	playlist.WriteString("#EXT-X-MEDIA-SEQUENCE:0\n")
 	playlist.WriteString("#EXT-X-PLAYLIST-TYPE:VOD\n")
 
@@ -34,8 +34,8 @@ func GenerateVODPlaylist(duration float64, segmentSize int, localIP string, port
 			}
 		}
 
-		playlist.WriteString(fmt.Sprintf("#EXTINF:%.6f,\n", segmentDuration))
-		playlist.WriteString(fmt.Sprintf("http://%s:%d/segment%d.ts\n", localIP, port, i))
+		fmt.Fprintf(&playlist, "#EXTINF:%.6f,\n", segmentDuration)
+		fmt.Fprintf(&playlist, "/segment%d.ts\n", i)
 	}
 
 	playlist.WriteString("#EXT-X-ENDLIST\n")
