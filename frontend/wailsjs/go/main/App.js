@@ -14,10 +14,6 @@ export function FindSubtitleFile(arg1) {
   return window['go']['main']['App']['FindSubtitleFile'](arg1);
 }
 
-export function GetLocalIP() {
-  return window['go']['main']['App']['GetLocalIP']();
-}
-
 export function GetMediaFiles(arg1) {
   return window['go']['main']['App']['GetMediaFiles'](arg1);
 }
