@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"net/url"
 	"os"
 	"path/filepath"
 	"slices"
@@ -60,6 +59,18 @@ func (p *RemoteHandler) SetExtractor(result *extractor.ExtractResult) {
 	p.Cookies = result.Cookies
 	p.Headers = result.Headers
 	p.Manifest, _ = p.rewriteMainPlaylist(p.ManifestRaw)
+}
+
+func (p *RemoteHandler) GetTrackPlaylist(ctx context.Context, trackType string, index int) (hls.TrackPlaylist, error) {
+	playlistContent, err := p.getTrackPlaylist(ctx, trackType, index)
+	if err != nil {
+		return hls.TrackPlaylist{}, err
+	}
+	trackPlaylist, err := hls.ParseTrackPlaylist(playlistContent)
+	if err != nil {
+		return hls.TrackPlaylist{}, err
+	}
+	return *trackPlaylist, nil
 }
 
 // ServeMainPlaylist serves the main playlist
@@ -150,19 +161,7 @@ func (p *RemoteHandler) cacheMainPlaylist() error {
 
 // serveTrackPlaylist serves a specific video track
 func (p *RemoteHandler) serveTrackPlaylist(w http.ResponseWriter, r *http.Request, trackType string, index int) error {
-	var playlistContent string
-	cachedPath := filepath.Join(p.CacheDir, fmt.Sprintf("%s_%d", trackType, index), "playlist.m3u8")
-	_, err := os.Stat(cachedPath)
-	if err == nil {
-		// Load from cache
-		data, err := os.ReadFile(cachedPath)
-		if err != nil {
-			return err
-		}
-		playlistContent = string(data)
-	}
-
-	playlistContent, err = p.downloadTrackPlaylist(r, trackType, index)
+	playlistContent, err := p.getTrackPlaylist(r.Context(), trackType, index)
 	if err != nil {
 		return err
 	}
@@ -173,13 +172,33 @@ func (p *RemoteHandler) serveTrackPlaylist(w http.ResponseWriter, r *http.Reques
 	return nil
 }
 
-func (p *RemoteHandler) downloadTrackPlaylist(r *http.Request, trackType string, index int) (string, error) {
+func (p *RemoteHandler) getTrackPlaylist(ctx context.Context, trackType string, index int) (string, error) {
+	var playlistContent string
+	cachedPath := filepath.Join(p.CacheDir, fmt.Sprintf("%s_%d", trackType, index), "playlist.m3u8")
+	_, err := os.Stat(cachedPath)
+	if err == nil {
+		// Load from cache
+		data, err := os.ReadFile(cachedPath)
+		if err != nil {
+			return "", err
+		}
+		playlistContent = string(data)
+	}
+
+	playlistContent, err = p.downloadTrackPlaylist(ctx, trackType, index)
+	if err != nil {
+		return "", err
+	}
+	return playlistContent, nil
+}
+
+func (p *RemoteHandler) downloadTrackPlaylist(ctx context.Context, trackType string, index int) (string, error) {
 	targetURL, err := p.resolveTrackURL(trackType, index)
 	if err != nil {
 		return "", err
 	}
 	// Download
-	resp, err := p.downloadFile(r.Context(), targetURL)
+	resp, err := p.downloadFile(ctx, targetURL)
 	if err != nil {
 		return "", errors.Wrapf(err, "failed to download playlist: %s", targetURL)
 	}
@@ -191,16 +210,7 @@ func (p *RemoteHandler) downloadTrackPlaylist(r *http.Request, trackType string,
 		return "", errors.Wrapf(err, "failed to parse track playlist: %s", targetURL)
 	}
 
-	// Rewrite and Cache
-	baseURL := targetURL
-	if idx := strings.LastIndex(targetURL, "/"); idx != -1 {
-		baseURL = targetURL[:idx+1]
-	}
-	parsedBaseURL, err := url.Parse(baseURL)
-	if err != nil {
-		return "", errors.Wrapf(err, "failed to parse base URL: %s", baseURL)
-	}
-	rewritten, err := p.cacheTrackPlaylist(trackType, index, trackPlaylist, parsedBaseURL)
+	rewritten, err := p.cacheTrackPlaylist(trackType, index, trackPlaylist)
 	if err != nil {
 		return "", err
 	}
@@ -230,7 +240,7 @@ func (p *RemoteHandler) rewriteMainPlaylist(playlist *hls.MainPlaylist) (*hls.Ma
 }
 
 // cacheTrackPlaylist saves raw/rewritten playlists and a segment map
-func (p *RemoteHandler) cacheTrackPlaylist(trackType string, trackIndex int, playlist *hls.TrackPlaylist, baseURL *url.URL) (string, error) {
+func (p *RemoteHandler) cacheTrackPlaylist(trackType string, trackIndex int, playlist *hls.TrackPlaylist) (string, error) {
 	// Create directory
 	dirPath := filepath.Join(p.CacheDir, fmt.Sprintf("%s_%d", trackType, trackIndex))
 	if err := os.MkdirAll(dirPath, 0755); err != nil {
@@ -281,7 +291,7 @@ func (p *RemoteHandler) rewriteTrackPlaylist(trackType string, trackIndex int, m
 		segmentMap = append(segmentMap, p.resolveUrl(segment.URI))
 
 		// Rewrite to local path
-		segment.URI = fmt.Sprintf("%s_%d/segment_%d.ts", trackType, trackIndex, i)
+		segment.URI = fmt.Sprintf("/%s_%d/segment_%d.ts", trackType, trackIndex, i)
 	}
 
 	return media.Generate(), segmentMap, nil
@@ -313,6 +323,7 @@ func (p *RemoteHandler) ServeSegment(w http.ResponseWriter, r *http.Request, tra
 		if !rawExists {
 			err = p.downloadSegment(r, w, trackType, trackIndex, segmentIndex, rawPath)
 			if err != nil {
+				logger.Logger.Error("Failed to download segment", "err", err, "path", rawPath)
 				http.Error(w, fmt.Sprintf("Failed to download segment: %v", err), http.StatusBadGateway)
 				return
 			}
