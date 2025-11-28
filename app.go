@@ -105,7 +105,7 @@ func (a *App) DiscoverDevices() []Device {
 
 // GetMediaURL returns the URL for a media file to be cast
 func (a *App) GetMediaURL(filePath string) string {
-	return fmt.Sprintf("http://%s:%d/playlist.m3u8?t=%d", a.localIp, 8888, time.Now().Unix())
+	return fmt.Sprintf("http://%s:%d/playlist.m3u8", a.localIp, 8888)
 }
 
 // GetSubtitleURL returns the URL for subtitle file (for Shaka player)
@@ -259,7 +259,7 @@ func (a *App) CastToDevice(deviceIp string, fileNameOrUrl string, options CastOp
 		CurrentTime:   0,
 		Autoplay:      true,
 		Media: cast.MediaItem{
-			ContentId:  mediaURL,
+			ContentId:  mediaURL + "?cachebust=" + time.Now().Format("20060102150405"),
 			StreamType: "BUFFERED",
 		},
 	})

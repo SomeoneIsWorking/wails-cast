@@ -83,10 +83,13 @@ func (p *RemoteHandler) ServeMainPlaylist(w http.ResponseWriter, r *http.Request
 		return v.Index != p.Options.VideoTrack
 	})
 
-	videoVariant := playlist.VideoVariants[0]
+	videoVariant := &playlist.VideoVariants[0]
+	videoVariant.URI = videoVariant.URI + "?cachebust=" + time.Now().Format("20060102150405")
 
+	audio := &playlist.AudioGroups[videoVariant.Audio][p.Options.AudioTrack]
+	audio.URI = audio.URI + "?cachebust=" + time.Now().Format("20060102150405")
 	playlist.AudioGroups = map[string][]hls.AudioMedia{
-		videoVariant.Audio: {playlist.AudioGroups[videoVariant.Audio][p.Options.AudioTrack]},
+		videoVariant.Audio: {*audio},
 	}
 
 	w.Header().Set("Access-Control-Allow-Origin", "*")
@@ -100,13 +103,10 @@ func (p *RemoteHandler) ServeMainPlaylist(w http.ResponseWriter, r *http.Request
 
 // ServeTrackPlaylist serves video or audio track playlists
 func (p *RemoteHandler) ServeTrackPlaylist(w http.ResponseWriter, r *http.Request, trackType string, trackIndex int) {
-	switch trackType {
-	case "video":
-		p.serveTrackPlaylist(w, r, "video", trackIndex)
-	case "audio":
-		p.serveTrackPlaylist(w, r, "audio", trackIndex)
-	default:
-		http.NotFound(w, r)
+	err := p.serveTrackPlaylist(w, r, trackType, trackIndex)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("Failed to serve track playlist: %v", err), http.StatusInternalServerError)
+		return
 	}
 }
 
@@ -165,10 +165,18 @@ func (p *RemoteHandler) serveTrackPlaylist(w http.ResponseWriter, r *http.Reques
 	if err != nil {
 		return err
 	}
+	playlist, err := hls.ParseTrackPlaylist(playlistContent)
 
+	if err != nil {
+		return err
+	}
+	for i := range playlist.Segments {
+		segment := &playlist.Segments[i]
+		segment.URI = segment.URI + "?cachebust=" + time.Now().Format("20060102150405")
+	}
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	w.Header().Set("Content-Type", "application/vnd.apple.mpegurl")
-	w.Write([]byte(playlistContent))
+	w.Write([]byte(playlist.Generate()))
 	return nil
 }
 
@@ -331,7 +339,7 @@ func (p *RemoteHandler) ensureSegmentExistsTranscoded(ctx context.Context, track
 		return "", errors.Wrapf(err, "failed to ensure raw segment exists for segment %d of track %s_%d", segmentIndex, trackType, trackIndex)
 	}
 
-	err = p.transcodeSegment(ctx, rawPath, transcodedPath, trackType)
+	err = p.transcodeSegment(ctx, rawPath, transcodedPath)
 	if err != nil {
 		return "", errors.Wrapf(err, "failed to transcode segment %d of track %s_%d", segmentIndex, trackType, trackIndex)
 	}
@@ -429,11 +437,10 @@ func (p *RemoteHandler) downloadSegment(ctx context.Context, trackType string, t
 	return nil
 }
 
-func (p *RemoteHandler) transcodeSegment(ctx context.Context, rawPath string, transcodedPath string, trackType string) error {
+func (p *RemoteHandler) transcodeSegment(ctx context.Context, rawPath string, transcodedPath string) error {
 	return hls.TranscodeSegment(ctx, hls.TranscodeOptions{
 		InputPath:     rawPath,
 		OutputPath:    transcodedPath,
-		IsAudioOnly:   trackType == "audio",
 		StartTime:     0,
 		Duration:      0,
 		SubtitlePath:  p.Options.SubtitlePath,
