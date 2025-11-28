@@ -305,39 +305,61 @@ func (p *RemoteHandler) resolveUrl(relativeURL string) string {
 // and transcodes them using ffmpeg for compatibility
 func (p *RemoteHandler) ServeSegment(w http.ResponseWriter, r *http.Request, trackType string, trackIndex int, segmentIndex int) {
 	fmt.Printf("Proxying request: (Type: %s, Index: %d, Segment: %d)\n", trackType, trackIndex, segmentIndex)
-	transcodedPath, err := p.getSegmentPath(trackType, trackIndex, segmentIndex)
+
+	transcodedPath, err := p.ensureSegmentExistsTranscoded(r.Context(), trackType, trackIndex, segmentIndex)
 	if err != nil {
-		http.Error(w, fmt.Sprintf("Failed to get segment path: %v", err), http.StatusInternalServerError)
+		http.Error(w, fmt.Sprintf("Failed to ensure transcoded segment exists: %v", err), http.StatusInternalServerError)
 		return
 	}
-	_, err = os.Stat(transcodedPath)
-	transcodedExists := err == nil
-	if !transcodedExists {
-		rawPath, err := p.getRawSegmentPath(trackType, trackIndex, segmentIndex)
-		if err != nil {
-			http.Error(w, fmt.Sprintf("Failed to get raw segment path: %v", err), http.StatusInternalServerError)
-			return
-		}
-		_, err = os.Stat(rawPath)
-		rawExists := err == nil
-		if !rawExists {
-			err = p.downloadSegment(r, w, trackType, trackIndex, segmentIndex, rawPath)
-			if err != nil {
-				logger.Logger.Error("Failed to download segment", "err", err, "path", rawPath)
-				http.Error(w, fmt.Sprintf("Failed to download segment: %v", err), http.StatusBadGateway)
-				return
-			}
-		}
-		err = p.transcodeSegment(r, rawPath, transcodedPath, trackType)
+	p.serveFile(w, transcodedPath, "video/MP2T")
 
+}
+
+func (p *RemoteHandler) ensureSegmentExistsTranscoded(ctx context.Context, trackType string, trackIndex int, segmentIndex int) (string, error) {
+	transcodedPath, err := p.getSegmentPath(trackType, trackIndex, segmentIndex)
+	if err != nil {
+		return "", errors.Wrapf(err, "failed to get transcoded segment path for segment %d of track %s_%d", segmentIndex, trackType, trackIndex)
 	}
-	p.serveFile(w, transcodedPath, "video/mp2t")
+
+	if _, err := os.Stat(transcodedPath); err == nil {
+		return transcodedPath, nil
+	}
+
+	rawPath, err := p.ensureSegmentExistsRaw(ctx, trackType, trackIndex, segmentIndex)
+	if err != nil {
+		return "", errors.Wrapf(err, "failed to ensure raw segment exists for segment %d of track %s_%d", segmentIndex, trackType, trackIndex)
+	}
+
+	err = p.transcodeSegment(ctx, rawPath, transcodedPath, trackType)
+	if err != nil {
+		return "", errors.Wrapf(err, "failed to transcode segment %d of track %s_%d", segmentIndex, trackType, trackIndex)
+	}
+	return transcodedPath, nil
+}
+
+func (p *RemoteHandler) ensureSegmentExistsRaw(ctx context.Context, trackType string, trackIndex int, segmentIndex int) (string, error) {
+	rawPath, err := p.getRawSegmentPath(trackType, trackIndex, segmentIndex)
+	if err != nil {
+		return "", errors.Wrapf(err, "failed to get raw segment path for segment %d of track %s_%d", segmentIndex, trackType, trackIndex)
+	}
+	if _, err := os.Stat(rawPath); err == nil {
+		return rawPath, nil
+	}
+	err = p.downloadSegment(ctx, trackType, trackIndex, segmentIndex, rawPath)
+	if err != nil {
+		return "", errors.Wrapf(err, "failed to download segment %d of track %s_%d", segmentIndex, trackType, trackIndex)
+	}
+	return rawPath, nil
 }
 
 // resolveSegmentURL finds the absolute URL of a segment by index
 func (p *RemoteHandler) resolveTrackURL(trackType string, trackIndex int) (string, error) {
 	mapPath := filepath.Join(p.CacheDir, "map.json")
+	if _, err := os.Stat(mapPath); os.IsNotExist(err) {
+		p.cacheMainPlaylist()
+	}
 	mapData, err := os.ReadFile(mapPath)
+
 	if err != nil {
 		return "", err
 	}
@@ -381,36 +403,33 @@ func (p *RemoteHandler) resolveSegmentURL(trackType string, trackIndex int, segm
 	return segmentMap[segmentIndex], nil
 }
 
-func (p *RemoteHandler) downloadSegment(r *http.Request, w http.ResponseWriter, trackType string, trackIndex int, segmentIndex int, rawPath string) error {
+func (p *RemoteHandler) downloadSegment(ctx context.Context, trackType string, trackIndex int, segmentIndex int, rawPath string) error {
 	url, err := p.resolveSegmentURL(trackType, trackIndex, segmentIndex)
 	if err != nil {
-		http.Error(w, fmt.Sprintf("Failed to resolve segment URL: %v", err), http.StatusInternalServerError)
-		return err
+		return errors.Wrapf(err, "failed to resolve segment URL for trackType=%s, trackIndex=%d, segmentIndex=%d", trackType, trackIndex, segmentIndex)
 	}
-	resp, err := p.downloadFile(r.Context(), url)
+	resp, err := p.downloadFile(ctx, url)
 	if err != nil {
-		http.Error(w, fmt.Sprintf("Failed to download segment: %v", err), http.StatusBadGateway)
-		return err
+		return errors.Wrapf(err, "failed to download segment: %s", url)
 	}
 	defer resp.Body.Close()
 
 	// Save to file
 	rawFile, err := os.Create(rawPath)
 	if err != nil {
-		http.Error(w, fmt.Sprintf("Failed to create raw segment file: %v", err), http.StatusInternalServerError)
-		return err
+		return errors.Wrapf(err, "failed to create raw segment file: %s", rawPath)
 	}
 	defer rawFile.Close()
 
 	_, err = io.Copy(rawFile, resp.Body)
 	if err != nil {
-		return err
+		return errors.Wrapf(err, "failed to write to raw segment file: %s", rawPath)
 	}
 	return nil
 }
 
-func (p *RemoteHandler) transcodeSegment(r *http.Request, rawPath string, transcodedPath string, trackType string) error {
-	return hls.TranscodeSegment(r.Context(), hls.TranscodeOptions{
+func (p *RemoteHandler) transcodeSegment(ctx context.Context, rawPath string, transcodedPath string, trackType string) error {
+	return hls.TranscodeSegment(ctx, hls.TranscodeOptions{
 		InputPath:     rawPath,
 		OutputPath:    transcodedPath,
 		IsAudioOnly:   trackType == "audio",

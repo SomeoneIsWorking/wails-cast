@@ -57,16 +57,13 @@ func TranscodeSegment(ctx context.Context, opts TranscodeOptions) error {
 
 // buildTranscodeArgs builds ffmpeg arguments based on options
 func buildTranscodeArgs(opts TranscodeOptions) []string {
-	args := []string{"-y"}
+	args := []string{
+		"-y",
+		"-copyts",
+	}
 
-	// Global flags for stream integrity
-	args = append(args, "-copyts")
-	args = append(args, "-avoid_negative_ts", "make_non_negative")
-
-	// Add seek if specified (for local file segments)
 	if opts.StartTime > 0 {
 		args = append(args, "-ss", fmt.Sprintf("%.2f", opts.StartTime))
-		// The previous -copyts in this block is now global above.
 	}
 	if opts.Duration > 0 {
 		args = append(args, "-t", fmt.Sprintf("%d", opts.Duration))
@@ -85,7 +82,6 @@ func buildTranscodeArgs(opts TranscodeOptions) []string {
 			"-g", "48",
 		)
 
-		// Add subtitles if provided (for local files)
 		if opts.BurnIn && opts.SubtitlePath != "" {
 			filterStr := buildSubtitleFilter(opts.SubtitlePath, opts.SubtitleTrack, opts.InputPath)
 			if filterStr != "" {
@@ -97,13 +93,9 @@ func buildTranscodeArgs(opts TranscodeOptions) []string {
 		"-c:a", "aac",
 		"-b:a", "128k",
 		"-ac", "2",
-	)
-	// Output format
-	args = append(args,
+		"-ar", "44100",
 		"-map_metadata", "-1",
-		"-f", "mp4",
-		"-movflags", "frag_keyframe+faststart",
-		"-strict", "-experimental",
+		"-f", "mpegts",
 		opts.OutputPath,
 	)
 

@@ -13,6 +13,7 @@ import (
 
 	"wails-cast/pkg/extractor"
 	"wails-cast/pkg/hls"
+	"wails-cast/pkg/logger"
 	"wails-cast/pkg/mediainfo"
 	"wails-cast/pkg/stream"
 )
@@ -79,7 +80,7 @@ func getExtractionJson(videoURL string, cacheDir string) (*extractor.ExtractResu
 	var result *extractor.ExtractResult
 
 	if _, err := os.Stat(extractionFile); err == nil {
-		fmt.Println("Found cached extraction, loading...")
+		logger.Logger.Info("Found cached extraction, loading...")
 		data, err := os.ReadFile(extractionFile)
 		if err == nil {
 			result = &extractor.ExtractResult{}

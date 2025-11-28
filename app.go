@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -155,7 +154,7 @@ func (a *App) GetRemoteTrackInfo(videoURL string) (*mediainfo.MediaTrackInfo, er
 }
 
 // CastToDevice casts media (local file or remote URL) to a device
-func (a *App) CastToDevice(deviceURL, fileNameOrUrl string, options CastOptions) (*PlaybackState, error) {
+func (a *App) CastToDevice(deviceIp string, fileNameOrUrl string, options CastOptions) (*PlaybackState, error) {
 	// Determine if input is a local file or remote URL
 	isRemote := strings.HasPrefix(fileNameOrUrl, "http://") || strings.HasPrefix(fileNameOrUrl, "https://")
 
@@ -163,30 +162,8 @@ func (a *App) CastToDevice(deviceURL, fileNameOrUrl string, options CastOptions)
 	var duration float64
 	var err error
 
-	// Extract host and port from deviceURL
-	// deviceURL could be "http://192.168.1.21:8009", "192.168.1.21:8009", or "192.168.1.21"
-	deviceAddr := deviceURL
-
-	// Strip protocol if present
-	if strings.HasPrefix(deviceAddr, "http://") {
-		deviceAddr = strings.TrimPrefix(deviceAddr, "http://")
-	} else if strings.HasPrefix(deviceAddr, "https://") {
-		deviceAddr = strings.TrimPrefix(deviceAddr, "https://")
-	}
-
-	host := deviceAddr
+	host := deviceIp
 	port := 8009
-
-	// Check if port is already included
-	if strings.Contains(deviceAddr, ":") {
-		parts := strings.SplitN(deviceAddr, ":", 2)
-		host = parts[0]
-		if len(parts) == 2 {
-			if p, err := strconv.Atoi(parts[1]); err == nil {
-				port = p
-			}
-		}
-	}
 
 	streamOpts := stream.StreamOptions{
 		SubtitlePath:  options.SubtitlePath,
@@ -202,10 +179,10 @@ func (a *App) CastToDevice(deviceURL, fileNameOrUrl string, options CastOptions)
 		// Use CastManager to prepare remote stream
 		logger.Info("Preparing remote stream", "url", mediaPath)
 		handler, err := a.castManager.CreateRemoteHandler(mediaPath, streamOpts)
-		duration = handler.Duration
 		if err != nil {
 			return nil, fmt.Errorf("failed to prepare remote stream: %w", err)
 		}
+		duration = handler.Duration
 
 		// Set handler on server
 		a.mediaServer.SetHandler(handler)
@@ -240,8 +217,8 @@ func (a *App) CastToDevice(deviceURL, fileNameOrUrl string, options CastOptions)
 	a.playbackState.IsPlaying = true
 	a.playbackState.MediaPath = mediaPath
 	a.playbackState.MediaName = filepath.Base(mediaPath)
-	a.playbackState.DeviceURL = deviceURL
-	a.playbackState.DeviceName = extractDeviceName(deviceURL)
+	a.playbackState.DeviceURL = deviceIp
+	a.playbackState.DeviceName = extractDeviceName(deviceIp)
 	a.playbackState.Duration = duration
 	a.mu.Unlock()
 
@@ -319,8 +296,8 @@ func (a *App) CastToDevice(deviceURL, fileNameOrUrl string, options CastOptions)
 	}
 
 	logger.Info("Cast successful",
-		"message", fmt.Sprintf("Casting %s to %s via %s", filepath.Base(mediaPath), deviceURL, mediaURL),
-		"device", deviceURL,
+		"message", fmt.Sprintf("Casting %s to %s via %s", filepath.Base(mediaPath), deviceIp, mediaURL),
+		"device", deviceIp,
 		"media", mediaPath,
 		"subtitle", options.SubtitlePath,
 	)
