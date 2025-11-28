@@ -183,6 +183,7 @@ func (p *RemoteHandler) getTrackPlaylist(ctx context.Context, trackType string, 
 			return "", err
 		}
 		playlistContent = string(data)
+		return playlistContent, nil
 	}
 
 	playlistContent, err = p.downloadTrackPlaylist(ctx, trackType, index)

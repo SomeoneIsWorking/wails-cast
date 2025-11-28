@@ -40,6 +40,7 @@ type App struct {
 	ctx             context.Context
 	discovery       *DeviceDiscovery
 	mediaServer     *Server
+	localIp         string
 	castManager     *localcast.CastManager
 	playbackState   PlaybackState
 	currentSubtitle string
@@ -61,12 +62,13 @@ type PlaybackState struct {
 func NewApp() *App {
 	discovery := NewDeviceDiscovery()
 	localIP := discovery.GetLocalIP()
-	server := NewServer(8888, localIP)
+	server := NewServer(localIP, 8888)
 	castManager := localcast.NewCastManager(localIP, 8888)
 
 	return &App{
 		discovery:     discovery,
 		mediaServer:   server,
+		localIp:       localIP,
 		castManager:   castManager,
 		playbackState: PlaybackState{},
 	}
@@ -103,13 +105,7 @@ func (a *App) DiscoverDevices() []Device {
 
 // GetMediaURL returns the URL for a media file to be cast
 func (a *App) GetMediaURL(filePath string) string {
-	localIP := a.discovery.GetLocalIP()
-	return fmt.Sprintf("http://%s:%d/playlist.m3u8", localIP, 8888)
-}
-
-// GetLocalIP returns the local IP address
-func (a *App) GetLocalIP() string {
-	return a.discovery.GetLocalIP()
+	return fmt.Sprintf("http://%s:%d/playlist.m3u8?t=%d", a.localIp, 8888, time.Now().Unix())
 }
 
 // GetSubtitleURL returns the URL for subtitle file (for Shaka player)
@@ -204,7 +200,7 @@ func (a *App) CastToDevice(deviceIp string, fileNameOrUrl string, options CastOp
 		}
 
 		// Create local handler
-		handler := stream.NewLocalHandler(mediaPath, streamOpts, a.GetLocalIP())
+		handler := stream.NewLocalHandler(mediaPath, streamOpts, a.localIp)
 		a.mediaServer.SetHandler(handler)
 
 		// Set subtitle path (for legacy/compatibility, though options has it)
