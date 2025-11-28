@@ -19,7 +19,6 @@ type TranscodeOptions struct {
 	SubtitleTrack int // -1 for external/none, >= 0 for embedded
 	BurnIn        bool
 	Quality       string // "low", "medium", "high", "original"
-	IsAudioOnly   bool
 }
 
 // EscapeFFmpegPath escapes special characters in paths that ffmpeg doesn't like
@@ -37,7 +36,7 @@ func TranscodeSegment(ctx context.Context, opts TranscodeOptions) error {
 
 	// log the call
 	fmt.Printf(">>>> ffmpeg %s\n\n", strings.Join(args, " "))
-	cmd := exec.Command("ffmpeg", args...)
+	cmd := exec.CommandContext(ctx, "ffmpeg", args...)
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
 
@@ -57,10 +56,7 @@ func TranscodeSegment(ctx context.Context, opts TranscodeOptions) error {
 
 // buildTranscodeArgs builds ffmpeg arguments based on options
 func buildTranscodeArgs(opts TranscodeOptions) []string {
-	args := []string{
-		"-y",
-		"-copyts",
-	}
+	args := []string{"-y"}
 
 	if opts.StartTime > 0 {
 		args = append(args, "-ss", fmt.Sprintf("%.2f", opts.StartTime))
@@ -72,34 +68,30 @@ func buildTranscodeArgs(opts TranscodeOptions) []string {
 	// Input file
 	args = append(args, "-i", EscapeFFmpegPath(opts.InputPath))
 
-	// Video encoding
-	if !opts.IsAudioOnly {
-		// Mixed segment or local file
-		args = append(args,
-			"-c:v", "h264_videotoolbox",
-			"-preset", "fast",
-			"-crf", getCRF(opts.Quality),
-			"-g", "48",
-		)
-
-		if opts.BurnIn && opts.SubtitlePath != "" {
-			filterStr := buildSubtitleFilter(opts.SubtitlePath, opts.SubtitleTrack, opts.InputPath)
-			if filterStr != "" {
-				args = append(args, "-vf", filterStr)
-			}
-		}
-	}
 	args = append(args,
+		"-c:v", "libx264",
+		"-profile:v", "high",
+		"-level", "4.2",
+		"-pix_fmt", "yuv420p",
+		"-crf", getCRF(opts.Quality),
 		"-c:a", "aac",
-		"-b:a", "128k",
+		"-b:a", "96k",
 		"-ac", "2",
-		"-ar", "44100",
-		"-map_metadata", "-1",
 		"-f", "mpegts",
-		opts.OutputPath,
+		"-mpegts_copyts", "1",
+		"-muxdelay", "0",
+		"-muxpreload", "0",
 	)
 
-	return args
+	if opts.BurnIn && opts.SubtitlePath != "" {
+		filterStr := buildSubtitleFilter(opts.SubtitlePath, opts.SubtitleTrack, opts.InputPath)
+		if filterStr != "" {
+			args = append(args, "-vf", filterStr)
+		}
+	}
+
+	// Output file
+	return append(args, opts.OutputPath)
 }
 
 // getCRF returns the CRF value based on quality setting

@@ -89,7 +89,7 @@ func (s *Server) Stop() error {
 // handleRequest routes requests to appropriate handlers
 func (s *Server) handleRequest(w http.ResponseWriter, r *http.Request) {
 	path := r.URL.Path
-	logger.Info("HTTP request", "path", path, "method", r.Method)
+	logger.Info("HTTP request", "URL", r.URL.String(), "method", r.Method)
 	s.mu.RLock()
 	handler := s.streamHandler
 	s.mu.RUnlock()
