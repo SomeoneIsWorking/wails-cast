@@ -393,6 +393,10 @@ func (a *App) UpdateSubtitleSettings(options CastOptions) error {
 	return nil
 }
 
+func (a *App) ClearCache() error {
+	return nil
+}
+
 // Pause pauses current playback
 func (a *App) Pause() error {
 	a.mu.Lock()
