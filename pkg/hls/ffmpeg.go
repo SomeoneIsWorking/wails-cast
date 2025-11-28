@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"os"
 	"os/exec"
 	"strings"
 )
@@ -36,7 +37,7 @@ func TranscodeSegment(ctx context.Context, opts TranscodeOptions) error {
 
 	// log the call
 	fmt.Printf(">>>> ffmpeg %s\n\n", strings.Join(args, " "))
-	cmd := exec.CommandContext(ctx, "ffmpeg", args...)
+	cmd := exec.Command("ffmpeg", args...)
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
 
@@ -44,6 +45,7 @@ func TranscodeSegment(ctx context.Context, opts TranscodeOptions) error {
 	if err != nil {
 		// Check if it was cancelled
 		if ctx.Err() != nil {
+			os.Remove(opts.OutputPath)
 			return ctx.Err()
 		}
 		fmt.Println(stderr.String())
@@ -57,9 +59,14 @@ func TranscodeSegment(ctx context.Context, opts TranscodeOptions) error {
 func buildTranscodeArgs(opts TranscodeOptions) []string {
 	args := []string{"-y"}
 
+	// Global flags for stream integrity
+	args = append(args, "-copyts")
+	args = append(args, "-avoid_negative_ts", "make_non_negative")
+
 	// Add seek if specified (for local file segments)
 	if opts.StartTime > 0 {
 		args = append(args, "-ss", fmt.Sprintf("%.2f", opts.StartTime))
+		// The previous -copyts in this block is now global above.
 	}
 	if opts.Duration > 0 {
 		args = append(args, "-t", fmt.Sprintf("%d", opts.Duration))
@@ -68,33 +75,14 @@ func buildTranscodeArgs(opts TranscodeOptions) []string {
 	// Input file
 	args = append(args, "-i", EscapeFFmpegPath(opts.InputPath))
 
-	// Preserve timestamps for HLS
-	args = append(args, "-copyts")
-
 	// Video encoding
-	if opts.IsAudioOnly {
-		// Audio-only segment
-		args = append(args,
-			"-c:a", "aac",
-			"-b:a", "128k",
-			"-ar", "48000",
-			"-ac", "2",
-		)
-	} else {
+	if !opts.IsAudioOnly {
 		// Mixed segment or local file
 		args = append(args,
-			"-c:v", "libx264",
+			"-c:v", "h264_videotoolbox",
 			"-preset", "fast",
 			"-crf", getCRF(opts.Quality),
-			"-pix_fmt", "yuv420p",
-			"-sc_threshold", "0",
-			"-g", "60",
-			"-s", "1280x720",
-			"-r", "30",
-			"-c:a", "aac",
-			"-b:a", "128k",
-			"-ar", "48000",
-			"-ac", "2",
+			"-g", "48",
 		)
 
 		// Add subtitles if provided (for local files)
@@ -104,20 +92,18 @@ func buildTranscodeArgs(opts TranscodeOptions) []string {
 				args = append(args, "-vf", filterStr)
 			}
 		}
-
-		// Audio encoding
-		args = append(args,
-			"-c:a", "aac",
-			"-b:a", "96k",
-			"-ac", "2",
-		)
 	}
-
+	args = append(args,
+		"-c:a", "aac",
+		"-b:a", "128k",
+		"-ac", "2",
+	)
 	// Output format
 	args = append(args,
-		"-f", "mpegts",
-		"-muxdelay", "0",
-		"-muxpreload", "0",
+		"-map_metadata", "-1",
+		"-f", "mp4",
+		"-movflags", "frag_keyframe+faststart",
+		"-strict", "-experimental",
 		opts.OutputPath,
 	)
 

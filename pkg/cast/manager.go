@@ -1,6 +1,7 @@
 package cast
 
 import (
+	"context"
 	"crypto/md5"
 	"encoding/hex"
 	"encoding/json"
@@ -51,13 +52,17 @@ func (m *CastManager) CreateRemoteHandler(videoURL string, options stream.Stream
 		return nil, err
 	}
 
-	fmt.Printf("\n✅ HLS stream ready:\n")
-	fmt.Printf("  URL: %s\n", result.URL)
-
 	// Create and configure handler
 	handler := stream.NewRemoteHandler(m.LocalIP, cacheDir, options)
 	handler.SetExtractor(result)
-
+	trackPlaylist, err := handler.GetTrackPlaylist(context.Background(), "video", 0)
+	if err != nil {
+		return nil, err
+	}
+	handler.Duration = 0.0
+	for _, segment := range trackPlaylist.Segments {
+		handler.Duration += segment.Duration
+	}
 	return handler, nil
 }
 
@@ -116,6 +121,7 @@ func (m *CastManager) GetRemoteTrackInfo(videoURL string) (*mediainfo.MediaTrack
 	manifestRaw, _ := hls.ParseMainPlaylist(result.ManifestRaw)
 
 	mediaTrackInfo, err := hls.ExtractTracksFromMain(manifestRaw)
+
 	if err != nil {
 		return nil, fmt.Errorf("failed to extract tracks from master playlist: %w", err)
 	}

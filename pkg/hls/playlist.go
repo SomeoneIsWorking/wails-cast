@@ -586,3 +586,43 @@ func parseAttributes(line string) map[string]string {
 
 	return attrs
 }
+
+// extractAttribute extracts an attribute value from an HLS tag line
+func extractAttribute(line, attr string) string {
+	// Look for ATTR="value" or ATTR=value
+	pattern := attr + "="
+	idx := strings.Index(line, pattern)
+	if idx == -1 {
+		return ""
+	}
+
+	start := idx + len(pattern)
+	if start >= len(line) {
+		return ""
+	}
+
+	// Check if value is quoted
+	if line[start] == '"' {
+		start++
+		end := strings.Index(line[start:], `"`)
+		if end == -1 {
+			return ""
+		}
+		return line[start : start+end]
+	}
+
+	// Unquoted value - read until comma or end
+	end := strings.IndexAny(line[start:], ",\n")
+	if end == -1 {
+		return line[start:]
+	}
+	return line[start : start+end]
+}
+
+// extractIntAttribute extracts an integer attribute value
+func extractIntAttribute(line, attr string) int {
+	val := extractAttribute(line, attr)
+	var result int
+	fmt.Sscanf(val, "%d", &result)
+	return result
+}
