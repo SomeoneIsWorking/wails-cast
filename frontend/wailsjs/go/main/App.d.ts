@@ -5,6 +5,8 @@ import {mediainfo} from '../models';
 
 export function CastToDevice(arg1:string,arg2:string,arg3:main.CastOptions):Promise<main.PlaybackState>;
 
+export function ClearCache():Promise<void>;
+
 export function DiscoverDevices():Promise<Array<main.Device>>;
 
 export function FindSubtitleFile(arg1:string):Promise<string>;

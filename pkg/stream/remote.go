@@ -313,7 +313,7 @@ func (p *RemoteHandler) resolveUrl(relativeURL string) string {
 // ServeSegment proxies segment requests with captured cookies and headers,
 // and transcodes them using ffmpeg for compatibility
 func (p *RemoteHandler) ServeSegment(w http.ResponseWriter, r *http.Request, trackType string, trackIndex int, segmentIndex int) {
-	fmt.Printf("Proxying request: (Type: %s, Index: %d, Segment: %d)\n", trackType, trackIndex, segmentIndex)
+	logger.Logger.Info("Proxying request", "type", trackType, "index", trackIndex, "segment", segmentIndex)
 
 	transcodedPath, err := p.ensureSegmentExistsTranscoded(r.Context(), trackType, trackIndex, segmentIndex)
 	if err != nil {
@@ -354,10 +354,13 @@ func (p *RemoteHandler) ensureSegmentExistsRaw(ctx context.Context, trackType st
 	if _, err := os.Stat(rawPath); err == nil {
 		return rawPath, nil
 	}
+	logger.Logger.Info("Downloading segment", "type", trackType, "index", trackIndex, "segment", segmentIndex)
+	startTime := time.Now()
 	err = p.downloadSegment(ctx, trackType, trackIndex, segmentIndex, rawPath)
 	if err != nil {
 		return "", errors.Wrapf(err, "failed to download segment %d of track %s_%d", segmentIndex, trackType, trackIndex)
 	}
+	logger.Logger.Info("Downloaded segment", "type", trackType, "index", trackIndex, "segment", segmentIndex, "duration", time.Since(startTime).Seconds())
 	return rawPath, nil
 }
 
@@ -438,7 +441,8 @@ func (p *RemoteHandler) downloadSegment(ctx context.Context, trackType string, t
 }
 
 func (p *RemoteHandler) transcodeSegment(ctx context.Context, rawPath string, transcodedPath string) error {
-	return hls.TranscodeSegment(ctx, hls.TranscodeOptions{
+	startTime := time.Now()
+	err := hls.TranscodeSegment(ctx, hls.TranscodeOptions{
 		InputPath:     rawPath,
 		OutputPath:    transcodedPath,
 		StartTime:     0,
@@ -448,6 +452,11 @@ func (p *RemoteHandler) transcodeSegment(ctx context.Context, rawPath string, tr
 		BurnIn:        false,
 		Quality:       p.Options.Quality,
 	})
+	if err != nil {
+		return err
+	}
+	logger.Logger.Info("Transcoded segment", "input", rawPath, "output", transcodedPath, "duration", time.Since(startTime).Seconds())
+	return nil
 }
 
 func (p *RemoteHandler) getSegmentPath(trackType string, trackIndex int, segmentIndex int) (string, error) {

@@ -60,6 +60,7 @@ func buildTranscodeArgs(opts TranscodeOptions) []string {
 
 	if opts.StartTime > 0 {
 		args = append(args, "-ss", fmt.Sprintf("%.2f", opts.StartTime))
+		args = append(args, "-copyts")
 	}
 	if opts.Duration > 0 {
 		args = append(args, "-t", fmt.Sprintf("%d", opts.Duration))
@@ -69,18 +70,13 @@ func buildTranscodeArgs(opts TranscodeOptions) []string {
 	args = append(args, "-i", EscapeFFmpegPath(opts.InputPath))
 
 	args = append(args,
-		"-c:v", "libx264",
-		"-profile:v", "high",
-		"-level", "4.2",
+		"-c:v", "h264_videotoolbox",
 		"-pix_fmt", "yuv420p",
 		"-crf", getCRF(opts.Quality),
 		"-c:a", "aac",
 		"-b:a", "96k",
 		"-ac", "2",
 		"-f", "mpegts",
-		"-mpegts_copyts", "1",
-		"-muxdelay", "0",
-		"-muxpreload", "0",
 	)
 
 	if opts.BurnIn && opts.SubtitlePath != "" {
@@ -106,7 +102,7 @@ func getCRF(quality string) string {
 	case "original":
 		return "18"
 	default:
-		return "28"
+		return "25"
 	}
 }
 
