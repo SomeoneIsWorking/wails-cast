@@ -118,7 +118,7 @@ export const useCastStore = defineStore("cast", () => {
     selectedMedia.value = media;
 
     playbackState.value = await mediaService.castToDevice(
-      selectedDevice.value.url,
+      selectedDevice.value.host,
       media,
       castOptions.value
     );
