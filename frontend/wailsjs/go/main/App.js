@@ -6,6 +6,10 @@ export function CastToDevice(arg1, arg2, arg3) {
   return window['go']['main']['App']['CastToDevice'](arg1, arg2, arg3);
 }
 
+export function ClearCache() {
+  return window['go']['main']['App']['ClearCache']();
+}
+
 export function DiscoverDevices() {
   return window['go']['main']['App']['DiscoverDevices']();
 }
