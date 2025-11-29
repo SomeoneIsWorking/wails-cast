@@ -1,4 +1,3 @@
-import { GetMediaURL, CastToDevice, GetMediaFiles, SeekTo, StopPlayback, Pause, Unpause, UpdateSubtitleSettings, GetSubtitleURL } from '../../wailsjs/go/main/App'
 import type { main, mediainfo } from '../../wailsjs/go/models'
 
 export type CastOptions = main.CastOptions;
@@ -8,38 +7,47 @@ export type SubtitleTrack = mediainfo.SubtitleTrack;
 
 export const mediaService = {
   async getMediaURL(filePath: string): Promise<string> {
+    const { GetMediaURL } = await import('../../wailsjs/go/main/App')
     return await GetMediaURL(filePath)
   },
 
   async castToDevice(deviceURL: string, mediaPath: string, options: main.CastOptions): Promise<PlaybackState> {
+    const { CastToDevice } = await import('../../wailsjs/go/main/App')
     return await CastToDevice(deviceURL, mediaPath, options)
   },
 
-  async updateSubtitleSettings(options: main.CastOptions): Promise<void> {
+  async updateSubtitleSettings(options: main.SubtitleOptions): Promise<void> {
+    const { UpdateSubtitleSettings } = await import('../../wailsjs/go/main/App')
     return await UpdateSubtitleSettings(options)
   },
 
   async getSubtitleURL(subtitlePath: string): Promise<string> {
+    const { GetSubtitleURL } = await import('../../wailsjs/go/main/App')
     return await GetSubtitleURL(subtitlePath)
   },
 
   async getMediaFiles(dirPath: string): Promise<string[]> {
+    const { GetMediaFiles } = await import('../../wailsjs/go/main/App')
     return await GetMediaFiles(dirPath)
   },
 
   async seekTo(seekTime: number): Promise<void> {
+    const { SeekTo } = await import('../../wailsjs/go/main/App')
     return await SeekTo(seekTime)
   },
 
   async stopPlayback(): Promise<void> {
+    const { StopPlayback } = await import('../../wailsjs/go/main/App')
     return await StopPlayback()
   },
 
   async pause(): Promise<void> {
+    const { Pause } = await import('../../wailsjs/go/main/App')
     return await Pause()
   },
 
   async unpause(): Promise<void> {
+    const { Unpause } = await import('../../wailsjs/go/main/App')
     return await Unpause()
   },
 

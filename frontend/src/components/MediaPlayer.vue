@@ -84,10 +84,7 @@ const applySubtitleSettings = async () => {
   await mediaService.updateSubtitleSettings({
     SubtitlePath: finalSubtitlePath,
     SubtitleTrack: subtitleTrack,
-    VideoTrack: 0,
-    AudioTrack: 0,
-    BurnIn: false,
-    Quality: "",
+    BurnIn: true
   });
 };
 
@@ -109,22 +106,11 @@ const recast = async () => {
 };
 
 const generateMediaURL = async () => {
-  try {
-    const url = await mediaService.getMediaURL(store.selectedMedia!);
-    mediaURL.value = url;
-  } catch (error: unknown) {
-    store.setError("Failed to generate media URL");
-  }
+    mediaURL.value = await mediaService.getMediaURL(store.selectedMedia!);
 };
 
 const clearCache = async () => {
-  try {
     await ClearCache();
-    store.clearError();
-  } catch (error: unknown) {
-    const errorMsg = error instanceof Error ? error.message : String(error);
-    store.setError(errorMsg);
-  }
 };
 </script>
 
@@ -204,7 +190,9 @@ const clearCache = async () => {
             :accepted-extensions="['srt', 'vtt', 'ass', 'ssa']"
             placeholder="Select subtitle file"
             dialog-title="Select Subtitle File"
-          />
+          >
+          <button @click="applySubtitleSettings" class="btn-primary">Apply</button>
+        </FileSelector>
         </div>
 
         <p
