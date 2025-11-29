@@ -8,10 +8,10 @@ import (
 	"strings"
 )
 
-// Playlist represents a parsed HLS playlist (master or media)
+// Playlist represents a parsed HLS playlist (manifest or track)
 type Playlist struct {
 	Type     PlaylistType
-	Main     *MainPlaylist
+	Manifest *ManifestPlaylist
 	Track    *TrackPlaylist
 	RawLines []string // Original lines for unparsed tags
 }
@@ -20,12 +20,12 @@ type Playlist struct {
 type PlaylistType int
 
 const (
-	PlaylistTypeMain PlaylistType = iota
+	PlaylistTypeManifest PlaylistType = iota
 	PlaylistTypeTrack
 )
 
-// MainPlaylist represents an HLS master playlist
-type MainPlaylist struct {
+// ManifestPlaylist represents an HLS manifest playlist
+type ManifestPlaylist struct {
 	Version             int
 	VideoVariants       []VideoVariant
 	AudioGroups         map[string][]AudioMedia    // Group ID -> Audio tracks
@@ -33,9 +33,9 @@ type MainPlaylist struct {
 	IndependentSegments bool
 }
 
-func (m *MainPlaylist) Clone() *MainPlaylist {
+func (m *ManifestPlaylist) Clone() *ManifestPlaylist {
 	_json, _ := json.Marshal(m)
-	clone := &MainPlaylist{}
+	clone := &ManifestPlaylist{}
 	json.Unmarshal(_json, clone)
 	return clone
 }
@@ -50,7 +50,7 @@ type VideoVariant struct {
 	Audio      string            // Audio group ID
 	Subtitles  string            // Subtitle group ID
 	Attrs      map[string]string // Other attributes
-	Index      int               // Index in the master playlist
+	Index      int               // Index in the manifest playlist
 }
 
 // AudioMedia represents an audio track (#EXT-X-MEDIA TYPE=AUDIO)
@@ -79,30 +79,6 @@ type SubtitleMedia struct {
 	Index      int
 }
 
-// TrackPlaylist represents an HLS media playlist
-type TrackPlaylist struct {
-	Version             int
-	TargetDuration      int
-	MediaSequence       int
-	PlaylistType        string // VOD or EVENT
-	Segments            []Segment
-	Map                 *Map
-	EndList             bool
-	IndependentSegments bool
-}
-
-// Segment represents a media segment
-type Segment struct {
-	Duration        float64
-	Title           string
-	URI             string
-	ByteRange       *ByteRange
-	Discontinuity   bool
-	Key             *Key // Encryption key (if different from playlist-level)
-	ProgramDateTime string
-	Attrs           map[string]string
-}
-
 // Key represents encryption information (#EXT-X-KEY)
 type Key struct {
 	Method            string
@@ -124,10 +100,10 @@ type ByteRange struct {
 	Offset int64
 }
 
-// ParsePlaylistType determines if a playlist is master or media
+// ParsePlaylistType determines if a playlist is manifest or track
 func parsePlaylistType(content string) PlaylistType {
 	if strings.Contains(content, "#EXT-X-STREAM-INF") || strings.Contains(content, "#EXT-X-MEDIA:") {
-		return PlaylistTypeMain
+		return PlaylistTypeManifest
 	}
 	return PlaylistTypeTrack
 }
@@ -156,12 +132,12 @@ func parsePlaylist(content string) (*Playlist, error) {
 	// Determine playlist type
 	playlist.Type = parsePlaylistType(content)
 
-	if playlist.Type == PlaylistTypeMain {
-		master, err := parseMasterPlaylist(cleanLines)
+	if playlist.Type == PlaylistTypeManifest {
+		manifest, err := parseManifestPlaylist(cleanLines)
 		if err != nil {
 			return nil, err
 		}
-		playlist.Main = master
+		playlist.Manifest = manifest
 	} else {
 		track, err := parseTrackPlaylist(cleanLines)
 		if err != nil {
@@ -173,16 +149,16 @@ func parsePlaylist(content string) (*Playlist, error) {
 	return playlist, nil
 }
 
-// ParseMainPlaylist parses a main (master) playlist
-func ParseMainPlaylist(content string) (*MainPlaylist, error) {
+// ParseManifestPlaylist parses a manifest playlist
+func ParseManifestPlaylist(content string) (*ManifestPlaylist, error) {
 	playlist, err := parsePlaylist(content)
 	if err != nil {
 		return nil, err
 	}
-	if playlist.Type != PlaylistTypeMain {
+	if playlist.Type != PlaylistTypeManifest {
 		return nil, fmt.Errorf("not a main playlist")
 	}
-	return playlist.Main, nil
+	return playlist.Manifest, nil
 }
 
 // ParseTrackPlaylist parses a track (media) playlist
@@ -197,9 +173,9 @@ func ParseTrackPlaylist(content string) (*TrackPlaylist, error) {
 	return playlist.Track, nil
 }
 
-// parseMasterPlaylist parses a master playlist
-func parseMasterPlaylist(lines []string) (*MainPlaylist, error) {
-	master := &MainPlaylist{
+// parseManifestPlaylist parses a manifest playlist
+func parseManifestPlaylist(lines []string) (*ManifestPlaylist, error) {
+	manifest := &ManifestPlaylist{
 		AudioGroups:    make(map[string][]AudioMedia),
 		SubtitleGroups: make(map[string][]SubtitleMedia),
 	}
@@ -208,9 +184,9 @@ func parseMasterPlaylist(lines []string) (*MainPlaylist, error) {
 		line := lines[i]
 
 		if strings.HasPrefix(line, "#EXT-X-VERSION:") {
-			master.Version, _ = strconv.Atoi(strings.TrimPrefix(line, "#EXT-X-VERSION:"))
+			manifest.Version, _ = strconv.Atoi(strings.TrimPrefix(line, "#EXT-X-VERSION:"))
 		} else if strings.HasPrefix(line, "#EXT-X-INDEPENDENT-SEGMENTS") {
-			master.IndependentSegments = true
+			manifest.IndependentSegments = true
 		} else if strings.HasPrefix(line, "#EXT-X-MEDIA:") {
 			mediaType := extractAttribute(line, "TYPE")
 
@@ -226,9 +202,9 @@ func parseMasterPlaylist(lines []string) (*MainPlaylist, error) {
 					Autoselect: extractAttribute(line, "AUTOSELECT") == "YES",
 					Channels:   extractAttribute(line, "CHANNELS"),
 					Attrs:      parseAttributes(line),
-					Index:      len(master.AudioGroups[groupId]),
+					Index:      len(manifest.AudioGroups[groupId]),
 				}
-				master.AudioGroups[audio.GroupID] = append(master.AudioGroups[audio.GroupID], audio)
+				manifest.AudioGroups[audio.GroupID] = append(manifest.AudioGroups[audio.GroupID], audio)
 			case "SUBTITLES":
 				groupId := extractAttribute(line, "GROUP-ID")
 				subtitle := SubtitleMedia{
@@ -240,9 +216,9 @@ func parseMasterPlaylist(lines []string) (*MainPlaylist, error) {
 					Autoselect: extractAttribute(line, "AUTOSELECT") == "YES",
 					Forced:     extractAttribute(line, "FORCED") == "YES",
 					Attrs:      parseAttributes(line),
-					Index:      len(master.SubtitleGroups[groupId]),
+					Index:      len(manifest.SubtitleGroups[groupId]),
 				}
-				master.SubtitleGroups[subtitle.GroupID] = append(master.SubtitleGroups[subtitle.GroupID], subtitle)
+				manifest.SubtitleGroups[subtitle.GroupID] = append(manifest.SubtitleGroups[subtitle.GroupID], subtitle)
 			}
 		} else if strings.HasPrefix(line, "#EXT-X-STREAM-INF:") {
 			variant := VideoVariant{
@@ -252,7 +228,7 @@ func parseMasterPlaylist(lines []string) (*MainPlaylist, error) {
 				Audio:      extractAttribute(line, "AUDIO"),
 				Subtitles:  extractAttribute(line, "SUBTITLES"),
 				Attrs:      parseAttributes(line),
-				Index:      len(master.VideoVariants),
+				Index:      len(manifest.VideoVariants),
 			}
 
 			// Frame rate
@@ -266,96 +242,25 @@ func parseMasterPlaylist(lines []string) (*MainPlaylist, error) {
 				variant.URI = lines[i]
 			}
 
-			master.VideoVariants = append(master.VideoVariants, variant)
+			manifest.VideoVariants = append(manifest.VideoVariants, variant)
 		}
 	}
 
-	return master, nil
-}
-
-// parseTrackPlaylist parses a media playlist
-func parseTrackPlaylist(lines []string) (*TrackPlaylist, error) {
-	media := &TrackPlaylist{
-		Segments: make([]Segment, 0),
-	}
-
-	var currentKey *Key
-	var nextSegment *Segment
-
-	for i := 0; i < len(lines); i++ {
-		line := lines[i]
-
-		if strings.HasPrefix(line, "#EXT-X-VERSION:") {
-			media.Version, _ = strconv.Atoi(strings.TrimPrefix(line, "#EXT-X-VERSION:"))
-		} else if strings.HasPrefix(line, "#EXT-X-TARGETDURATION:") {
-			media.TargetDuration, _ = strconv.Atoi(strings.TrimPrefix(line, "#EXT-X-TARGETDURATION:"))
-		} else if strings.HasPrefix(line, "#EXT-X-MEDIA-SEQUENCE:") {
-			media.MediaSequence, _ = strconv.Atoi(strings.TrimPrefix(line, "#EXT-X-MEDIA-SEQUENCE:"))
-		} else if strings.HasPrefix(line, "#EXT-X-PLAYLIST-TYPE:") {
-			media.PlaylistType = strings.TrimPrefix(line, "#EXT-X-PLAYLIST-TYPE:")
-		} else if strings.HasPrefix(line, "#EXT-X-INDEPENDENT-SEGMENTS") {
-			media.IndependentSegments = true
-		} else if strings.HasPrefix(line, "#EXT-X-ENDLIST") {
-			media.EndList = true
-		} else if strings.HasPrefix(line, "#EXT-X-KEY:") {
-			key := parseKey(line)
-			currentKey = &key
-		} else if strings.HasPrefix(line, "#EXT-X-MAP:") {
-			media.Map = parseMap(line)
-		} else if strings.HasPrefix(line, "#EXTINF:") {
-			// Parse duration and title
-			content := strings.TrimPrefix(line, "#EXTINF:")
-			parts := strings.SplitN(content, ",", 2)
-
-			duration, _ := strconv.ParseFloat(parts[0], 64)
-			title := ""
-			if len(parts) > 1 {
-				title = parts[1]
-			}
-
-			nextSegment = &Segment{
-				Duration: duration,
-				Title:    title,
-				Key:      currentKey,
-				Attrs:    make(map[string]string),
-			}
-		} else if strings.HasPrefix(line, "#EXT-X-DISCONTINUITY") {
-			if nextSegment != nil {
-				nextSegment.Discontinuity = true
-			}
-		} else if strings.HasPrefix(line, "#EXT-X-BYTERANGE:") {
-			if nextSegment != nil {
-				nextSegment.ByteRange = parseByteRange(strings.TrimPrefix(line, "#EXT-X-BYTERANGE:"))
-			}
-		} else if strings.HasPrefix(line, "#EXT-X-PROGRAM-DATE-TIME:") {
-			if nextSegment != nil {
-				nextSegment.ProgramDateTime = strings.TrimPrefix(line, "#EXT-X-PROGRAM-DATE-TIME:")
-			}
-		} else if !strings.HasPrefix(line, "#") {
-			// This is a URI line
-			if nextSegment != nil {
-				nextSegment.URI = line
-				media.Segments = append(media.Segments, *nextSegment)
-				nextSegment = nil
-			}
-		}
-	}
-
-	return media, nil
+	return manifest, nil
 }
 
 // Generate converts a Playlist struct back to HLS format string
 func (p *Playlist) Generate() string {
-	if p.Type == PlaylistTypeMain && p.Main != nil {
-		return p.Main.Generate()
+	if p.Type == PlaylistTypeManifest && p.Manifest != nil {
+		return p.Manifest.Generate()
 	} else if p.Type == PlaylistTypeTrack && p.Track != nil {
 		return p.Track.Generate()
 	}
 	return ""
 }
 
-// Generate creates an HLS master playlist string
-func (m *MainPlaylist) Generate() string {
+// Generate creates an HLS manifest playlist string
+func (m *ManifestPlaylist) Generate() string {
 	var lines []string
 
 	lines = append(lines, "#EXTM3U")
@@ -450,82 +355,6 @@ func (m *MainPlaylist) Generate() string {
 
 		lines = append(lines, "#EXT-X-STREAM-INF:"+strings.Join(attrs, ","))
 		lines = append(lines, variant.URI)
-	}
-
-	return strings.Join(lines, "\n") + "\n"
-}
-
-// Generate creates an HLS media playlist string
-func (m *TrackPlaylist) Generate() string {
-	var lines []string
-
-	lines = append(lines, "#EXTM3U")
-
-	if m.Version > 0 {
-		lines = append(lines, fmt.Sprintf("#EXT-X-VERSION:%d", m.Version))
-	}
-
-	if m.TargetDuration > 0 {
-		lines = append(lines, fmt.Sprintf("#EXT-X-TARGETDURATION:%d", m.TargetDuration))
-	}
-
-	if m.MediaSequence > 0 {
-		lines = append(lines, fmt.Sprintf("#EXT-X-MEDIA-SEQUENCE:%d", m.MediaSequence))
-	}
-
-	if m.PlaylistType != "" {
-		lines = append(lines, fmt.Sprintf("#EXT-X-PLAYLIST-TYPE:%s", m.PlaylistType))
-	}
-
-	if m.IndependentSegments {
-		lines = append(lines, "#EXT-X-INDEPENDENT-SEGMENTS")
-	}
-
-	// Add map if present
-	if m.Map != nil {
-		mapLine := fmt.Sprintf(`#EXT-X-MAP:URI="%s"`, m.Map.URI)
-		if m.Map.ByteRange != nil {
-			mapLine += fmt.Sprintf(`,BYTERANGE="%d@%d"`, m.Map.ByteRange.Length, m.Map.ByteRange.Offset)
-		}
-		lines = append(lines, mapLine)
-	}
-
-	// Add segments
-	var lastKey *Key
-	for _, segment := range m.Segments {
-		// Add key if changed
-		if segment.Key != nil && (lastKey == nil || *segment.Key != *lastKey) {
-			keyLine := fmt.Sprintf(`#EXT-X-KEY:METHOD=%s`, segment.Key.Method)
-			if segment.Key.URI != "" {
-				keyLine += fmt.Sprintf(`,URI="%s"`, segment.Key.URI)
-			}
-			if segment.Key.IV != "" {
-				keyLine += fmt.Sprintf(`,IV=%s`, segment.Key.IV)
-			}
-			lines = append(lines, keyLine)
-			lastKey = segment.Key
-		}
-
-		if segment.Discontinuity {
-			lines = append(lines, "#EXT-X-DISCONTINUITY")
-		}
-
-		if segment.ProgramDateTime != "" {
-			lines = append(lines, fmt.Sprintf("#EXT-X-PROGRAM-DATE-TIME:%s", segment.ProgramDateTime))
-		}
-
-		// EXTINF
-		lines = append(lines, fmt.Sprintf("#EXTINF:%.6f,%s", segment.Duration, segment.Title))
-
-		if segment.ByteRange != nil {
-			lines = append(lines, fmt.Sprintf("#EXT-X-BYTERANGE:%d@%d", segment.ByteRange.Length, segment.ByteRange.Offset))
-		}
-
-		lines = append(lines, segment.URI)
-	}
-
-	if m.EndList {
-		lines = append(lines, "#EXT-X-ENDLIST")
 	}
 
 	return strings.Join(lines, "\n") + "\n"

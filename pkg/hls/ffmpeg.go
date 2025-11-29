@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 )
 
@@ -16,17 +17,9 @@ type TranscodeOptions struct {
 	StartTime     float64
 	Duration      int
 	SubtitlePath  string
-	SubtitleTrack int // -1 for external/none, >= 0 for embedded
+	SubtitleTrack int // -2 for none, -1 for external, >= 0 for embedded
 	BurnIn        bool
 	Quality       string // "low", "medium", "high", "original"
-}
-
-// EscapeFFmpegPath escapes special characters in paths that ffmpeg doesn't like
-func EscapeFFmpegPath(path string) string {
-	path = strings.ReplaceAll(path, "\\", "/")
-	path = strings.ReplaceAll(path, "[", "\\[")
-	path = strings.ReplaceAll(path, "]", "\\]")
-	return path
 }
 
 // TranscodeSegment transcodes a segment with optional 100ms wait to avoid wasted work during rapid seeking
@@ -67,7 +60,7 @@ func buildTranscodeArgs(opts TranscodeOptions) []string {
 	}
 
 	// Input file
-	args = append(args, "-i", EscapeFFmpegPath(opts.InputPath))
+	args = append(args, "-i", opts.InputPath)
 
 	args = append(args,
 		"-c:v", "h264_videotoolbox",
@@ -79,8 +72,8 @@ func buildTranscodeArgs(opts TranscodeOptions) []string {
 		"-f", "mpegts",
 	)
 
-	if opts.BurnIn && opts.SubtitlePath != "" {
-		filterStr := buildSubtitleFilter(opts.SubtitlePath, opts.SubtitleTrack, opts.InputPath)
+	if opts.BurnIn && opts.SubtitleTrack != -2 {
+		filterStr := buildSubtitleFilter(opts.OutputPath, opts.SubtitlePath, opts.SubtitleTrack, opts.InputPath)
 		if filterStr != "" {
 			args = append(args, "-vf", filterStr)
 		}
@@ -107,20 +100,21 @@ func getCRF(quality string) string {
 }
 
 // buildSubtitleFilter builds the subtitle filter string for ffmpeg
-func buildSubtitleFilter(subtitlePath string, trackIndex int, videoPath string) string {
+func buildSubtitleFilter(outputDir string, subtitlePath string, trackIndex int, videoPath string) string {
 	// Check if it's an embedded subtitle track
 	if trackIndex >= 0 {
-		return fmt.Sprintf("subtitles='%s':si=%d:force_style='FontSize=24'",
-			EscapeFFmpegPath(videoPath), trackIndex)
+		return fmt.Sprintf("subtitles='%s':si=%d:force_style='FontSize=24'", videoPath, trackIndex)
 	}
 
-	// External subtitle file
-	if subtitlePath != "" {
-		return fmt.Sprintf("subtitles='%s':force_style='FontSize=24'",
-			EscapeFFmpegPath(subtitlePath))
-	}
+	ensureSubtitleLink(outputDir, subtitlePath)
+	return fmt.Sprintf("subtitles='%s':force_style='FontSize=24'", filepath.Join(outputDir, "input_subtitle"))
+}
 
-	return ""
+func ensureSubtitleLink(outputDir string, subtitlePath string) {
+	symlinkPath := filepath.Join(outputDir, "input_subtitle")
+	if _, err := os.Lstat(symlinkPath); err != nil {
+		os.Symlink(subtitlePath, symlinkPath)
+	}
 }
 
 // GetVideoDuration gets the duration of a video file using ffprobe

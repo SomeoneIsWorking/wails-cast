@@ -1,50 +1,14 @@
 package hls
 
 import (
-	"fmt"
 	"net/url"
 	"strings"
 	"wails-cast/pkg/mediainfo"
 )
 
-// GenerateVODPlaylist generates a complete HLS VOD playlist
-func GenerateVODPlaylist(duration float64, segmentSize int) string {
-	var playlist strings.Builder
-
-	playlist.WriteString("#EXTM3U\n")
-	playlist.WriteString("#EXT-X-VERSION:3\n")
-	fmt.Fprintf(&playlist, "#EXT-X-TARGETDURATION:%d\n", segmentSize)
-	playlist.WriteString("#EXT-X-MEDIA-SEQUENCE:0\n")
-	playlist.WriteString("#EXT-X-PLAYLIST-TYPE:VOD\n")
-
-	// Calculate number of segments
-	numSegments := int(duration / float64(segmentSize))
-	if float64(numSegments*segmentSize) < duration {
-		numSegments++
-	}
-
-	// Add all segments with proper durations
-	for i := 0; i < numSegments; i++ {
-		segmentDuration := float64(segmentSize)
-		// Last segment might be shorter
-		if i == numSegments-1 {
-			remaining := duration - float64(i*segmentSize)
-			if remaining < float64(segmentSize) {
-				segmentDuration = remaining
-			}
-		}
-
-		fmt.Fprintf(&playlist, "#EXTINF:%.6f,\n", segmentDuration)
-		fmt.Fprintf(&playlist, "/segment%d.ts\n", i)
-	}
-
-	playlist.WriteString("#EXT-X-ENDLIST\n")
-	return playlist.String()
-}
-
-// ExtractTracksFromMain extracts all audio and video tracks from a main playlist
+// ExtractTracksFromManifest extracts all audio and video tracks from a manifest playlist
 // This is a convenience wrapper around the structured playlist parser
-func ExtractTracksFromMain(playlist *MainPlaylist) (*mediainfo.MediaTrackInfo, error) {
+func ExtractTracksFromManifest(playlist *ManifestPlaylist) (*mediainfo.MediaTrackInfo, error) {
 	mi := mediainfo.MediaTrackInfo{
 		VideoTracks:    make([]mediainfo.VideoTrack, 0),
 		AudioTracks:    make([]mediainfo.AudioTrack, 0),

@@ -8,14 +8,14 @@ type StreamOptions struct {
 	SubtitleTrack int
 	VideoTrack    int
 	AudioTrack    int
-	BurnIn        bool
+	BurnIn        bool `default:"true"`
 	Quality       string
 }
 
 // StreamHandler defines the interface for handling media streams
 type StreamHandler interface {
-	// ServeMainPlaylist serves the main/master playlist (/playlist.m3u8)
-	ServeMainPlaylist(w http.ResponseWriter, r *http.Request)
+	// ServeManifestPlaylist serves the manifest playlist (/playlist.m3u8)
+	ServeManifestPlaylist(w http.ResponseWriter, r *http.Request)
 
 	// ServeTrackPlaylist serves video or audio track playlists (/video_i.m3u8, /audio_i.m3u8)
 	// trackType should be "video" or "audio"

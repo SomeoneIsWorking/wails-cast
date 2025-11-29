@@ -1,6 +1,8 @@
 package stream
 
 import (
+	"crypto/md5"
+	"encoding/hex"
 	"fmt"
 	"net/http"
 	"os"
@@ -8,6 +10,7 @@ import (
 	"time"
 
 	"wails-cast/pkg/hls"
+	"wails-cast/pkg/logger"
 )
 
 // LocalHandler represents a local file HLS streaming server
@@ -28,9 +31,10 @@ func NewLocalHandler(videoPath string, options StreamOptions, localIP string) *L
 		duration = 0
 	}
 
-	sessionID := filepath.Base(videoPath)
+	hash := md5.Sum([]byte(videoPath))
+	cacheKey := hex.EncodeToString(hash[:])
 	baseDir := filepath.Join(os.TempDir(), "wails-cast-hls")
-	outputDir := filepath.Join(baseDir, sessionID)
+	outputDir := filepath.Join(baseDir, cacheKey)
 	hls.EnsureCacheDir(outputDir)
 
 	return &LocalHandler{
@@ -44,38 +48,58 @@ func NewLocalHandler(videoPath string, options StreamOptions, localIP string) *L
 	}
 }
 
-// ServeMainPlaylist generates and serves the master HLS playlist
-func (s *LocalHandler) ServeMainPlaylist(w http.ResponseWriter, r *http.Request) {
-	// Generate master playlist pointing to /video_0.m3u8
-	// Since local files usually have 1 video track, we just point to it.
-	// If we had multiple qualities, we would list them here.
-
-	masterPlaylist := "#EXTM3U\n#EXT-X-VERSION:3\n"
-
-	// Add video track
-	// We can add bandwidth info if we knew it, or just default.
-	masterPlaylist += fmt.Sprintf("#EXT-X-STREAM-INF:BANDWIDTH=5000000,RESOLUTION=1920x1080\n%s/video_0.m3u8\n", s.LocalIP)
-
+// ServeManifestPlaylist generates and serves the manifest HLS playlist
+func (s *LocalHandler) ServeManifestPlaylist(w http.ResponseWriter, r *http.Request) {
+	manifestPlaylist := &hls.ManifestPlaylist{
+		Version: 3,
+		VideoVariants: []hls.VideoVariant{
+			{
+				Index:      0,
+				Bandwidth:  1500000,
+				Resolution: "1280x720",
+				Codecs:     "avc1.4d401f,mp4a.40.2",
+				URI:        "video_0.m3u8",
+			},
+		},
+	}
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	w.Header().Set("Content-Type", "application/vnd.apple.mpegurl")
 	w.Header().Set("Cache-Control", "no-cache")
-	w.Write([]byte(masterPlaylist))
+	w.Write([]byte(manifestPlaylist.Generate()))
 }
 
 // ServeTrackPlaylist generates and serves video or audio track playlists
 func (s *LocalHandler) ServeTrackPlaylist(w http.ResponseWriter, r *http.Request, trackType string, trackIndex int) {
-	if trackType == "video" && trackIndex == 0 {
-		// For local files, we only have video_0
-		playlistContent := hls.GenerateVODPlaylist(s.Duration, s.SegmentSize)
-
-		w.Header().Set("Access-Control-Allow-Origin", "*")
-		w.Header().Set("Content-Type", "application/vnd.apple.mpegurl")
-		w.Header().Set("Cache-Control", "no-cache")
-		w.Write([]byte(playlistContent))
-		return
+	trackPlaylist := &hls.TrackPlaylist{
+		Version:        3,
+		TargetDuration: s.SegmentSize,
+		MediaSequence:  0,
+		Segments:       make([]hls.Segment, 0),
+		EndList:        true,
 	}
 
-	http.NotFound(w, r)
+	numSegments := int(s.Duration) / s.SegmentSize
+	if int(s.Duration)%s.SegmentSize != 0 {
+		numSegments++
+	}
+
+	for i := 0; i < numSegments; i++ {
+		segmentDuration := float64(s.SegmentSize)
+		if float64((i+1)*s.SegmentSize) > s.Duration {
+			segmentDuration = s.Duration - float64(i*s.SegmentSize)
+		}
+		segment := hls.Segment{
+			Duration: segmentDuration,
+			Title:    "",
+			URI:      fmt.Sprintf("/%s_0/segment_%d.ts", trackType, i),
+		}
+		trackPlaylist.Segments = append(trackPlaylist.Segments, segment)
+	}
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Content-Type", "application/vnd.apple.mpegurl")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Write([]byte(trackPlaylist.Generate()))
+
 }
 
 // ServeSegment transcodes and serves a segment
@@ -91,44 +115,16 @@ func (s *LocalHandler) ServeSegment(w http.ResponseWriter, r *http.Request, trac
 		segmentDuration = s.Duration - startTime
 	}
 
-	needsRegeneration := false
 	manifest, err := hls.LoadSegmentManifest(s.OutputDir, segmentIndex)
-	if err != nil || !hls.ManifestMatches(manifest, s.SubtitlePath, segmentDuration) {
-		needsRegeneration = true
-	}
+	needsRegeneration := err != nil || !hls.ManifestMatches(manifest, s.SubtitlePath, segmentDuration)
 
 	if !hls.CacheExists(s.OutputDir, segmentName) || needsRegeneration {
-		opts := hls.TranscodeOptions{
-			InputPath:     s.VideoPath,
-			OutputPath:    segmentPath,
-			StartTime:     startTime,
-			Duration:      s.SegmentSize,
-			SubtitlePath:  s.Options.SubtitlePath,
-			SubtitleTrack: s.Options.SubtitleTrack,
-			BurnIn:        s.Options.BurnIn,
-			Quality:       s.Options.Quality,
-		}
-
-		err := hls.TranscodeSegment(r.Context(), opts)
+		err := s.transcodeSegment(segmentPath, startTime, r, w, segmentIndex, segmentDuration)
 		if err != nil {
-			if r.Context().Err() != nil {
-				return
-			}
 			http.Error(w, "Transcode failed", http.StatusInternalServerError)
+			logger.Logger.Error("Transcode error", "err", err)
 			return
 		}
-
-		manifest := hls.SegmentManifest{
-			SegmentNumber: segmentIndex,
-			Duration:      segmentDuration,
-			SubtitlePath:  s.Options.SubtitlePath,
-			SubtitleStyle: "FontSize=24",
-			VideoCodec:    "libx264",
-			AudioCodec:    "aac",
-			Preset:        "fast",
-			CreatedAt:     time.Now().Format(time.RFC3339),
-		}
-		hls.SaveSegmentManifest(s.OutputDir, manifest)
 	}
 
 	w.Header().Set("Access-Control-Allow-Origin", "*")
@@ -139,6 +135,49 @@ func (s *LocalHandler) ServeSegment(w http.ResponseWriter, r *http.Request, trac
 	w.Header().Set("Cache-Control", "public, max-age=31536000")
 
 	http.ServeFile(w, r, segmentPath)
+}
+
+func (s *LocalHandler) transcodeSegment(segmentPath string, startTime float64, r *http.Request, w http.ResponseWriter, segmentIndex int, segmentDuration float64) error {
+	ensureSymlink(s.VideoPath, s.OutputDir)
+	opts := hls.TranscodeOptions{
+		InputPath:     filepath.Join(s.OutputDir, "input_video"),
+		OutputPath:    segmentPath,
+		StartTime:     startTime,
+		Duration:      s.SegmentSize,
+		SubtitlePath:  s.Options.SubtitlePath,
+		SubtitleTrack: s.Options.SubtitleTrack,
+		BurnIn:        s.Options.BurnIn,
+		Quality:       s.Options.Quality,
+	}
+
+	err := hls.TranscodeSegment(r.Context(), opts)
+	if err != nil {
+		if r.Context().Err() != nil {
+			return err
+		}
+		http.Error(w, "Transcode failed", http.StatusInternalServerError)
+		return err
+	}
+
+	manifest := hls.SegmentManifest{
+		SegmentNumber: segmentIndex,
+		Duration:      segmentDuration,
+		SubtitlePath:  s.Options.SubtitlePath,
+		SubtitleStyle: "FontSize=24",
+		VideoCodec:    "libx264",
+		AudioCodec:    "aac",
+		Preset:        "fast",
+		CreatedAt:     time.Now().Format(time.RFC3339),
+	}
+	err = hls.SaveSegmentManifest(s.OutputDir, manifest)
+	return err
+}
+
+func ensureSymlink(filePath string, folder string) {
+	linkPath := filepath.Join(folder, "input_video")
+	if _, err := os.Lstat(linkPath); os.IsNotExist(err) {
+		os.Symlink(filePath, linkPath)
+	}
 }
 
 // Cleanup removes session files

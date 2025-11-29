@@ -23,8 +23,8 @@ import (
 // with captured cookies and headers
 type RemoteHandler struct {
 	BaseURL             string
-	Manifest            *hls.MainPlaylist
-	ManifestRaw         *hls.MainPlaylist
+	Manifest            *hls.ManifestPlaylist
+	ManifestRaw         *hls.ManifestPlaylist
 	Cookies             map[string]string
 	Headers             map[string]string
 	LocalIP             string
@@ -55,7 +55,7 @@ func NewRemoteHandler(localIP string, cacheDir string, options StreamOptions) *R
 // SetExtractor sets the extractor result for the proxy
 func (p *RemoteHandler) SetExtractor(result *extractor.ExtractResult) {
 	p.BaseURL = result.BaseURL
-	p.ManifestRaw, _ = hls.ParseMainPlaylist(result.ManifestRaw)
+	p.ManifestRaw, _ = hls.ParseManifestPlaylist(result.ManifestRaw)
 	p.Cookies = result.Cookies
 	p.Headers = result.Headers
 	p.Manifest, _ = p.rewriteMainPlaylist(p.ManifestRaw)
@@ -73,8 +73,8 @@ func (p *RemoteHandler) GetTrackPlaylist(ctx context.Context, trackType string, 
 	return *trackPlaylist, nil
 }
 
-// ServeMainPlaylist serves the main playlist
-func (p *RemoteHandler) ServeMainPlaylist(w http.ResponseWriter, r *http.Request) {
+// ServeManifestPlaylist serves the manifest playlist
+func (p *RemoteHandler) ServeManifestPlaylist(w http.ResponseWriter, r *http.Request) {
 	p.cacheMainPlaylist()
 
 	playlist := p.Manifest.Clone()
@@ -113,26 +113,26 @@ func (p *RemoteHandler) ServeTrackPlaylist(w http.ResponseWriter, r *http.Reques
 func (p *RemoteHandler) cacheMainPlaylist() error {
 	// Create directory
 	if err := os.MkdirAll(p.CacheDir, 0755); err != nil {
-		logger.Logger.Error("Failed to create master playlist directory", "err", err)
+		logger.Logger.Error("Failed to create manifest playlist directory", "err", err)
 		return err
 	}
 
 	// 1. Save Raw
 	rawPath := filepath.Join(p.CacheDir, "playlist_raw.m3u8")
 	if err := os.WriteFile(rawPath, []byte(p.ManifestRaw.Generate()), 0644); err != nil {
-		return fmt.Errorf("failed to save raw master playlist: %w", err)
+		return fmt.Errorf("failed to save raw manifest playlist: %w", err)
 	}
 
 	rewrittenPath := filepath.Join(p.CacheDir, "playlist.m3u8")
 	if err := os.WriteFile(rewrittenPath, []byte(p.Manifest.Generate()), 0644); err != nil {
-		return fmt.Errorf("failed to save rewritten master playlist: %w", err)
+		return fmt.Errorf("failed to save rewritten manifest playlist: %w", err)
 	}
 
 	// 2. Generate Map (Track Indices -> URLs)
 	// We can reuse ExtractTracksFromMain logic
-	mi, err := hls.ExtractTracksFromMain(p.ManifestRaw)
+	mi, err := hls.ExtractTracksFromManifest(p.ManifestRaw)
 	if err != nil {
-		return fmt.Errorf("failed to extract tracks from master playlist: %w", err)
+		return fmt.Errorf("failed to extract tracks from manifest playlist: %w", err)
 	}
 
 	mm := MainMap{
@@ -226,8 +226,8 @@ func (p *RemoteHandler) downloadTrackPlaylist(ctx context.Context, trackType str
 	return rewritten, nil
 }
 
-// rewriteMainPlaylist rewrites the master playlist to point to local endpoints
-func (p *RemoteHandler) rewriteMainPlaylist(playlist *hls.MainPlaylist) (*hls.MainPlaylist, error) {
+// rewriteMainPlaylist rewrites the manifest playlist to point to local endpoints
+func (p *RemoteHandler) rewriteMainPlaylist(playlist *hls.ManifestPlaylist) (*hls.ManifestPlaylist, error) {
 	playlist = playlist.Clone()
 	// Rewrite video variant URIs
 	for i := range playlist.VideoVariants {
