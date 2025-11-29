@@ -110,6 +110,7 @@ import {
   SkipForward,
 } from "lucide-vue-next";
 import { useCastStore } from "@/stores/cast";
+import { watch } from "vue";
 
 const seekPosition = ref(0);
 const showTooltip = ref(false);
@@ -121,6 +122,17 @@ let localTimeIncrement: ReturnType<typeof setInterval> | null = null;
 const castStore = useCastStore();
 
 const playbackState = computed(() => castStore.playbackState);
+
+watch(
+  () => playbackState.value.isPlaying,
+  (isPlaying) => {
+    if (isPlaying) {
+      startLocalTimeIncrement();
+    } else {
+      if (localTimeIncrement) clearInterval(localTimeIncrement);
+    }
+  }
+);
 // Update seek preview when hovering
 const updateTooltipPosition = (event: MouseEvent) => {
   if (!seekBar.value || !playbackState.value.duration) return;
@@ -150,12 +162,9 @@ const startLocalTimeIncrement = () => {
 
   localTimeIncrement = setInterval(() => {
     if (playbackState.value.isPlaying && !playbackState.value.isPaused) {
+      playbackState.value.currentTime += 1;
       // Increment local position
-      seekPosition.value = Math.min(
-        Math.floor(playbackState.value.duration),
-        seekPosition.value + 1
-      );
-      playbackState.value.currentTime = seekPosition.value;
+      seekPosition.value = playbackState.value.currentTime;
     }
   }, 1000);
 };
@@ -220,14 +229,8 @@ const formatTime = (seconds: number) => {
   return `${m}:${s.toString().padStart(2, "0")}`;
 };
 
-onMounted(() => {
-  // Start local time increment
-  startLocalTimeIncrement();
-
-  // Sync with server every 5 seconds
-
-  onUnmounted(() => {
-    if (localTimeIncrement) clearInterval(localTimeIncrement);
-  });
+onMounted(() => {});
+onUnmounted(() => {
+  if (localTimeIncrement) clearInterval(localTimeIncrement);
 });
 </script>
