@@ -98,7 +98,7 @@ func getExtractionJson(videoURL string, cacheDir string) (*extractor.ExtractResu
 	fmt.Println("Please click the PLAY button in the browser window...")
 
 	var err error
-	result, err = extractor.ExtractMainPlaylist(videoURL)
+	result, err = extractor.ExtractManifestPlaylist(videoURL)
 	if err != nil {
 		return nil, fmt.Errorf("error extracting video: %w", err)
 	}
@@ -119,12 +119,12 @@ func (m *CastManager) GetRemoteTrackInfo(videoURL string) (*mediainfo.MediaTrack
 		return nil, fmt.Errorf("failed to extract video: %w", err)
 	}
 
-	manifestRaw, _ := hls.ParseMainPlaylist(result.ManifestRaw)
+	manifestRaw, _ := hls.ParseManifestPlaylist(result.ManifestRaw)
 
-	mediaTrackInfo, err := hls.ExtractTracksFromMain(manifestRaw)
+	mediaTrackInfo, err := hls.ExtractTracksFromManifest(manifestRaw)
 
 	if err != nil {
-		return nil, fmt.Errorf("failed to extract tracks from master playlist: %w", err)
+		return nil, fmt.Errorf("failed to extract tracks from manifest playlist: %w", err)
 	}
 	return mediaTrackInfo, nil
 }

@@ -103,7 +103,7 @@ func (s *Server) handleRequest(w http.ResponseWriter, r *http.Request) {
 
 	// Main playlist: /playlist.m3u8 or /media.mp4
 	if path == "/playlist.m3u8" {
-		handler.ServeMainPlaylist(w, r)
+		handler.ServeManifestPlaylist(w, r)
 		return
 	}
 	var trackIndex int

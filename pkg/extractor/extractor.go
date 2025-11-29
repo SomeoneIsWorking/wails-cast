@@ -21,10 +21,10 @@ type ExtractResult struct {
 	Headers     map[string]string // Captured headers
 }
 
-// ExtractMainPlaylist opens a browser, navigates to the URL, and extracts the HLS stream
+// ExtractManifestPlaylist opens a browser, navigates to the URL, and extracts the HLS stream
 // by intercepting network requests and checking Content-Type headers.
 // It captures cookies, headers, and saves the m3u8 manifest.
-func ExtractMainPlaylist(pageURL string) (*ExtractResult, error) {
+func ExtractManifestPlaylist(pageURL string) (*ExtractResult, error) {
 	// Launch system browser (to ensure codecs) in headful mode
 	path, _ := launcher.LookPath()
 	u := launcher.New().Bin(path).Headless(false).MustLaunch()

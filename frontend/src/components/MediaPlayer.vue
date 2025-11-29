@@ -84,7 +84,7 @@ const applySubtitleSettings = async () => {
   await mediaService.updateSubtitleSettings({
     SubtitlePath: finalSubtitlePath,
     SubtitleTrack: subtitleTrack,
-    BurnIn: true
+    BurnIn: true,
   });
 };
 
@@ -106,11 +106,11 @@ const recast = async () => {
 };
 
 const generateMediaURL = async () => {
-    mediaURL.value = await mediaService.getMediaURL(store.selectedMedia!);
+  mediaURL.value = await mediaService.getMediaURL(store.selectedMedia!);
 };
 
 const clearCache = async () => {
-    await ClearCache();
+  await ClearCache();
 };
 </script>
 
@@ -160,19 +160,24 @@ const clearCache = async () => {
           Subtitles
         </label>
 
-        <select v-model="selectedSubtitleSource" class="select-field">
-          <option value="none">No Subtitles</option>
-          <option value="external">External File...</option>
-          <option
-            v-for="track in subtitleTracks"
-            :key="track.index"
-            :value="track.index.toString()"
-          >
-            Embedded Track {{ track.index }}
-            <template v-if="track.language"> ({{ track.language }})</template>
-            <template v-if="track.title"> - {{ track.title }}</template>
-          </option>
-        </select>
+        <div class="flex">
+          <select v-model="selectedSubtitleSource" class="select-field w-full">
+            <option value="none">No Subtitles</option>
+            <option value="external">External File...</option>
+            <option
+              v-for="track in subtitleTracks"
+              :key="track.index"
+              :value="track.index.toString()"
+            >
+              Embedded Track {{ track.index }}
+              <template v-if="track.language"> ({{ track.language }})</template>
+              <template v-if="track.title"> - {{ track.title }}</template>
+            </option>
+          </select>
+          <button @click="applySubtitleSettings" class="btn-primary">
+            Apply
+          </button>
+        </div>
 
         <div v-if="selectedSubtitleSource === 'external'" class="mt-3">
           <FileSelector
@@ -181,8 +186,7 @@ const clearCache = async () => {
             placeholder="Select subtitle file"
             dialog-title="Select Subtitle File"
           >
-          <button @click="applySubtitleSettings" class="btn-primary">Apply</button>
-        </FileSelector>
+          </FileSelector>
         </div>
 
         <p
@@ -207,11 +211,7 @@ const clearCache = async () => {
           :disabled="isCasting"
           class="btn-success flex items-center gap-2"
         >
-          <Loader2
-            v-if="isCasting"
-            :size="18"
-            class="animate-spin"
-          />
+          <Loader2 v-if="isCasting" :size="18" class="animate-spin" />
           <Cast v-else :size="18" />
           {{ isCasting ? "Casting..." : "Recast" }}
         </button>
