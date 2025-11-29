@@ -72,6 +72,22 @@ export namespace main {
 	        this.duration = source["duration"];
 	    }
 	}
+	export class SubtitleOptions {
+	    SubtitlePath: string;
+	    SubtitleTrack: number;
+	    BurnIn: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new SubtitleOptions(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.SubtitlePath = source["SubtitlePath"];
+	        this.SubtitleTrack = source["SubtitleTrack"];
+	        this.BurnIn = source["BurnIn"];
+	    }
+	}
 
 }
 

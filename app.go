@@ -36,6 +36,12 @@ type CastOptions struct {
 	Quality       string // "low", "medium", "high", "original"
 }
 
+type SubtitleOptions struct {
+	SubtitlePath  string
+	SubtitleTrack int // -1 for external file, >= 0 for embedded track index
+	BurnIn        bool
+}
+
 type App struct {
 	ctx             context.Context
 	discovery       *DeviceDiscovery
@@ -370,7 +376,7 @@ func (a *App) SeekTo(seekTime float64) error {
 }
 
 // UpdateSubtitleSettings updates subtitle settings for current media without recasting
-func (a *App) UpdateSubtitleSettings(options CastOptions) error {
+func (a *App) UpdateSubtitleSettings(options SubtitleOptions) error {
 	subtitlePath := options.SubtitlePath
 	if options.SubtitleTrack >= 0 {
 		subtitlePath = fmt.Sprintf("%s:si=%d", a.playbackState.MediaPath, options.SubtitleTrack)
@@ -383,9 +389,10 @@ func (a *App) UpdateSubtitleSettings(options CastOptions) error {
 	// Seek to current position to reload with new subtitles
 	a.mu.RLock()
 	ccApp := a.chromecastApp
-	currentTime := a.playbackState.CurrentTime
 	a.mu.RUnlock()
+	ccApp.App.Update()
 
+	currentTime := a.playbackState.CurrentTime
 	if ccApp != nil {
 		return ccApp.App.SeekToTime(float32(currentTime))
 	}
