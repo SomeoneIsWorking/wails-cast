@@ -1,0 +1,5 @@
+- MUX mode for multitrack: combine V/A via ffmpeg
+- Create separate ffmpeg functions for transcoding a segment, creating a segment, etc
+- Fix subtitle burnin (missing atm)
+- Add library (store extracted URLs)
+- Make extraction full-auto with custom manifest

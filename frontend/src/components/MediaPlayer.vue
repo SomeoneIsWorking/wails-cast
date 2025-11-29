@@ -94,7 +94,7 @@ const recast = async () => {
 
   try {
     await mediaService.castToDevice(
-      store.selectedDevice!.url,
+      store.selectedDevice!.host,
       store.selectedMedia!,
       store.castOptions
     );
@@ -128,16 +128,6 @@ const clearCache = async () => {
       <div class="w-20"></div>
     </div>
     <div class="flex-1 overflow-auto space-y-6">
-      <!-- Casting Status -->
-      <div
-        v-if="isCasting"
-        class="flex flex-col items-center justify-center py-8 bg-blue-900/20 rounded-lg border border-blue-700"
-      >
-        <Loader2 :size="56" class="text-blue-400 mb-4 animate-spin" />
-        <p class="text-lg font-medium text-blue-400">Starting playback...</p>
-        <p class="text-sm text-gray-400 mt-1">Initializing stream</p>
-      </div>
-
       <!-- Media Info -->
       <div class="flex items-center gap-4 p-4 bg-gray-700 rounded-lg">
         <div class="p-3 bg-purple-600 rounded-lg">
