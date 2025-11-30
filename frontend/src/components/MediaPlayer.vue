@@ -18,14 +18,6 @@ import {
   Trash2,
 } from "lucide-vue-next";
 import FileSelector from "./FileSelector.vue";
-import { Device } from "@/services/device";
-
-interface Props {
-  device: Device;
-  mediaPath: string;
-}
-
-defineProps<Props>();
 
 const emit = defineEmits<{
   cast: [];
@@ -135,7 +127,7 @@ const clearCache = async () => {
         </div>
         <div class="flex-1 min-w-0">
           <h3 class="font-semibold text-lg truncate">{{ fileName }}</h3>
-          <p class="text-sm text-gray-400 truncate">{{ mediaPath }}</p>
+          <p class="text-sm text-gray-400 truncate">{{ store.selectedMedia }}</p>
         </div>
       </div>
 
@@ -145,9 +137,9 @@ const clearCache = async () => {
           <Cast :size="32" />
         </div>
         <div class="flex-1 min-w-0">
-          <h3 class="font-semibold text-lg truncate">{{ device.name }}</h3>
-          <p class="text-sm text-gray-400">{{ device.type }}</p>
-          <p class="text-xs text-gray-500">{{ device.address }}</p>
+          <h3 class="font-semibold text-lg truncate">{{ store.selectedDevice?.name }}</h3>
+          <p class="text-sm text-gray-400">{{ store.selectedDevice?.type }}</p>
+          <p class="text-xs text-gray-500">{{ store.selectedDevice?.address }}</p>
         </div>
       </div>
 

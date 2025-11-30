@@ -6,7 +6,8 @@ export namespace main {
 	    VideoTrack: number;
 	    AudioTrack: number;
 	    BurnIn: boolean;
-	    Quality: string;
+	    CRF: number;
+	    Debug: boolean;
 	
 	    static createFrom(source: any = {}) {
 	        return new CastOptions(source);
@@ -19,7 +20,8 @@ export namespace main {
 	        this.VideoTrack = source["VideoTrack"];
 	        this.AudioTrack = source["AudioTrack"];
 	        this.BurnIn = source["BurnIn"];
-	        this.Quality = source["Quality"];
+	        this.CRF = source["CRF"];
+	        this.Debug = source["Debug"];
 	    }
 	}
 	export class Device {
@@ -70,6 +72,22 @@ export namespace main {
 	        this.deviceName = source["deviceName"];
 	        this.currentTime = source["currentTime"];
 	        this.duration = source["duration"];
+	    }
+	}
+	export class QualityOption {
+	    Label: string;
+	    CRF: number;
+	    Key: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new QualityOption(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.Label = source["Label"];
+	        this.CRF = source["CRF"];
+	        this.Key = source["Key"];
 	    }
 	}
 	export class SubtitleOptions {

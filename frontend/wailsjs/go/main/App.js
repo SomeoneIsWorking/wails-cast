@@ -18,6 +18,10 @@ export function FindSubtitleFile(arg1) {
   return window['go']['main']['App']['FindSubtitleFile'](arg1);
 }
 
+export function GetDefaultQuality() {
+  return window['go']['main']['App']['GetDefaultQuality']();
+}
+
 export function GetMediaFiles(arg1) {
   return window['go']['main']['App']['GetMediaFiles'](arg1);
 }
@@ -28,6 +32,10 @@ export function GetMediaTrackInfo(arg1) {
 
 export function GetMediaURL(arg1) {
   return window['go']['main']['App']['GetMediaURL'](arg1);
+}
+
+export function GetQualityOptions() {
+  return window['go']['main']['App']['GetQualityOptions']();
 }
 
 export function GetRemoteTrackInfo(arg1) {

@@ -9,7 +9,7 @@ type StreamOptions struct {
 	VideoTrack    int
 	AudioTrack    int
 	BurnIn        bool `default:"true"`
-	Quality       string
+	CRF           int
 }
 
 // StreamHandler defines the interface for handling media streams

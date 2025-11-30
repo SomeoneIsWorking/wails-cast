@@ -29,17 +29,24 @@ var inhibitor = _inhibitor.InhibitorInstance
 // CastOptions holds options for casting
 type CastOptions struct {
 	SubtitlePath  string
-	SubtitleTrack int    // -1 for external file, >= 0 for embedded track index
-	VideoTrack    int    // -1 for default
-	AudioTrack    int    // -1 for default
-	BurnIn        bool   // true to burn subtitles into video
-	Quality       string // "low", "medium", "high", "original"
+	SubtitleTrack int  // -1 for external file, >= 0 for embedded track index
+	VideoTrack    int  // -1 for default
+	AudioTrack    int  // -1 for default
+	BurnIn        bool // true to burn subtitles into video
+	CRF           int  // quality setting (e.g., 23 for high quality)
+	Debug         bool // true to enable debug mode
 }
 
 type SubtitleOptions struct {
 	SubtitlePath  string
 	SubtitleTrack int // -1 for external file, >= 0 for embedded track index
 	BurnIn        bool
+}
+
+type QualityOption struct {
+	Label string
+	CRF   int
+	Key   string
 }
 
 type App struct {
@@ -114,6 +121,19 @@ func (a *App) GetMediaURL(filePath string) string {
 	return fmt.Sprintf("http://%s:%d/playlist.m3u8", a.localIp, 8888)
 }
 
+func (a *App) GetQualityOptions() []QualityOption {
+	return []QualityOption{
+		{Label: "Low (CRF 35)", CRF: 35, Key: "low"},
+		{Label: "Medium (CRF 28)", CRF: 28, Key: "medium"},
+		{Label: "High (CRF 23)", CRF: 23, Key: "high"},
+		{Label: "Original (Best Quality)", CRF: 18, Key: "original"},
+	}
+}
+
+func (a *App) GetDefaultQuality() string {
+	return "medium"
+}
+
 // GetSubtitleURL returns the URL for subtitle file (for Shaka player)
 func (a *App) GetSubtitleURL(subtitlePath string) string {
 	if subtitlePath == "" {
@@ -173,7 +193,7 @@ func (a *App) CastToDevice(deviceIp string, fileNameOrUrl string, options CastOp
 		VideoTrack:    options.VideoTrack,
 		AudioTrack:    options.AudioTrack,
 		BurnIn:        options.BurnIn,
-		Quality:       options.Quality,
+		CRF:           options.CRF,
 	}
 
 	if isRemote {
@@ -258,6 +278,10 @@ func (a *App) CastToDevice(deviceIp string, fileNameOrUrl string, options CastOp
 		return nil, fmt.Errorf("failed to launch custom receiver app: %w", err)
 	}
 
+	url := mediaURL + "?cachebust=" + time.Now().Format("20060102150405")
+	if options.Debug {
+		url += "&debug=true"
+	}
 	// Send load command without waiting (LoadApp blocks with MediaWait)
 	// We just want to start playback and return immediately
 	err = app.SendMediaRecv(&cast.LoadMediaCommand{
@@ -265,7 +289,7 @@ func (a *App) CastToDevice(deviceIp string, fileNameOrUrl string, options CastOp
 		CurrentTime:   0,
 		Autoplay:      true,
 		Media: cast.MediaItem{
-			ContentId:  mediaURL + "?cachebust=" + time.Now().Format("20060102150405"),
+			ContentId:  url,
 			StreamType: "BUFFERED",
 		},
 	})

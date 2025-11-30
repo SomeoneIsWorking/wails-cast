@@ -133,8 +133,6 @@ const handleCast = () => {
         <section class="h-full" v-show="activeTab === 'player'">
           <MediaPlayer
             v-if="store.isCasting"
-            :device="store.selectedDevice"
-            :mediaPath="store.selectedMedia"
             :isLoading="store.isLoading"
             @cast="handleCast"
             @back="activeTab = 'files'"

@@ -157,7 +157,7 @@ func (s *LocalHandler) transcodeSegment(segmentPath string, startTime float64, r
 		SubtitlePath:  s.Options.SubtitlePath,
 		SubtitleTrack: s.Options.SubtitleTrack,
 		BurnIn:        s.Options.BurnIn,
-		Quality:       s.Options.Quality,
+		CRF:           s.Options.CRF,
 	}
 
 	err := hls.TranscodeSegment(r.Context(), opts)
