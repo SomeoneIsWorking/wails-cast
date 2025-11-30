@@ -461,7 +461,7 @@ func (p *RemoteHandler) transcodeSegment(ctx context.Context, rawPath string, tr
 		SubtitlePath:  p.Options.SubtitlePath,
 		SubtitleTrack: p.Options.SubtitleTrack,
 		BurnIn:        false,
-		Quality:       p.Options.Quality,
+		CRF:           p.Options.CRF,
 	})
 	if err != nil {
 		return err

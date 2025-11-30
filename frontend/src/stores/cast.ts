@@ -37,7 +37,7 @@ export const useCastStore = defineStore("cast", () => {
     VideoTrack: -1,
     AudioTrack: -1,
     BurnIn: false,
-    Quality: "medium",
+    CRF: "medium",
   });
 
   // Computed

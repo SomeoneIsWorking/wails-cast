@@ -187,11 +187,13 @@ const castWithOptions = async (mediaPath: string, options: CastOptions) => {
     </div>
 
     <!-- Track Selection Modal -->
-    <TrackSelectionModal
-      v-model="showTrackModal"
-      v-if="trackInfo"
-      :track-info="trackInfo"
-      @confirm="handleTrackConfirm"
-    />
+    <Suspense>
+      <TrackSelectionModal
+        v-model="showTrackModal"
+        v-if="trackInfo"
+        :track-info="trackInfo"
+        @confirm="handleTrackConfirm"
+      />
+    </Suspense>
   </div>
 </template>

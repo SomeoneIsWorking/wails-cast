@@ -11,11 +11,15 @@ export function DiscoverDevices():Promise<Array<main.Device>>;
 
 export function FindSubtitleFile(arg1:string):Promise<string>;
 
+export function GetDefaultQuality():Promise<string>;
+
 export function GetMediaFiles(arg1:string):Promise<Array<string>>;
 
 export function GetMediaTrackInfo(arg1:string):Promise<mediainfo.MediaTrackInfo>;
 
 export function GetMediaURL(arg1:string):Promise<string>;
+
+export function GetQualityOptions():Promise<Array<main.QualityOption>>;
 
 export function GetRemoteTrackInfo(arg1:string):Promise<mediainfo.MediaTrackInfo>;
 

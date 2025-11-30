@@ -19,7 +19,7 @@ type TranscodeOptions struct {
 	SubtitlePath  string
 	SubtitleTrack int // -2 for none, -1 for external, >= 0 for embedded
 	BurnIn        bool
-	Quality       string // "low", "medium", "high", "original"
+	CRF           int
 }
 
 // TranscodeSegment transcodes a segment with optional 100ms wait to avoid wasted work during rapid seeking
@@ -65,7 +65,7 @@ func buildTranscodeArgs(opts TranscodeOptions) []string {
 	args = append(args,
 		"-c:v", "h264_videotoolbox",
 		"-pix_fmt", "yuv420p",
-		"-crf", getCRF(opts.Quality),
+		"-crf", fmt.Sprintf("%d", opts.CRF),
 		"-c:a", "aac",
 		"-b:a", "96k",
 		"-ac", "2",
@@ -76,6 +76,7 @@ func buildTranscodeArgs(opts TranscodeOptions) []string {
 		"-vsync", "cfr",
 		"-muxdelay", "0",
 		"-muxpreload", "0",
+		"-g", "48",
 	)
 
 	if opts.BurnIn && opts.SubtitleTrack != -2 {
@@ -87,22 +88,6 @@ func buildTranscodeArgs(opts TranscodeOptions) []string {
 
 	// Output file
 	return append(args, opts.OutputPath)
-}
-
-// getCRF returns the CRF value based on quality setting
-func getCRF(quality string) string {
-	switch quality {
-	case "low":
-		return "28"
-	case "medium":
-		return "25"
-	case "high":
-		return "23"
-	case "original":
-		return "18"
-	default:
-		return "25"
-	}
 }
 
 // buildSubtitleFilter builds the subtitle filter string for ffmpeg

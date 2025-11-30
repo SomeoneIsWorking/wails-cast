@@ -16,6 +16,16 @@ export const mediaService = {
     return await CastToDevice(deviceURL, mediaPath, options)
   },
 
+  async getQualityOptions(): Promise<Array<main.QualityOption>> {
+    const { GetQualityOptions } = await import('../../wailsjs/go/main/App')
+    return await GetQualityOptions()
+  },
+
+  async getDefaultQuality(): Promise<string> {
+    const { GetDefaultQuality } = await import('../../wailsjs/go/main/App')
+    return await GetDefaultQuality()
+  },
+
   async updateSubtitleSettings(options: main.SubtitleOptions): Promise<void> {
     const { UpdateSubtitleSettings } = await import('../../wailsjs/go/main/App')
     return await UpdateSubtitleSettings(options)
