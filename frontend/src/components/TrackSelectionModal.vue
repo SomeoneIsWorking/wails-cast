@@ -50,6 +50,7 @@ const handleConfirm = () => {
     BurnIn: burnSubtitles.value,
     CRF: qualityOptions.find((q) => q.Key === quality.value)!.CRF,
     Debug: true,
+    NoCastJustHost: true,
   };
   emit("confirm", options);
   showDialog.value = false;

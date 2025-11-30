@@ -28,13 +28,14 @@ var inhibitor = _inhibitor.InhibitorInstance
 
 // CastOptions holds options for casting
 type CastOptions struct {
-	SubtitlePath  string
-	SubtitleTrack int  // -1 for external file, >= 0 for embedded track index
-	VideoTrack    int  // -1 for default
-	AudioTrack    int  // -1 for default
-	BurnIn        bool // true to burn subtitles into video
-	CRF           int  // quality setting (e.g., 23 for high quality)
-	Debug         bool // true to enable debug mode
+	SubtitlePath   string
+	SubtitleTrack  int  // -1 for external file, >= 0 for embedded track index
+	VideoTrack     int  // -1 for default
+	AudioTrack     int  // -1 for default
+	BurnIn         bool // true to burn subtitles into video
+	CRF            int  // quality setting (e.g., 23 for high quality)
+	Debug          bool // true to enable debug mode
+	NoCastJustHost bool // true to only host the stream without casting
 }
 
 type SubtitleOptions struct {
@@ -232,6 +233,12 @@ func (a *App) CastToDevice(deviceIp string, fileNameOrUrl string, options CastOp
 		// Set subtitle path (for legacy/compatibility, though options has it)
 		a.mediaServer.SetSubtitlePath(subtitlePath)
 		a.currentSubtitle = subtitlePath
+	}
+
+	if options.NoCastJustHost {
+		// Just host the stream without casting
+		logger.Info("Hosting stream without casting", "url", a.GetMediaURL(mediaPath))
+		return &a.playbackState, nil
 	}
 
 	// Update playback state

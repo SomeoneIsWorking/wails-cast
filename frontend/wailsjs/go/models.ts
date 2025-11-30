@@ -8,6 +8,7 @@ export namespace main {
 	    BurnIn: boolean;
 	    CRF: number;
 	    Debug: boolean;
+	    NoCastJustHost: boolean;
 	
 	    static createFrom(source: any = {}) {
 	        return new CastOptions(source);
@@ -22,6 +23,7 @@ export namespace main {
 	        this.BurnIn = source["BurnIn"];
 	        this.CRF = source["CRF"];
 	        this.Debug = source["Debug"];
+	        this.NoCastJustHost = source["NoCastJustHost"];
 	    }
 	}
 	export class Device {
