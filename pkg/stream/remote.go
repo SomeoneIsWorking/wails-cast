@@ -170,10 +170,21 @@ func (p *RemoteHandler) serveTrackPlaylist(w http.ResponseWriter, r *http.Reques
 	if err != nil {
 		return err
 	}
+
+	// Add program date time tags for better sync
+	baseTime := time.Now()
+	cumulativeTime := 0.0
+
 	for i := range playlist.Segments {
 		segment := &playlist.Segments[i]
 		segment.URI = segment.URI + "?cachebust=" + time.Now().Format("20060102150405")
+
+		// Add program date time for each segment to help with sync
+		segmentTime := baseTime.Add(time.Duration(cumulativeTime * float64(time.Second)))
+		segment.ProgramDateTime = segmentTime.Format(time.RFC3339Nano)
+		cumulativeTime += segment.Duration
 	}
+
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	w.Header().Set("Content-Type", "application/vnd.apple.mpegurl")
 	w.Write([]byte(playlist.Generate()))

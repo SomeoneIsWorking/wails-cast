@@ -83,17 +83,27 @@ func (s *LocalHandler) ServeTrackPlaylist(w http.ResponseWriter, r *http.Request
 		numSegments++
 	}
 
+	// Add program date time tags for better sync
+	baseTime := time.Now()
+	cumulativeTime := 0.0
+
 	for i := 0; i < numSegments; i++ {
 		segmentDuration := float64(s.SegmentSize)
 		if float64((i+1)*s.SegmentSize) > s.Duration {
 			segmentDuration = s.Duration - float64(i*s.SegmentSize)
 		}
+
+		// Calculate program date time for this segment
+		segmentTime := baseTime.Add(time.Duration(cumulativeTime * float64(time.Second)))
+
 		segment := hls.Segment{
-			Duration: segmentDuration,
-			Title:    "",
-			URI:      fmt.Sprintf("/%s_0/segment_%d.ts", trackType, i),
+			Duration:        segmentDuration,
+			Title:           "",
+			URI:             fmt.Sprintf("/%s_0/segment_%d.ts", trackType, i),
+			ProgramDateTime: segmentTime.Format(time.RFC3339Nano),
 		}
 		trackPlaylist.Segments = append(trackPlaylist.Segments, segment)
+		cumulativeTime += segmentDuration
 	}
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	w.Header().Set("Content-Type", "application/vnd.apple.mpegurl")

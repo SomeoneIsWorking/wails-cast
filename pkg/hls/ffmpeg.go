@@ -70,6 +70,12 @@ func buildTranscodeArgs(opts TranscodeOptions) []string {
 		"-b:a", "96k",
 		"-ac", "2",
 		"-f", "mpegts",
+		// Timestamp handling for proper segment alignment
+		"-avoid_negative_ts", "make_zero",
+		"-start_at_zero",
+		"-vsync", "cfr",
+		"-muxdelay", "0",
+		"-muxpreload", "0",
 	)
 
 	if opts.BurnIn && opts.SubtitleTrack != -2 {
