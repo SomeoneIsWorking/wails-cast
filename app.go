@@ -235,7 +235,6 @@ func (a *App) CastToDevice(deviceIp string, fileNameOrUrl string, options option
 	// Cast to device
 	app := application.NewApplication()
 	app.SetRequestTimeout(30 * time.Second)
-	app.SetDebug(true)
 
 	err = app.Start(host, port)
 	if err != nil {
@@ -264,10 +263,6 @@ func (a *App) CastToDevice(deviceIp string, fileNameOrUrl string, options option
 		return nil, fmt.Errorf("failed to launch custom receiver app: %w", err)
 	}
 
-	url := mediaURL + "?cachebust=" + time.Now().Format("20060102150405")
-	if options.Debug {
-		url += "&debug=true"
-	}
 	// Send load command without waiting (LoadApp blocks with MediaWait)
 	// We just want to start playback and return immediately
 	err = app.SendMediaRecv(&cast.LoadMediaCommand{
@@ -275,7 +270,7 @@ func (a *App) CastToDevice(deviceIp string, fileNameOrUrl string, options option
 		CurrentTime:   0,
 		Autoplay:      true,
 		Media: cast.MediaItem{
-			ContentId:  url,
+			ContentId:  mediaURL + "?cachebust=" + time.Now().Format("20060102150405"),
 			StreamType: "BUFFERED",
 		},
 	})
