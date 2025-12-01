@@ -270,8 +270,9 @@ func (a *App) CastToDevice(deviceIp string, fileNameOrUrl string, options option
 		CurrentTime:   0,
 		Autoplay:      true,
 		Media: cast.MediaItem{
-			ContentId:  mediaURL + "?cachebust=" + time.Now().Format("20060102150405"),
-			StreamType: "BUFFERED",
+			ContentId:   mediaURL + "?cachebust=" + time.Now().Format("20060102150405"),
+			ContentType: "application/vnd.apple.mpegurl",
+			StreamType:  "BUFFERED",
 		},
 	})
 
