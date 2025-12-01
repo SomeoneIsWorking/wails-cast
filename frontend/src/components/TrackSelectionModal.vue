@@ -17,12 +17,17 @@ const emit = defineEmits<{
 
 const selectedVideoTrack = ref(0);
 const selectedAudioTrack = ref(0);
-const subtitleSource = ref<"none" | "embedded" | "external">("none");
-const externalSubtitlePath = ref("");
+const subtitlePath = ref("");
 const burnSubtitles = ref(false);
 const qualityOptions = await mediaService.getQualityOptions();
-const quality = ref(qualityOptions[0].CRF);
+const quality = ref(qualityOptions[0].Key);
 const subtitle = ref<string>("none");
+
+if (props.trackInfo.nearSubtitle) {
+  subtitle.value = "external";
+  subtitlePath.value = props.trackInfo.nearSubtitle;
+}
+
 const showDialog = defineModel<boolean>();
 const castStore = useCastStore();
 const isLoading = ref(false);
@@ -31,12 +36,12 @@ const handleConfirm = async () => {
   const opts = {
     VideoTrack: selectedVideoTrack.value,
     AudioTrack: selectedAudioTrack.value,
-    CRF: quality.value,
+    Bitrate: quality.value,
     Subtitle: {
       BurnIn: burnSubtitles.value,
       Path:
         subtitle.value === "external"
-          ? "external:" + externalSubtitlePath.value
+          ? "external:" + subtitlePath.value
           : subtitle.value,
     },
   } as CastOptions;
@@ -117,7 +122,15 @@ const handleCancel = () => {
           </option>
         </select>
 
-        <div v-if="subtitleSource !== 'none'" class="mt-2">
+        <input 
+          v-if="subtitle === 'external'" 
+          type="text" 
+          v-model="subtitlePath" 
+          placeholder="Enter subtitle file path" 
+          class="w-full bg-gray-700 text-white rounded p-2 mt-2"
+        />
+
+        <div v-if="subtitle !== 'none'" class="mt-2">
           <label class="flex items-center text-white">
             <input type="checkbox" v-model="burnSubtitles" class="mr-2" />
             Burn subtitles into video
@@ -135,7 +148,7 @@ const handleCancel = () => {
           <option
             v-for="option in qualityOptions"
             :key="option.Key"
-            :value="option.CRF"
+            :value="option.Key"
           >
             {{ option.Label }}
           </option>

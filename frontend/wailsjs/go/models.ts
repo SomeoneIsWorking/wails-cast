@@ -62,8 +62,7 @@ export namespace main {
 		}
 	}
 	export class PlaybackState {
-	    isPlaying: boolean;
-	    isPaused: boolean;
+	    status: string;
 	    mediaPath: string;
 	    mediaName: string;
 	    deviceUrl: string;
@@ -77,8 +76,7 @@ export namespace main {
 	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.isPlaying = source["isPlaying"];
-	        this.isPaused = source["isPaused"];
+	        this.status = source["status"];
 	        this.mediaPath = source["mediaPath"];
 	        this.mediaName = source["mediaName"];
 	        this.deviceUrl = source["deviceUrl"];
@@ -89,7 +87,6 @@ export namespace main {
 	}
 	export class QualityOption {
 	    Label: string;
-	    CRF: number;
 	    Key: string;
 	
 	    static createFrom(source: any = {}) {
@@ -99,7 +96,6 @@ export namespace main {
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.Label = source["Label"];
-	        this.CRF = source["CRF"];
 	        this.Key = source["Key"];
 	    }
 	}
@@ -122,6 +118,7 @@ export namespace main {
 	    audioTracks: mediainfo.AudioTrack[];
 	    subtitleTracks: SubtitleDisplayItem[];
 	    path: string;
+	    nearSubtitle: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new TrackDisplayInfo(source);
@@ -133,6 +130,7 @@ export namespace main {
 	        this.audioTracks = this.convertValues(source["audioTracks"], mediainfo.AudioTrack);
 	        this.subtitleTracks = this.convertValues(source["subtitleTracks"], SubtitleDisplayItem);
 	        this.path = source["path"];
+	        this.nearSubtitle = source["nearSubtitle"];
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
@@ -235,7 +233,7 @@ export namespace options {
 	    Subtitle: SubtitleCastOptions;
 	    VideoTrack: number;
 	    AudioTrack: number;
-	    CRF: number;
+	    Bitrate: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new CastOptions(source);
@@ -246,7 +244,7 @@ export namespace options {
 	        this.Subtitle = this.convertValues(source["Subtitle"], SubtitleCastOptions);
 	        this.VideoTrack = source["VideoTrack"];
 	        this.AudioTrack = source["AudioTrack"];
-	        this.CRF = source["CRF"];
+	        this.Bitrate = source["Bitrate"];
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {

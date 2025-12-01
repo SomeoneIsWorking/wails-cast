@@ -7,7 +7,7 @@ import FileSelector from "./FileSelector.vue";
 import History from "./History.vue";
 import { GetTrackDisplayInfo } from "../../wailsjs/go/main/App";
 import { main } from "../../wailsjs/go/models";
-import LoadingIcon from './LoadingIcon.vue'
+import LoadingIcon from "./LoadingIcon.vue";
 import { isAcceptedFileWithHttp } from "@/utils/file";
 const emit = defineEmits<{
   select: [path: string];
@@ -56,7 +56,12 @@ const acceptedExtensions = [
       >
         <button
           @click="handleCast(selectedFile)"
-          :disabled="!selectedFile || isLoading || !store.selectedDevice || !isAcceptedFileWithHttp(selectedFile, acceptedExtensions)"
+          :disabled="
+            !selectedFile ||
+            isLoading ||
+            !store.selectedDevice ||
+            !isAcceptedFileWithHttp(selectedFile, acceptedExtensions)
+          "
           class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors duration-200"
         >
           <Play v-if="!isLoading" class="h-4 w-4 mr-2" />
@@ -73,7 +78,12 @@ const acceptedExtensions = [
 
     <!-- Track Selection Modal -->
     <Suspense>
-      <TrackSelectionModal v-model="showTrackModal" :track-info="trackInfo!" />
+      <TrackSelectionModal
+        v-if="trackInfo"
+        :key="trackInfo.path"
+        v-model="showTrackModal"
+        :track-info="trackInfo"
+      />
     </Suspense>
   </div>
 </template>

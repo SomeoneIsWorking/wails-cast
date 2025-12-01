@@ -51,13 +51,6 @@ func (i *Inhibitor) Refresh(duration time.Duration) error {
 	return nil
 }
 
-// Start prevents system sleep during streaming (cross-platform)
-func (i *Inhibitor) Start() error {
-	i.mu.Lock()
-	defer i.mu.Unlock()
-	return i.startLocked()
-}
-
 func (i *Inhibitor) startLocked() error {
 	// Kill existing process if running
 	if i.cmd != nil && i.cmd.Process != nil {

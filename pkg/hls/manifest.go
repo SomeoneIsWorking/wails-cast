@@ -2,9 +2,7 @@ package hls
 
 import (
 	"encoding/json"
-	"fmt"
 	"os"
-	"path/filepath"
 
 	"wails-cast/pkg/options"
 )
@@ -12,20 +10,15 @@ import (
 // SegmentManifest stores metadata for each segment
 // This is used by BOTH local file HLS and remote proxy HLS
 type SegmentManifest struct {
-	SegmentNumber int     `json:"segment_number"`
-	Duration      float64 `json:"duration"`
-	SubtitlePath  string  `json:"subtitle_path"`
-	SubtitleStyle string  `json:"subtitle_style"`
-	VideoCodec    string  `json:"video_codec"`
-	AudioCodec    string  `json:"audio_codec"`
-	Preset        string  `json:"preset"`
-	CreatedAt     string  `json:"created_at"`
+	Duration  float64 `json:"duration"`
+	Subtitle  string  `json:"subtitle"`
+	CreatedAt string  `json:"created_at"`
+	Bitrate   string  `json:"bitrate"`
 }
 
-// SaveSegmentManifest saves manifest JSON for a segment (used by local file HLS)
-func SaveSegmentManifest(outputDir string, manifest SegmentManifest) error {
-	manifestPath := filepath.Join(outputDir, fmt.Sprintf("segment%d.json", manifest.SegmentNumber))
-	data, err := json.MarshalIndent(manifest, "", "  ")
+// Save saves manifest JSON for a segment (used by local file HLS)
+func (this *SegmentManifest) Save(manifestPath string) error {
+	data, err := json.MarshalIndent(this, "", "  ")
 	if err != nil {
 		return err
 	}
@@ -33,8 +26,7 @@ func SaveSegmentManifest(outputDir string, manifest SegmentManifest) error {
 }
 
 // LoadSegmentManifest loads manifest JSON for a segment (used by local file HLS)
-func LoadSegmentManifest(outputDir string, segmentNum int) (*SegmentManifest, error) {
-	manifestPath := filepath.Join(outputDir, fmt.Sprintf("segment%d.json", segmentNum))
+func LoadSegmentManifest(manifestPath string) (*SegmentManifest, error) {
 	data, err := os.ReadFile(manifestPath)
 	if err != nil {
 		return nil, err
@@ -47,13 +39,13 @@ func LoadSegmentManifest(outputDir string, segmentNum int) (*SegmentManifest, er
 }
 
 // ManifestMatches checks if current parameters match manifest (used by local file HLS)
-func ManifestMatches(manifest *SegmentManifest, subtitle options.SubtitleCastOptions, duration float64) bool {
+func ManifestMatches(manifest *SegmentManifest, options options.CastOptions, duration float64) bool {
 	if manifest == nil {
 		return false
 	}
 
-	if subtitle.BurnIn {
-		if manifest.SubtitlePath != subtitle.Path {
+	if options.Subtitle.BurnIn {
+		if manifest.Subtitle != options.Subtitle.Path {
 			return false
 		}
 	}
@@ -62,7 +54,10 @@ func ManifestMatches(manifest *SegmentManifest, subtitle options.SubtitleCastOpt
 	if manifest.Duration > 0 && (manifest.Duration-duration > 0.1 || duration-manifest.Duration > 0.1) {
 		return false
 	}
-	// Check subtitle style (currently hardcoded FontSize=24)
-	expectedStyle := "FontSize=24"
-	return manifest.SubtitleStyle == expectedStyle
+
+	if manifest.Bitrate != options.Bitrate {
+		return false
+	}
+
+	return true
 }

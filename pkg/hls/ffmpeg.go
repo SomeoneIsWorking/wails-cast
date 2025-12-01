@@ -19,7 +19,7 @@ type TranscodeOptions struct {
 	StartTime  float64
 	Duration   int
 	Subtitle   string
-	CRF        int
+	Bitrate    string
 }
 
 // TranscodeSegment transcodes a segment with optional 100ms wait to avoid wasted work during rapid seeking
@@ -74,8 +74,8 @@ func buildTranscodeArgs(opts TranscodeOptions) ([]string, error) {
 		"-copyts",
 	)
 
-	if opts.CRF > 0 {
-		args = append(args, "-crf", fmt.Sprintf("%d", opts.CRF))
+	if opts.Bitrate != "" {
+		args = append(args, "-b:v", opts.Bitrate)
 	}
 
 	filterStr, err := buildSubtitleFilter(opts.OutputPath, opts.Subtitle, opts.InputPath)

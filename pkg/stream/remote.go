@@ -345,7 +345,11 @@ func (p *RemoteHandler) ensureSegmentExistsTranscoded(ctx context.Context, track
 		return "", errors.Wrapf(err, "failed to get transcoded segment path for segment %d of track %s_%d", segmentIndex, trackType, trackIndex)
 	}
 
-	if _, err := os.Stat(transcodedPath); err == nil {
+	// Load manifest and check if segment needs regeneration
+	manifest, err := hls.LoadSegmentManifest(transcodedPath + ".json")
+	needsRegeneration := err != nil || !hls.ManifestMatches(manifest, p.Options, 0)
+
+	if _, err := os.Stat(transcodedPath); err == nil && !needsRegeneration {
 		return transcodedPath, nil
 	}
 
@@ -470,13 +474,21 @@ func (p *RemoteHandler) transcodeSegment(ctx context.Context, rawPath string, tr
 		StartTime:  0,
 		Duration:   0,
 		Subtitle:   subtitle,
-		CRF:        p.Options.CRF,
+		Bitrate:    p.Options.Bitrate,
 	})
 	if err != nil {
 		return err
 	}
 	logger.Logger.Info("Transcoded segment", "input", rawPath, "output", transcodedPath, "duration", time.Since(startTime).Seconds())
-	return nil
+
+	manifest := hls.SegmentManifest{
+		Duration:  0,
+		Subtitle:  p.Options.Subtitle.Path,
+		CreatedAt: time.Now().Format(time.RFC3339),
+		Bitrate:   p.Options.Bitrate,
+	}
+	err = manifest.Save(transcodedPath + ".json")
+	return err
 }
 
 func (p *RemoteHandler) getSegmentPath(trackType string, trackIndex int, segmentIndex int) (string, error) {

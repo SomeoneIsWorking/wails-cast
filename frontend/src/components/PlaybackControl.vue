@@ -15,7 +15,7 @@
         </div>
         <div class="flex items-center gap-3">
           <span
-            v-if="playbackState.isPaused"
+            v-if="playbackState.status === 'PAUSED'"
             class="px-3 py-1 bg-yellow-900/30 border border-yellow-700 rounded-full text-yellow-400 text-sm font-medium flex items-center gap-1"
           >
             <Pause :size="14" />
@@ -54,7 +54,9 @@
           <div
             class="h-full bg-linear-to-r from-purple-500 to-purple-600 rounded pointer-events-none transition-all duration-100"
             :style="{
-              width: (playbackState.currentTime / playbackState.duration) * 100 + '%'
+              width:
+                (playbackState.currentTime / playbackState.duration) * 100 +
+                '%',
             }"
           ></div>
         </div>
@@ -82,9 +84,9 @@
           @click="togglePause"
           class="btn-success px-6 py-3 flex items-center gap-2 text-lg"
         >
-          <Play v-if="playbackState.isPaused" :size="20" />
+          <Play v-if="playbackState.status === 'PAUSED'" :size="20" />
           <Pause v-else :size="20" />
-          {{ playbackState.isPaused ? "Play" : "Pause" }}
+          {{ playbackState.status === "PAUSED" ? "Play" : "Pause" }}
         </button>
         <button @click="seekRelative(10)" class="btn-icon" title="Forward 10s">
           <SkipForward :size="20" />
@@ -126,9 +128,9 @@ const castStore = useCastStore();
 const playbackState = computed(() => castStore.playbackState);
 
 watch(
-  () => playbackState.value.isPlaying,
-  (isPlaying) => {
-    if (isPlaying) {
+  () => playbackState.value.status,
+  (status) => {
+    if (status === "PLAYING") {
       startLocalTimeIncrement();
     } else {
       if (localTimeIncrement) clearInterval(localTimeIncrement);
@@ -176,7 +178,7 @@ const startLocalTimeIncrement = () => {
   if (localTimeIncrement) clearInterval(localTimeIncrement);
 
   localTimeIncrement = setInterval(() => {
-    if (playbackState.value.isPlaying && !playbackState.value.isPaused) {
+    if (playbackState.value.status === "PLAYING") {
       playbackState.value.currentTime += 1;
       // Increment local position
       seekPosition.value = playbackState.value.currentTime;
@@ -186,24 +188,16 @@ const startLocalTimeIncrement = () => {
 
 // Toggle pause/play
 const togglePause = async () => {
-  try {
-    if (playbackState.value.isPaused) {
-      await mediaService.unpause();
-    } else {
-      await mediaService.pause();
-    }
-  } catch (err) {
-    console.error("Toggle pause failed:", err);
+  if (playbackState.value.status === "PAUSED") {
+    await mediaService.unpause();
+  } else {
+    await mediaService.pause();
   }
 };
 
 // Seek to position
 const onSeek = async () => {
-  try {
-    await mediaService.seekTo(seekPosition.value);
-  } catch (err) {
-    console.error("Seek failed:", err);
-  }
+  await mediaService.seekTo(seekPosition.value);
 };
 
 // Seek relative
@@ -221,13 +215,8 @@ const seekRelative = async (seconds: number) => {
 
 // Stop playback
 const stopPlayback = async () => {
-  try {
-    await mediaService.stopPlayback();
-    playbackState.value.isPlaying = false;
-    if (updateInterval) clearInterval(updateInterval);
-  } catch (err) {
-    console.error("Stop failed:", err);
-  }
+  await mediaService.stopPlayback();
+  if (updateInterval) clearInterval(updateInterval);
 };
 
 // Format time in MM:SS or HH:MM:SS
