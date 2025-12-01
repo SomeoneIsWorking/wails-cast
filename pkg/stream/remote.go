@@ -35,7 +35,6 @@ type RemoteHandler struct {
 	IsManifestRewritten bool
 	Options             options.CastOptions
 	Duration            float64 // Total duration of the stream in seconds
-	UseShaka            bool    // Whether to add program date time tags for Shaka Player
 }
 
 type MainMap struct {
@@ -174,10 +173,7 @@ func (p *RemoteHandler) serveTrackPlaylist(w http.ResponseWriter, r *http.Reques
 	}
 
 	// Add program date time tags for better sync
-	if p.UseShaka {
-		addProgramDate(playlist)
-	}
-
+	addProgramDate(playlist)
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	w.Header().Set("Content-Type", "application/vnd.apple.mpegurl")
 	w.Write([]byte(playlist.Generate()))
