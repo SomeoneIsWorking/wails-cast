@@ -33,7 +33,7 @@ type RemoteHandler struct {
 	AudioPlaylistURL    string // For demuxed HLS: URL of audio playlist
 	VideoPlaylistURL    string // For demuxed HLS: URL of video playlist
 	IsManifestRewritten bool
-	Options             options.StreamOptions
+	Options             options.CastOptions
 	Duration            float64 // Total duration of the stream in seconds
 	UseShaka            bool    // Whether to add program date time tags for Shaka Player
 }
@@ -44,7 +44,7 @@ type MainMap struct {
 }
 
 // NewRemoteHandler creates a new HLS handler
-func NewRemoteHandler(localIP string, cacheDir string, options options.StreamOptions) *RemoteHandler {
+func NewRemoteHandler(localIP string, cacheDir string, options options.CastOptions) *RemoteHandler {
 	os.MkdirAll(cacheDir, 0755)
 
 	return &RemoteHandler{

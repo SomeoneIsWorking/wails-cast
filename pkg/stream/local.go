@@ -17,7 +17,7 @@ import (
 // LocalHandler represents a local file HLS streaming server
 type LocalHandler struct {
 	VideoPath   string
-	Options     options.StreamOptions
+	Options     options.CastOptions
 	OutputDir   string
 	Duration    float64
 	SegmentSize int
@@ -25,7 +25,7 @@ type LocalHandler struct {
 }
 
 // NewLocalHandler creates a new local HLS handler
-func NewLocalHandler(videoPath string, options options.StreamOptions, localIP string) *LocalHandler {
+func NewLocalHandler(videoPath string, options options.CastOptions, localIP string) *LocalHandler {
 	duration, err := hls.GetVideoDuration(videoPath)
 	if err != nil {
 		duration = 0

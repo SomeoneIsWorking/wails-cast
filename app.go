@@ -194,7 +194,7 @@ func (a *App) CastToDevice(deviceIp string, fileNameOrUrl string, options option
 		mediaPath = fileNameOrUrl
 		// Use CastManager to prepare remote stream
 		logger.Info("Preparing remote stream", "url", mediaPath)
-		handler, err := a.castManager.CreateRemoteHandler(mediaPath, options.Stream)
+		handler, err := a.castManager.CreateRemoteHandler(mediaPath, options)
 		if err != nil {
 			return nil, fmt.Errorf("failed to prepare remote stream: %w", err)
 		}
@@ -213,14 +213,14 @@ func (a *App) CastToDevice(deviceIp string, fileNameOrUrl string, options option
 		}
 
 		// Create local handler
-		handler := stream.NewLocalHandler(mediaPath, options.Stream, a.localIp)
+		handler := stream.NewLocalHandler(mediaPath, options, a.localIp)
 		a.mediaServer.SetHandler(handler)
 
 		// Set subtitle path (for legacy/compatibility, though options has it)
-		a.mediaServer.SetSubtitlePath(options.Stream.Subtitle.Path)
+		a.mediaServer.SetSubtitlePath(options.Subtitle.Path)
 	}
 
-	if options.NoCastJustHost {
+	if deviceIp == "local" {
 		// Just host the stream without casting
 		logger.Info("Hosting stream without casting", "url", a.GetMediaURL(mediaPath))
 		return &a.playbackState, nil
@@ -313,7 +313,7 @@ func (a *App) CastToDevice(deviceIp string, fileNameOrUrl string, options option
 		"message", fmt.Sprintf("Casting %s to %s via %s", filepath.Base(mediaPath), deviceIp, mediaURL),
 		"device", deviceIp,
 		"media", mediaPath,
-		"subtitle", options.Stream.Subtitle.Path,
+		"subtitle", options.Subtitle.Path,
 	)
 
 	// Add to history

@@ -1,6 +1,9 @@
 package options
 
+// CastOptions holds options for streaming
 type CastOptions struct {
-	Stream         StreamOptions
-	NoCastJustHost bool // true to only host the stream without casting
+	Subtitle   SubtitleCastOptions
+	VideoTrack int
+	AudioTrack int
+	CRF        int
 }
