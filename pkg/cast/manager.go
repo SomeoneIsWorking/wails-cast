@@ -9,8 +9,6 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/vishen/go-chromecast/application"
-
 	"wails-cast/pkg/extractor"
 	"wails-cast/pkg/hls"
 	"wails-cast/pkg/logger"
@@ -24,13 +22,6 @@ type CastManager struct {
 	LocalIP   string
 	ProxyPort int
 	CacheRoot string
-}
-
-// ChromecastApp wraps the chromecast application
-type ChromecastApp struct {
-	App  *application.Application
-	Host string
-	Port int
 }
 
 // NewCastManager creates a new CastManager

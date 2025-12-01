@@ -14,14 +14,11 @@ export const useCastStore = defineStore("cast", () => {
   const error = ref<string | null>(null);
   EventsOn("playback:state", (state: PlaybackState) => {
     playbackState.value = state;
-    if (state.isPlaying || state.isPaused) {
-      isCasting.value = true;
-    }
+    isCasting.value = playbackState.value.status !== "STOPPED";
   });
   // Playback State
   const playbackState = ref<PlaybackState>({
-    isPlaying: false,
-    isPaused: false,
+    status: "STOPPED",
     mediaPath: "",
     mediaName: "",
     deviceUrl: "",

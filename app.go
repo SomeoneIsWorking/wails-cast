@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"github.com/vishen/go-chromecast/application"
-	"github.com/vishen/go-chromecast/cast"
 	cast_proto "github.com/vishen/go-chromecast/cast/proto"
 	wails_runtime "github.com/wailsapp/wails/v2/pkg/runtime"
 
@@ -26,6 +25,7 @@ import (
 
 var logger = _logger.Logger
 var inhibitor = _inhibitor.InhibitorInstance
+var customAppID = "7B88BB2E" // Custom receiver app ID
 
 // CastOptions holds options for casting
 
@@ -39,29 +39,28 @@ type TrackDisplayInfo struct {
 	AudioTracks    []mediainfo.AudioTrack `json:"audioTracks"`
 	SubtitleTracks []SubtitleDisplayItem  `json:"subtitleTracks"`
 	Path           string                 `json:"path"`
+	NearSubtitle   string                 `json:"nearSubtitle"`
 }
 
 type QualityOption struct {
 	Label string
-	CRF   int
 	Key   string
 }
 
 type App struct {
 	ctx           context.Context
+	App           *application.Application
 	discovery     *DeviceDiscovery
 	mediaServer   *Server
 	localIp       string
 	castManager   *localcast.CastManager
 	playbackState PlaybackState
-	chromecastApp *localcast.ChromecastApp
 	historyStore  *HistoryStore
 	mu            sync.RWMutex
 }
 
 type PlaybackState struct {
-	IsPlaying   bool    `json:"isPlaying"`
-	IsPaused    bool    `json:"isPaused"`
+	Status      string  `json:"status"`
 	MediaPath   string  `json:"mediaPath"`
 	MediaName   string  `json:"mediaName"`
 	DeviceURL   string  `json:"deviceUrl"`
@@ -77,7 +76,8 @@ func NewApp() *App {
 	castManager := localcast.NewCastManager(localIP, 8888)
 	historyStore := NewHistoryStore()
 
-	return &App{
+	app := &App{
+		App:           application.NewApplication(),
 		discovery:     discovery,
 		mediaServer:   server,
 		localIp:       localIP,
@@ -85,6 +85,9 @@ func NewApp() *App {
 		playbackState: PlaybackState{},
 		historyStore:  historyStore,
 	}
+	app.App.AddMessageFunc(app.handleChromecastMessage)
+	app.App.SetRequestTimeout(30 * time.Second)
+	return app
 }
 
 func (a *App) startup(ctx context.Context) {
@@ -126,10 +129,11 @@ func (a *App) GetMediaURL(filePath string) string {
 
 func (a *App) GetQualityOptions() []QualityOption {
 	return []QualityOption{
-		{Label: "Original (Best Quality)", CRF: -1, Key: "original"},
-		{Label: "Low (CRF 35)", CRF: 35, Key: "low"},
-		{Label: "Medium (CRF 28)", CRF: 28, Key: "medium"},
-		{Label: "High (CRF 23)", CRF: 23, Key: "high"},
+		{Label: "Original (Best Quality)", Key: ""},
+		{Label: "Low (Bitrate: 2M)", Key: "2M"},
+		{Label: "Medium (Bitrate: 3M)", Key: "3M"},
+		{Label: "High (Bitrate: 5M)", Key: "5M"},
+		{Label: "Very High (Bitrate: 8M)", Key: "8M"},
 	}
 }
 
@@ -144,7 +148,8 @@ func (a *App) GetSubtitleURL(subtitlePath string) string {
 func (a *App) GetTrackDisplayInfo(fileNameOrUrl string) (*TrackDisplayInfo, error) {
 	trackInfo := &mediainfo.MediaTrackInfo{}
 	var err error
-	if strings.HasPrefix(fileNameOrUrl, "http://") || strings.HasPrefix(fileNameOrUrl, "https://") {
+	remote := strings.HasPrefix(fileNameOrUrl, "http://") || strings.HasPrefix(fileNameOrUrl, "https://")
+	if remote {
 		trackInfo, err = a.castManager.GetRemoteTrackInfo(fileNameOrUrl)
 	} else {
 		trackInfo, err = hls.GetMediaTrackInfo(fileNameOrUrl)
@@ -170,11 +175,17 @@ func (a *App) GetTrackDisplayInfo(fileNameOrUrl string) (*TrackDisplayInfo, erro
 		})
 	}
 
+	nearSubtitle := ""
+	if !remote {
+		nearSubtitle = findSubtitleFile(fileNameOrUrl)
+	}
+
 	return &TrackDisplayInfo{
 		VideoTracks:    trackInfo.VideoTracks,
 		AudioTracks:    trackInfo.AudioTracks,
 		SubtitleTracks: subtitleItems,
 		Path:           fileNameOrUrl,
+		NearSubtitle:   nearSubtitle,
 	}, nil
 }
 
@@ -228,7 +239,6 @@ func (a *App) CastToDevice(deviceIp string, fileNameOrUrl string, options option
 
 	// Update playback state
 	a.mu.Lock()
-	a.playbackState.IsPlaying = true
 	a.playbackState.MediaPath = mediaPath
 	a.playbackState.MediaName = filepath.Base(mediaPath)
 	a.playbackState.DeviceURL = deviceIp
@@ -238,77 +248,26 @@ func (a *App) CastToDevice(deviceIp string, fileNameOrUrl string, options option
 
 	mediaURL := a.GetMediaURL(mediaPath)
 
-	// Cast to device
-	app := application.NewApplication()
-	app.SetRequestTimeout(30 * time.Second)
+	err = a.App.Start(host, port)
 
-	err = app.Start(host, port)
 	if err != nil {
-		a.mu.Lock()
-		a.playbackState.IsPlaying = false
-		a.mu.Unlock()
 		return nil, err
 	}
 
-	// Update to ensure receiver is ready
-	if err := app.Update(); err != nil {
-		a.mu.Lock()
-		a.playbackState.IsPlaying = false
-		a.mu.Unlock()
-		return nil, err
-	}
+	a.App.MediaStart()
 
-	// Load media with custom receiver
-	customAppID := "7B88BB2E"
-
-	// Ensure we're running the custom app
-	if err := app.EnsureIsAppID(customAppID); err != nil {
-		a.mu.Lock()
-		a.playbackState.IsPlaying = false
-		a.mu.Unlock()
-		return nil, fmt.Errorf("failed to launch custom receiver app: %w", err)
-	}
-
-	// Send load command without waiting (LoadApp blocks with MediaWait)
-	// We just want to start playback and return immediately
-	err = app.SendMediaRecv(&cast.LoadMediaCommand{
-		PayloadHeader: cast.LoadHeader,
-		CurrentTime:   0,
-		Autoplay:      true,
-		Media: cast.MediaItem{
-			ContentId:   mediaURL + "?cachebust=" + time.Now().Format("20060102150405"),
-			ContentType: "application/vnd.apple.mpegurl",
-			StreamType:  "BUFFERED",
-		},
+	err = a.App.Load(mediaURL+"?cachebust="+time.Now().Format("20060102150405"), application.LoadOptions{
+		StartTime:   0,
+		Transcode:   false,
+		Detach:      true,
+		ForceDetach: false,
+		ContentType: "application/vnd.apple.mpegurl",
+		AppId:       customAppID,
 	})
 
 	if err != nil {
-		a.mu.Lock()
-		a.playbackState.IsPlaying = false
-		a.mu.Unlock()
-		return nil, err
+		return nil, fmt.Errorf("failed to load media on device: %w", err)
 	}
-
-	// Store the chromecast app
-	ccApp := &localcast.ChromecastApp{
-		App:  app,
-		Host: host,
-		Port: port,
-	}
-
-	// Store the chromecast app
-	a.mu.Lock()
-	a.chromecastApp = ccApp
-	a.mu.Unlock()
-
-	// Register message handler for real-time updates
-	ccApp.App.AddMessageFunc(a.handleChromecastMessage)
-
-	// Do initial update to populate media state (needed for seek/pause to work)
-	if err := ccApp.App.Update(); err != nil {
-		logger.Warn("Failed initial chromecast status update", "error", err)
-	}
-
 	logger.Info("Cast successful",
 		"message", fmt.Sprintf("Casting %s to %s via %s", filepath.Base(mediaPath), deviceIp, mediaURL),
 		"device", deviceIp,
@@ -349,14 +308,13 @@ func (a *App) GetMediaFiles(dirPath string) ([]string, error) {
 	return files, err
 }
 
-// FindSubtitleFile finds a subtitle file for a video
-func (a *App) FindSubtitleFile(videoPath string) string {
+func findSubtitleFile(videoPath string) string {
 	baseName := strings.TrimSuffix(videoPath, filepath.Ext(videoPath))
 	exts := []string{".srt", ".vtt", ".ass", ".ssa"}
 
 	for _, ext := range exts {
 		subPath := baseName + ext
-		if fileExists(subPath) {
+		if _, err := os.Stat(subPath); err == nil {
 			logger.Info("Found subtitle file", "path", subPath)
 			return subPath
 		}
@@ -367,26 +325,12 @@ func (a *App) FindSubtitleFile(videoPath string) string {
 
 // SeekTo seeks to a specific time
 func (a *App) SeekTo(seekTime float64) error {
-
-	a.mu.Lock()
-	ccApp := a.chromecastApp
-	a.mu.Unlock()
-
-	if ccApp == nil {
-		return fmt.Errorf("no active chromecast connection")
-	}
-
 	// Send seek command to Chromecast
-	err := ccApp.App.SeekToTime(float32(seekTime))
+	err := a.App.SeekToTime(float32(seekTime))
 	if err != nil {
 		logger.Error("Seek failed", "error", err)
 		return err
 	}
-
-	// Update playback state
-	a.mu.Lock()
-	a.playbackState.CurrentTime = seekTime
-	a.mu.Unlock()
 
 	logger.Info("Seek successful", "time", seekTime)
 	return nil
@@ -396,19 +340,10 @@ func (a *App) SeekTo(seekTime float64) error {
 func (a *App) UpdateSubtitleSettings(options options.SubtitleCastOptions) error {
 	// Update subtitle path on server (clears cache)
 	a.mediaServer.SetSubtitlePath(options.Path)
-
-	// Seek to current position to reload with new subtitles
-	a.mu.RLock()
-	ccApp := a.chromecastApp
-	a.mu.RUnlock()
-	ccApp.App.Update()
+	a.App.Update()
 
 	currentTime := a.playbackState.CurrentTime
-	if ccApp != nil {
-		return ccApp.App.SeekToTime(float32(currentTime))
-	}
-
-	return nil
+	return a.App.SeekToTime(float32(currentTime))
 }
 
 func (a *App) ClearCache() error {
@@ -417,59 +352,27 @@ func (a *App) ClearCache() error {
 
 // Pause pauses current playback
 func (a *App) Pause() error {
-	a.mu.Lock()
-	ccApp := a.chromecastApp
-	a.mu.Unlock()
-
-	if ccApp == nil {
-		return fmt.Errorf("no active chromecast connection")
-	}
-
-	err := ccApp.App.Pause()
+	err := a.App.Pause()
 	if err != nil {
 		return err
 	}
-
-	a.mu.Lock()
-	a.playbackState.IsPaused = true
-	a.mu.Unlock()
 
 	return nil
 }
 
 // Unpause resumes current playback
 func (a *App) Unpause() error {
-	a.mu.Lock()
-	ccApp := a.chromecastApp
-	a.mu.Unlock()
-
-	if ccApp == nil {
-		return fmt.Errorf("no active chromecast connection")
-	}
-
-	err := ccApp.App.Unpause()
+	err := a.App.Unpause()
 	if err != nil {
 		return err
 	}
-
-	a.mu.Lock()
-	a.playbackState.IsPaused = false
-	a.mu.Unlock()
 
 	return nil
 }
 
 // StopPlayback stops current playback
 func (a *App) StopPlayback() {
-	a.mu.Lock()
-	if a.chromecastApp != nil {
-		a.chromecastApp.App.Close(true)
-		a.chromecastApp = nil
-	}
-	a.playbackState.IsPlaying = false
-	a.playbackState.IsPaused = false
-	a.playbackState.CurrentTime = 0
-	a.mu.Unlock()
+	a.App.Stop()
 
 	// Allow system sleep again
 	inhibitor.Stop()
@@ -564,13 +467,12 @@ func (a *App) handleChromecastMessage(msg *cast_proto.CastMessage) {
 
 			switch status.PlayerState {
 			case "PAUSED":
-				a.playbackState.IsPaused = true
+				a.playbackState.Status = "PAUSED"
 			case "PLAYING":
-				a.playbackState.IsPaused = false
+				a.playbackState.Status = "PLAYING"
 			case "IDLE":
 				if status.IdleReason == "FINISHED" || status.IdleReason == "INTERRUPTED" {
-					a.playbackState.IsPlaying = false
-					a.playbackState.IsPaused = false
+					a.playbackState.Status = "STOPPED"
 					a.mu.Unlock()
 					// Allow system sleep when playback finishes
 					inhibitor.Stop()
@@ -582,8 +484,7 @@ func (a *App) handleChromecastMessage(msg *cast_proto.CastMessage) {
 
 	case "CLOSE", "LOAD_FAILED":
 		a.mu.Lock()
-		a.playbackState.IsPlaying = false
-		a.playbackState.IsPaused = false
+		a.playbackState.Status = "STOPPED"
 		a.mu.Unlock()
 		// Allow system sleep when playback closes/fails
 		inhibitor.Stop()
@@ -600,9 +501,4 @@ func extractDeviceName(deviceURL string) string {
 		return parts[2]
 	}
 	return deviceURL
-}
-
-func fileExists(path string) bool {
-	_, err := os.Stat(path)
-	return err == nil
 }

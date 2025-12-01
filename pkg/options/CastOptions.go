@@ -5,5 +5,5 @@ type CastOptions struct {
 	Subtitle   SubtitleCastOptions
 	VideoTrack int
 	AudioTrack int
-	CRF        int
+	Bitrate    string
 }

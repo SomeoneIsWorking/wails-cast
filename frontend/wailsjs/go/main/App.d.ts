@@ -11,8 +11,6 @@ export function ClearHistory():Promise<void>;
 
 export function DiscoverDevices():Promise<Array<main.Device>>;
 
-export function FindSubtitleFile(arg1:string):Promise<string>;
-
 export function GetHistory():Promise<Array<main.HistoryItem>>;
 
 export function GetMediaFiles(arg1:string):Promise<Array<string>>;

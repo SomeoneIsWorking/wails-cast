@@ -124,11 +124,11 @@ func (s *LocalHandler) ServeSegment(w http.ResponseWriter, r *http.Request, trac
 		segmentDuration = s.Duration - startTime
 	}
 
-	manifest, err := hls.LoadSegmentManifest(s.OutputDir, segmentIndex)
-	needsRegeneration := err != nil || !hls.ManifestMatches(manifest, s.Options.Subtitle, segmentDuration)
+	manifest, err := hls.LoadSegmentManifest(segmentPath + ".json")
+	needsRegeneration := err != nil || !hls.ManifestMatches(manifest, s.Options, segmentDuration)
 
 	if !hls.CacheExists(s.OutputDir, segmentName) || needsRegeneration {
-		err := s.transcodeSegment(segmentPath, startTime, r, w, segmentIndex, segmentDuration)
+		err := s.transcodeSegment(segmentPath, startTime, r, w, segmentDuration)
 		if err != nil {
 			http.Error(w, "Transcode failed", http.StatusInternalServerError)
 			logger.Logger.Error("Transcode error", "err", err)
@@ -146,7 +146,7 @@ func (s *LocalHandler) ServeSegment(w http.ResponseWriter, r *http.Request, trac
 	http.ServeFile(w, r, segmentPath)
 }
 
-func (s *LocalHandler) transcodeSegment(segmentPath string, startTime float64, r *http.Request, w http.ResponseWriter, segmentIndex int, segmentDuration float64) error {
+func (s *LocalHandler) transcodeSegment(segmentPath string, startTime float64, r *http.Request, w http.ResponseWriter, segmentDuration float64) error {
 	ensureSymlink(s.VideoPath, s.OutputDir)
 	subtitle := ""
 
@@ -160,7 +160,7 @@ func (s *LocalHandler) transcodeSegment(segmentPath string, startTime float64, r
 		StartTime:  startTime,
 		Duration:   s.SegmentSize,
 		Subtitle:   subtitle,
-		CRF:        s.Options.CRF,
+		Bitrate:    s.Options.Bitrate,
 	}
 
 	err := hls.TranscodeSegment(r.Context(), opts)
@@ -173,16 +173,12 @@ func (s *LocalHandler) transcodeSegment(segmentPath string, startTime float64, r
 	}
 
 	manifest := hls.SegmentManifest{
-		SegmentNumber: segmentIndex,
-		Duration:      segmentDuration,
-		SubtitlePath:  s.Options.Subtitle.Path,
-		SubtitleStyle: "FontSize=24",
-		VideoCodec:    "libx264",
-		AudioCodec:    "aac",
-		Preset:        "fast",
-		CreatedAt:     time.Now().Format(time.RFC3339),
+		Duration:  segmentDuration,
+		Subtitle:  s.Options.Subtitle.Path,
+		CreatedAt: time.Now().Format(time.RFC3339),
+		Bitrate:   s.Options.Bitrate,
 	}
-	err = hls.SaveSegmentManifest(s.OutputDir, manifest)
+	err = manifest.Save(segmentPath + ".json")
 	return err
 }
 
