@@ -15,6 +15,7 @@ import (
 	"wails-cast/pkg/extractor"
 	"wails-cast/pkg/hls"
 	"wails-cast/pkg/logger"
+	"wails-cast/pkg/options"
 
 	"github.com/pkg/errors"
 )
@@ -32,8 +33,9 @@ type RemoteHandler struct {
 	AudioPlaylistURL    string // For demuxed HLS: URL of audio playlist
 	VideoPlaylistURL    string // For demuxed HLS: URL of video playlist
 	IsManifestRewritten bool
-	Options             StreamOptions
+	Options             options.StreamOptions
 	Duration            float64 // Total duration of the stream in seconds
+	UseShaka            bool    // Whether to add program date time tags for Shaka Player
 }
 
 type MainMap struct {
@@ -42,7 +44,7 @@ type MainMap struct {
 }
 
 // NewRemoteHandler creates a new HLS handler
-func NewRemoteHandler(localIP string, cacheDir string, options StreamOptions) *RemoteHandler {
+func NewRemoteHandler(localIP string, cacheDir string, options options.StreamOptions) *RemoteHandler {
 	os.MkdirAll(cacheDir, 0755)
 
 	return &RemoteHandler{
@@ -172,6 +174,17 @@ func (p *RemoteHandler) serveTrackPlaylist(w http.ResponseWriter, r *http.Reques
 	}
 
 	// Add program date time tags for better sync
+	if p.UseShaka {
+		addProgramDate(playlist)
+	}
+
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Content-Type", "application/vnd.apple.mpegurl")
+	w.Write([]byte(playlist.Generate()))
+	return nil
+}
+
+func addProgramDate(playlist *hls.TrackPlaylist) {
 	baseTime := time.Now()
 	cumulativeTime := 0.0
 
@@ -184,11 +197,6 @@ func (p *RemoteHandler) serveTrackPlaylist(w http.ResponseWriter, r *http.Reques
 		segment.ProgramDateTime = segmentTime.Format(time.RFC3339Nano)
 		cumulativeTime += segment.Duration
 	}
-
-	w.Header().Set("Access-Control-Allow-Origin", "*")
-	w.Header().Set("Content-Type", "application/vnd.apple.mpegurl")
-	w.Write([]byte(playlist.Generate()))
-	return nil
 }
 
 func (p *RemoteHandler) getTrackPlaylist(ctx context.Context, trackType string, index int) (string, error) {
@@ -453,15 +461,20 @@ func (p *RemoteHandler) downloadSegment(ctx context.Context, trackType string, t
 
 func (p *RemoteHandler) transcodeSegment(ctx context.Context, rawPath string, transcodedPath string) error {
 	startTime := time.Now()
+
+	subtitle := ""
+
+	if p.Options.Subtitle.BurnIn {
+		subtitle = p.Options.Subtitle.Path
+	}
+
 	err := hls.TranscodeSegment(ctx, hls.TranscodeOptions{
-		InputPath:     rawPath,
-		OutputPath:    transcodedPath,
-		StartTime:     0,
-		Duration:      0,
-		SubtitlePath:  p.Options.SubtitlePath,
-		SubtitleTrack: p.Options.SubtitleTrack,
-		BurnIn:        false,
-		CRF:           p.Options.CRF,
+		InputPath:  rawPath,
+		OutputPath: transcodedPath,
+		StartTime:  0,
+		Duration:   0,
+		Subtitle:   subtitle,
+		CRF:        p.Options.CRF,
 	})
 	if err != nil {
 		return err

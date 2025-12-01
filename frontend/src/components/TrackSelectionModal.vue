@@ -1,59 +1,55 @@
 <script setup lang="ts">
-import { ref, computed } from "vue";
-import type { main, mediainfo } from "../../wailsjs/go/models";
-import { mediaService } from "@/services/media";
-
-type TrackInfo = mediainfo.MediaTrackInfo;
+import { ref } from "vue";
+import { options, type main } from "../../wailsjs/go/models";
+import { CastOptions, mediaService } from "@/services/media";
+import { useCastStore } from "@/stores/cast";
 
 const props = defineProps<{
-  trackInfo: TrackInfo;
-  modelValue: boolean;
+  trackInfo: main.TrackDisplayInfo;
 }>();
 
 const emit = defineEmits<{
   "update:modelValue": [value: boolean];
-  confirm: [options: main.CastOptions];
+  confirm: [options: options.CastOptions];
 }>();
 
 const selectedVideoTrack = ref(0);
 const selectedAudioTrack = ref(0);
-const selectedSubtitleTrack = ref(0);
 const subtitleSource = ref<"none" | "embedded" | "external">("none");
 const externalSubtitlePath = ref("");
 const burnSubtitles = ref(false);
-const quality = ref(await mediaService.getDefaultQuality());
 const qualityOptions = await mediaService.getQualityOptions();
+const quality = ref(qualityOptions[0].CRF);
+const subtitle = ref<string>("none");
+const showDialog = defineModel<boolean>();
+const castStore = useCastStore();
+const isLoading = ref(false);
 
-const hasVideoTracks = computed(() => props.trackInfo.videoTracks.length > 0);
-const hasAudioTracks = computed(() => props.trackInfo.audioTracks.length > 0);
-const hasSubtitleTracks = computed(
-  () => props.trackInfo.subtitleTracks.length > 0
-);
-
-const showDialog = computed({
-  get: () => props.modelValue,
-  set: (val) => emit("update:modelValue", val),
-});
-
-const handleConfirm = () => {
-  const options: main.CastOptions = {
-    SubtitlePath:
-      subtitleSource.value === "external" ? externalSubtitlePath.value : "",
-    SubtitleTrack:
-      subtitleSource.value === "none"
-        ? -2
-        : subtitleSource.value === "external"
-        ? -1
-        : selectedSubtitleTrack.value,
-    VideoTrack: selectedVideoTrack.value,
-    AudioTrack: selectedAudioTrack.value,
-    BurnIn: burnSubtitles.value,
-    CRF: qualityOptions.find((q) => q.Key === quality.value)!.CRF,
+const handleConfirm = async () => {
+  const opts = {
+    Stream: {
+      VideoTrack: selectedVideoTrack.value,
+      AudioTrack: selectedAudioTrack.value,
+      CRF: quality.value,
+      Subtitle: {
+        BurnIn: burnSubtitles.value,
+        Path:
+          subtitle.value === "external"
+            ? "external:" + externalSubtitlePath.value
+            : subtitle.value,
+      },
+    },
     Debug: true,
-    NoCastJustHost: true,
-  };
-  emit("confirm", options);
-  showDialog.value = false;
+    NoCastJustHost: false,
+  } as CastOptions;
+
+  isLoading.value = true;
+  try {
+    await castStore.startCasting(props.trackInfo.path, opts);
+    showDialog.value = false;
+  } finally {
+    isLoading.value = false;
+  }
 };
 
 const handleCancel = () => {
@@ -73,7 +69,7 @@ const handleCancel = () => {
       <h2 class="text-2xl font-bold text-white mb-4">Select Tracks</h2>
 
       <!-- Video Track Selection -->
-      <div v-if="hasVideoTracks" class="mb-6">
+      <div class="mb-6">
         <h3 class="text-lg font-semibold text-white mb-2">Video Track</h3>
         <select
           v-model="selectedVideoTrack"
@@ -91,7 +87,7 @@ const handleCancel = () => {
       </div>
 
       <!-- Audio Track Selection -->
-      <div v-if="hasAudioTracks" class="mb-6">
+      <div v-if="trackInfo.audioTracks.length > 0" class="mb-6">
         <h3 class="text-lg font-semibold text-white mb-2">Audio Track</h3>
         <select
           v-model="selectedAudioTrack"
@@ -111,27 +107,15 @@ const handleCancel = () => {
       <div class="mb-6">
         <h3 class="text-lg font-semibold text-white mb-2">Subtitles</h3>
         <select
-          v-model="subtitleSource"
-          class="w-full bg-gray-700 text-white rounded p-2 mb-2"
-        >
-          <option value="none">No Subtitles</option>
-          <option v-if="hasSubtitleTracks" value="embedded">
-            Embedded Subtitle
-          </option>
-          <option value="external">External File</option>
-        </select>
-
-        <select
-          v-if="subtitleSource === 'embedded'"
-          v-model="selectedSubtitleTrack"
+          v-model="subtitle"
           class="w-full bg-gray-700 text-white rounded p-2 mb-2"
         >
           <option
             v-for="track in trackInfo.subtitleTracks"
-            :key="track.index"
-            :value="track.index"
+            :key="track.path"
+            :value="track.path"
           >
-            {{ track.title || track.language || `Track ${track.index}` }}
+            {{ track.label }}
           </option>
         </select>
 
@@ -153,7 +137,7 @@ const handleCancel = () => {
           <option
             v-for="option in qualityOptions"
             :key="option.Key"
-            :value="option.Key"
+            :value="option.CRF"
           >
             {{ option.Label }}
           </option>
@@ -170,10 +154,32 @@ const handleCancel = () => {
         </button>
         <button
           @click="handleConfirm"
+          v-if="!isLoading"
           class="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition"
         >
           Start Casting
         </button>
+        <div
+          v-else
+          class="px-4 py-2 bg-blue-600 text-white rounded flex items-center justify-center"
+        >
+          <svg
+            class="animate-spin h-5 w-5 mr-2 text-white"
+            xmlns="http://www.w3.org/2000/svg"
+            fill="none"
+            viewBox="0 0 24 24"
+          >
+            <circle
+              class="opacity-25"
+              cx="12"
+              cy="12"
+              r="10"
+              stroke="currentColor"
+              stroke-width="4"
+            ></circle>
+          </svg>
+          Casting...
+        </div>
       </div>
     </div>
   </div>

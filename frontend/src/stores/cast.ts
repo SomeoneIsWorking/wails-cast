@@ -31,14 +31,7 @@ export const useCastStore = defineStore("cast", () => {
   });
 
   // Cast Options
-  const castOptions = ref<CastOptions>({
-    SubtitlePath: "",
-    SubtitleTrack: -1,
-    VideoTrack: -1,
-    AudioTrack: -1,
-    BurnIn: false,
-    CRF: "medium",
-  });
+  const castOptions = ref<CastOptions>();
 
   // Computed
   const hasDevices = computed(() => devices.value.length > 0);
@@ -68,10 +61,6 @@ export const useCastStore = defineStore("cast", () => {
 
   const clearError = () => {
     error.value = null;
-  };
-
-  const updateCastOptions = (options: Partial<CastOptions>) => {
-    castOptions.value = { ...castOptions.value, ...options };
   };
 
   const discoverDevices = async () => {
@@ -156,7 +145,6 @@ export const useCastStore = defineStore("cast", () => {
     setLoading,
     setError,
     clearError,
-    updateCastOptions,
     discoverDevices,
     startCasting,
     reset,

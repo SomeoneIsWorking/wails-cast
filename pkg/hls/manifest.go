@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+
+	"wails-cast/pkg/options"
 )
 
 // SegmentManifest stores metadata for each segment
@@ -45,14 +47,17 @@ func LoadSegmentManifest(outputDir string, segmentNum int) (*SegmentManifest, er
 }
 
 // ManifestMatches checks if current parameters match manifest (used by local file HLS)
-func ManifestMatches(manifest *SegmentManifest, subtitlePath string, duration float64) bool {
+func ManifestMatches(manifest *SegmentManifest, subtitle options.SubtitleCastOptions, duration float64) bool {
 	if manifest == nil {
 		return false
 	}
-	// Check subtitle path
-	if manifest.SubtitlePath != subtitlePath {
-		return false
+
+	if subtitle.BurnIn {
+		if manifest.SubtitlePath != subtitle.Path {
+			return false
+		}
 	}
+
 	// Check if duration changed significantly (tolerance of 0.1s)
 	if manifest.Duration > 0 && (manifest.Duration-duration > 0.1 || duration-manifest.Duration > 0.1) {
 		return false

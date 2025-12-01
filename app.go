@@ -20,6 +20,7 @@ import (
 	_inhibitor "wails-cast/pkg/inhibitor"
 	_logger "wails-cast/pkg/logger"
 	"wails-cast/pkg/mediainfo"
+	"wails-cast/pkg/options"
 	"wails-cast/pkg/stream"
 )
 
@@ -27,21 +28,17 @@ var logger = _logger.Logger
 var inhibitor = _inhibitor.InhibitorInstance
 
 // CastOptions holds options for casting
-type CastOptions struct {
-	SubtitlePath   string
-	SubtitleTrack  int  // -1 for external file, >= 0 for embedded track index
-	VideoTrack     int  // -1 for default
-	AudioTrack     int  // -1 for default
-	BurnIn         bool // true to burn subtitles into video
-	CRF            int  // quality setting (e.g., 23 for high quality)
-	Debug          bool // true to enable debug mode
-	NoCastJustHost bool // true to only host the stream without casting
+
+type SubtitleDisplayItem struct {
+	Path  string `json:"path"`
+	Label string `json:"label"`
 }
 
-type SubtitleOptions struct {
-	SubtitlePath  string
-	SubtitleTrack int // -1 for external file, >= 0 for embedded track index
-	BurnIn        bool
+type TrackDisplayInfo struct {
+	VideoTracks    []mediainfo.VideoTrack `json:"videoTracks"`
+	AudioTracks    []mediainfo.AudioTrack `json:"audioTracks"`
+	SubtitleTracks []SubtitleDisplayItem  `json:"subtitleTracks"`
+	Path           string                 `json:"path"`
 }
 
 type QualityOption struct {
@@ -51,15 +48,14 @@ type QualityOption struct {
 }
 
 type App struct {
-	ctx             context.Context
-	discovery       *DeviceDiscovery
-	mediaServer     *Server
-	localIp         string
-	castManager     *localcast.CastManager
-	playbackState   PlaybackState
-	currentSubtitle string
-	chromecastApp   *localcast.ChromecastApp
-	mu              sync.RWMutex
+	ctx           context.Context
+	discovery     *DeviceDiscovery
+	mediaServer   *Server
+	localIp       string
+	castManager   *localcast.CastManager
+	playbackState PlaybackState
+	chromecastApp *localcast.ChromecastApp
+	mu            sync.RWMutex
 }
 
 type PlaybackState struct {
@@ -124,15 +120,11 @@ func (a *App) GetMediaURL(filePath string) string {
 
 func (a *App) GetQualityOptions() []QualityOption {
 	return []QualityOption{
+		{Label: "Original (Best Quality)", CRF: -1, Key: "original"},
 		{Label: "Low (CRF 35)", CRF: 35, Key: "low"},
 		{Label: "Medium (CRF 28)", CRF: 28, Key: "medium"},
 		{Label: "High (CRF 23)", CRF: 23, Key: "high"},
-		{Label: "Original (Best Quality)", CRF: 18, Key: "original"},
 	}
-}
-
-func (a *App) GetDefaultQuality() string {
-	return "medium"
 }
 
 // GetSubtitleURL returns the URL for subtitle file (for Shaka player)
@@ -143,41 +135,45 @@ func (a *App) GetSubtitleURL(subtitlePath string) string {
 	return "/subtitle.vtt"
 }
 
-// GetVideoDuration returns the duration of a video file in seconds
-func GetVideoDuration(videoPath string) (float64, error) {
-	return hls.GetVideoDuration(videoPath)
-}
-
-// GetSubtitleTracks extracts subtitle tracks from a video file
-func (a *App) GetSubtitleTracks(videoPath string) ([]mediainfo.SubtitleTrack, error) {
-	return mediainfo.GetSubtitleTracks(videoPath)
-}
-
-// OpenSubtitleDialog opens a file picker dialog for subtitle files
-func (a *App) OpenSubtitleDialog() (string, error) {
-	return wails_runtime.OpenFileDialog(a.ctx, wails_runtime.OpenDialogOptions{
-		Title: "Select Subtitle File",
-		Filters: []wails_runtime.FileFilter{
-			{
-				DisplayName: "Subtitle Files",
-				Pattern:     "*.srt;*.vtt;*.ass;*.ssa",
-			},
+func (a *App) GetTrackDisplayInfo(fileNameOrUrl string) (*TrackDisplayInfo, error) {
+	trackInfo := &mediainfo.MediaTrackInfo{}
+	var err error
+	if strings.HasPrefix(fileNameOrUrl, "http://") || strings.HasPrefix(fileNameOrUrl, "https://") {
+		trackInfo, err = a.castManager.GetRemoteTrackInfo(fileNameOrUrl)
+	} else {
+		trackInfo, err = hls.GetMediaTrackInfo(fileNameOrUrl)
+	}
+	if err != nil {
+		return nil, err
+	}
+	var subtitleItems = []SubtitleDisplayItem{
+		{
+			Path:  "none",
+			Label: "None",
 		},
-	})
-}
+		{
+			Path:  "external",
+			Label: "External",
+		},
+	}
 
-// GetMediaTrackInfo gets all track information for a media file
-func (a *App) GetMediaTrackInfo(mediaPath string) (*mediainfo.MediaTrackInfo, error) {
-	return mediainfo.GetMediaTrackInfo(mediaPath)
-}
+	for _, sub := range trackInfo.SubtitleTracks {
+		subtitleItems = append(subtitleItems, SubtitleDisplayItem{
+			Path:  fmt.Sprintf("embedded:%d", sub.Index),
+			Label: fmt.Sprintf("Embedded: %s", sub.Language),
+		})
+	}
 
-// GetRemoteTrackInfo gets track information from a remote HLS stream
-func (a *App) GetRemoteTrackInfo(videoURL string) (*mediainfo.MediaTrackInfo, error) {
-	return a.castManager.GetRemoteTrackInfo(videoURL)
+	return &TrackDisplayInfo{
+		VideoTracks:    trackInfo.VideoTracks,
+		AudioTracks:    trackInfo.AudioTracks,
+		SubtitleTracks: subtitleItems,
+		Path:           fileNameOrUrl,
+	}, nil
 }
 
 // CastToDevice casts media (local file or remote URL) to a device
-func (a *App) CastToDevice(deviceIp string, fileNameOrUrl string, options CastOptions) (*PlaybackState, error) {
+func (a *App) CastToDevice(deviceIp string, fileNameOrUrl string, options options.CastOptions) (*PlaybackState, error) {
 	// Determine if input is a local file or remote URL
 	isRemote := strings.HasPrefix(fileNameOrUrl, "http://") || strings.HasPrefix(fileNameOrUrl, "https://")
 
@@ -188,20 +184,11 @@ func (a *App) CastToDevice(deviceIp string, fileNameOrUrl string, options CastOp
 	host := deviceIp
 	port := 8009
 
-	streamOpts := stream.StreamOptions{
-		SubtitlePath:  options.SubtitlePath,
-		SubtitleTrack: options.SubtitleTrack,
-		VideoTrack:    options.VideoTrack,
-		AudioTrack:    options.AudioTrack,
-		BurnIn:        options.BurnIn,
-		CRF:           options.CRF,
-	}
-
 	if isRemote {
 		mediaPath = fileNameOrUrl
 		// Use CastManager to prepare remote stream
 		logger.Info("Preparing remote stream", "url", mediaPath)
-		handler, err := a.castManager.CreateRemoteHandler(mediaPath, streamOpts)
+		handler, err := a.castManager.CreateRemoteHandler(mediaPath, options.Stream)
 		if err != nil {
 			return nil, fmt.Errorf("failed to prepare remote stream: %w", err)
 		}
@@ -219,20 +206,12 @@ func (a *App) CastToDevice(deviceIp string, fileNameOrUrl string, options CastOp
 			duration = 0
 		}
 
-		// Handle subtitle path - for embedded tracks, use video file path with track index
-		// This logic is also in LocalHandler/ffmpeg but we set it here for reference
-		subtitlePath := options.SubtitlePath
-		if options.SubtitleTrack >= 0 {
-			subtitlePath = fmt.Sprintf("%s:si=%d", mediaPath, options.SubtitleTrack)
-		}
-
 		// Create local handler
-		handler := stream.NewLocalHandler(mediaPath, streamOpts, a.localIp)
+		handler := stream.NewLocalHandler(mediaPath, options.Stream, a.localIp)
 		a.mediaServer.SetHandler(handler)
 
 		// Set subtitle path (for legacy/compatibility, though options has it)
-		a.mediaServer.SetSubtitlePath(subtitlePath)
-		a.currentSubtitle = subtitlePath
+		a.mediaServer.SetSubtitlePath(options.Stream.Subtitle.Path)
 	}
 
 	if options.NoCastJustHost {
@@ -275,7 +254,7 @@ func (a *App) CastToDevice(deviceIp string, fileNameOrUrl string, options CastOp
 	}
 
 	// Load media with custom receiver
-	customAppID := "4C4BFD9F"
+	customAppID := "7B88BB2E"
 
 	// Ensure we're running the custom app
 	if err := app.EnsureIsAppID(customAppID); err != nil {
@@ -332,7 +311,7 @@ func (a *App) CastToDevice(deviceIp string, fileNameOrUrl string, options CastOp
 		"message", fmt.Sprintf("Casting %s to %s via %s", filepath.Base(mediaPath), deviceIp, mediaURL),
 		"device", deviceIp,
 		"media", mediaPath,
-		"subtitle", options.SubtitlePath,
+		"subtitle", options.Stream.Subtitle.Path,
 	)
 
 	return &a.playbackState, nil
@@ -407,15 +386,9 @@ func (a *App) SeekTo(seekTime float64) error {
 }
 
 // UpdateSubtitleSettings updates subtitle settings for current media without recasting
-func (a *App) UpdateSubtitleSettings(options SubtitleOptions) error {
-	subtitlePath := options.SubtitlePath
-	if options.SubtitleTrack >= 0 {
-		subtitlePath = fmt.Sprintf("%s:si=%d", a.playbackState.MediaPath, options.SubtitleTrack)
-	}
-
+func (a *App) UpdateSubtitleSettings(options options.SubtitleCastOptions) error {
 	// Update subtitle path on server (clears cache)
-	a.mediaServer.SetSubtitlePath(subtitlePath)
-	a.currentSubtitle = subtitlePath
+	a.mediaServer.SetSubtitlePath(options.Path)
 
 	// Seek to current position to reload with new subtitles
 	a.mu.RLock()
@@ -516,13 +489,6 @@ func (a *App) OpenFileDialog(title string, filters []string) (string, error) {
 	return wails_runtime.OpenFileDialog(a.ctx, wails_runtime.OpenDialogOptions{
 		Title:   title,
 		Filters: wailsFilters,
-	})
-}
-
-// OpenDirectoryDialog opens a directory picker dialog
-func (a *App) OpenDirectoryDialog() (string, error) {
-	return wails_runtime.OpenDirectoryDialog(a.ctx, wails_runtime.OpenDialogOptions{
-		Title: "Select Directory",
 	})
 }
 
