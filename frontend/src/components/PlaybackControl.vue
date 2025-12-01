@@ -43,19 +43,21 @@
 
       <!-- Seek Bar -->
       <div class="relative mb-4">
-        <input
-          type="range"
-          :min="0"
-          :max="Math.floor(playbackState.duration)"
-          v-model.number="seekPosition"
-          @input="updateSeekPreview"
-          @change="onSeek"
+        <div
+          @click="onSeekBarClick"
           @mousemove="updateTooltipPosition"
           @mouseenter="showTooltip = true"
           @mouseleave="showTooltip = false"
-          class="seek-bar"
+          class="w-full h-2 bg-white/10 rounded cursor-pointer relative overflow-hidden"
           ref="seekBar"
-        />
+        >
+          <div
+            class="h-full bg-linear-to-r from-purple-500 to-purple-600 rounded pointer-events-none transition-all duration-100"
+            :style="{
+              width: (playbackState.currentTime / playbackState.duration) * 100 + '%'
+            }"
+          ></div>
+        </div>
         <div
           v-if="showTooltip"
           class="absolute bottom-full left-0 mb-2 px-2 py-1 bg-black/90 text-white text-xs rounded pointer-events-none whitespace-nowrap z-10"
@@ -151,9 +153,22 @@ const updateTooltipPosition = (event: MouseEvent) => {
   tooltipPosition.value = event.clientX - rect.left;
 };
 
-// Update seek preview as user drags
-const updateSeekPreview = () => {
-  seekPreviewTime.value = seekPosition.value;
+// Handle click on seek bar
+const onSeekBarClick = async (event: MouseEvent) => {
+  if (!seekBar.value || !playbackState.value.duration) return;
+
+  const rect = seekBar.value.getBoundingClientRect();
+  const percent = (event.clientX - rect.left) / rect.width;
+  const time = Math.max(
+    0,
+    Math.min(
+      playbackState.value.duration,
+      percent * playbackState.value.duration
+    )
+  );
+
+  seekPosition.value = Math.floor(time);
+  await onSeek();
 };
 
 // Increment local time every second when playing
