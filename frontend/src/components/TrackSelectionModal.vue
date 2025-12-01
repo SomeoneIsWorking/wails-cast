@@ -29,19 +29,16 @@ const isLoading = ref(false);
 
 const handleConfirm = async () => {
   const opts = {
-    Stream: {
-      VideoTrack: selectedVideoTrack.value,
-      AudioTrack: selectedAudioTrack.value,
-      CRF: quality.value,
-      Subtitle: {
-        BurnIn: burnSubtitles.value,
-        Path:
-          subtitle.value === "external"
-            ? "external:" + externalSubtitlePath.value
-            : subtitle.value,
-      },
+    VideoTrack: selectedVideoTrack.value,
+    AudioTrack: selectedAudioTrack.value,
+    CRF: quality.value,
+    Subtitle: {
+      BurnIn: burnSubtitles.value,
+      Path:
+        subtitle.value === "external"
+          ? "external:" + externalSubtitlePath.value
+          : subtitle.value,
     },
-    NoCastJustHost: false,
   } as CastOptions;
 
   isLoading.value = true;
