@@ -11,21 +11,21 @@ import (
 
 	"wails-cast/pkg/hls"
 	"wails-cast/pkg/logger"
+	"wails-cast/pkg/options"
 )
 
 // LocalHandler represents a local file HLS streaming server
 type LocalHandler struct {
-	VideoPath    string
-	SubtitlePath string
-	Options      StreamOptions
-	OutputDir    string
-	Duration     float64
-	SegmentSize  int
-	LocalIP      string
+	VideoPath   string
+	Options     options.StreamOptions
+	OutputDir   string
+	Duration    float64
+	SegmentSize int
+	LocalIP     string
 }
 
 // NewLocalHandler creates a new local HLS handler
-func NewLocalHandler(videoPath string, options StreamOptions, localIP string) *LocalHandler {
+func NewLocalHandler(videoPath string, options options.StreamOptions, localIP string) *LocalHandler {
 	duration, err := hls.GetVideoDuration(videoPath)
 	if err != nil {
 		duration = 0
@@ -38,13 +38,12 @@ func NewLocalHandler(videoPath string, options StreamOptions, localIP string) *L
 	hls.EnsureCacheDir(outputDir)
 
 	return &LocalHandler{
-		VideoPath:    videoPath,
-		SubtitlePath: options.SubtitlePath,
-		Options:      options,
-		OutputDir:    outputDir,
-		Duration:     duration,
-		SegmentSize:  8,
-		LocalIP:      localIP,
+		VideoPath:   videoPath,
+		Options:     options,
+		OutputDir:   outputDir,
+		Duration:    duration,
+		SegmentSize: 8,
+		LocalIP:     localIP,
 	}
 }
 
@@ -126,7 +125,7 @@ func (s *LocalHandler) ServeSegment(w http.ResponseWriter, r *http.Request, trac
 	}
 
 	manifest, err := hls.LoadSegmentManifest(s.OutputDir, segmentIndex)
-	needsRegeneration := err != nil || !hls.ManifestMatches(manifest, s.SubtitlePath, segmentDuration)
+	needsRegeneration := err != nil || !hls.ManifestMatches(manifest, s.Options.Subtitle, segmentDuration)
 
 	if !hls.CacheExists(s.OutputDir, segmentName) || needsRegeneration {
 		err := s.transcodeSegment(segmentPath, startTime, r, w, segmentIndex, segmentDuration)
@@ -149,15 +148,19 @@ func (s *LocalHandler) ServeSegment(w http.ResponseWriter, r *http.Request, trac
 
 func (s *LocalHandler) transcodeSegment(segmentPath string, startTime float64, r *http.Request, w http.ResponseWriter, segmentIndex int, segmentDuration float64) error {
 	ensureSymlink(s.VideoPath, s.OutputDir)
+	subtitle := ""
+
+	if s.Options.Subtitle.BurnIn {
+		subtitle = s.Options.Subtitle.Path
+	}
+
 	opts := hls.TranscodeOptions{
-		InputPath:     filepath.Join(s.OutputDir, "input_video"),
-		OutputPath:    segmentPath,
-		StartTime:     startTime,
-		Duration:      s.SegmentSize,
-		SubtitlePath:  s.Options.SubtitlePath,
-		SubtitleTrack: s.Options.SubtitleTrack,
-		BurnIn:        s.Options.BurnIn,
-		CRF:           s.Options.CRF,
+		InputPath:  filepath.Join(s.OutputDir, "input_video"),
+		OutputPath: segmentPath,
+		StartTime:  startTime,
+		Duration:   s.SegmentSize,
+		Subtitle:   subtitle,
+		CRF:        s.Options.CRF,
 	}
 
 	err := hls.TranscodeSegment(r.Context(), opts)
@@ -172,7 +175,7 @@ func (s *LocalHandler) transcodeSegment(segmentPath string, startTime float64, r
 	manifest := hls.SegmentManifest{
 		SegmentNumber: segmentIndex,
 		Duration:      segmentDuration,
-		SubtitlePath:  s.Options.SubtitlePath,
+		SubtitlePath:  s.Options.Subtitle.Path,
 		SubtitleStyle: "FontSize=24",
 		VideoCodec:    "libx264",
 		AudioCodec:    "aac",

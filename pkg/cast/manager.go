@@ -15,6 +15,7 @@ import (
 	"wails-cast/pkg/hls"
 	"wails-cast/pkg/logger"
 	"wails-cast/pkg/mediainfo"
+	"wails-cast/pkg/options"
 	"wails-cast/pkg/stream"
 )
 
@@ -43,7 +44,7 @@ func NewCastManager(localIP string, proxyPort int) *CastManager {
 	}
 }
 
-func (m *CastManager) CreateRemoteHandler(videoURL string, options stream.StreamOptions) (*stream.RemoteHandler, error) {
+func (m *CastManager) CreateRemoteHandler(videoURL string, options options.StreamOptions) (*stream.RemoteHandler, error) {
 	// 1. Calculate hash of video URL for cache key
 	cacheDir := m.cacheDir(videoURL)
 

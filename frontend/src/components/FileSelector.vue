@@ -7,7 +7,6 @@ import { isAcceptedFile } from "../utils/file";
 import { OpenFileDialog } from "../../wailsjs/go/main/App";
 
 interface Props {
-  modelValue?: string;
   acceptedExtensions: string[];
   placeholder?: string;
   dialogTitle?: string;
@@ -15,13 +14,10 @@ interface Props {
 
 const props = withDefaults(defineProps<Props>(), {
   modelValue: "",
-  placeholder: "Drag & drop a file or click Browse",
   dialogTitle: "Select File",
 });
 
-const emit = defineEmits<{
-  "update:modelValue": [path: string];
-}>();
+const modelValue = defineModel<string>();
 
 const dropZoneRef = ref<HTMLElement | null>(null);
 const isHovering = ref(false);
@@ -29,7 +25,7 @@ const isHovering = ref(false);
 
 const handleFileSelect = (filePath: string) => {
   if (isAcceptedFile(filePath, props.acceptedExtensions)) {
-    emit("update:modelValue", filePath);
+    modelValue.value = filePath;
   }
 };
 
@@ -63,11 +59,10 @@ useOnFileDrop({
   <div class="file-selector">
     <div class="flex gap-2 mb-4">
       <input
-        :value="modelValue"
+        v-model="modelValue"
         type="text"
-        :placeholder="placeholder"
+        placeholder="Input URL or file path"
         class="input-field flex-1"
-        readonly
       />
       <button @click="openFileDialog" class="btn-secondary">Browse</button>
       <slot></slot>

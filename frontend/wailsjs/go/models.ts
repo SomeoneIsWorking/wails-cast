@@ -1,31 +1,5 @@
 export namespace main {
 	
-	export class CastOptions {
-	    SubtitlePath: string;
-	    SubtitleTrack: number;
-	    VideoTrack: number;
-	    AudioTrack: number;
-	    BurnIn: boolean;
-	    CRF: number;
-	    Debug: boolean;
-	    NoCastJustHost: boolean;
-	
-	    static createFrom(source: any = {}) {
-	        return new CastOptions(source);
-	    }
-	
-	    constructor(source: any = {}) {
-	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.SubtitlePath = source["SubtitlePath"];
-	        this.SubtitleTrack = source["SubtitleTrack"];
-	        this.VideoTrack = source["VideoTrack"];
-	        this.AudioTrack = source["AudioTrack"];
-	        this.BurnIn = source["BurnIn"];
-	        this.CRF = source["CRF"];
-	        this.Debug = source["Debug"];
-	        this.NoCastJustHost = source["NoCastJustHost"];
-	    }
-	}
 	export class Device {
 	    name: string;
 	    type: string;
@@ -92,21 +66,55 @@ export namespace main {
 	        this.Key = source["Key"];
 	    }
 	}
-	export class SubtitleOptions {
-	    SubtitlePath: string;
-	    SubtitleTrack: number;
-	    BurnIn: boolean;
+	export class SubtitleDisplayItem {
+	    path: string;
+	    label: string;
 	
 	    static createFrom(source: any = {}) {
-	        return new SubtitleOptions(source);
+	        return new SubtitleDisplayItem(source);
 	    }
 	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.SubtitlePath = source["SubtitlePath"];
-	        this.SubtitleTrack = source["SubtitleTrack"];
-	        this.BurnIn = source["BurnIn"];
+	        this.path = source["path"];
+	        this.label = source["label"];
 	    }
+	}
+	export class TrackDisplayInfo {
+	    videoTracks: mediainfo.VideoTrack[];
+	    audioTracks: mediainfo.AudioTrack[];
+	    subtitleTracks: SubtitleDisplayItem[];
+	    path: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new TrackDisplayInfo(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.videoTracks = this.convertValues(source["videoTracks"], mediainfo.VideoTrack);
+	        this.audioTracks = this.convertValues(source["audioTracks"], mediainfo.AudioTrack);
+	        this.subtitleTracks = this.convertValues(source["subtitleTracks"], SubtitleDisplayItem);
+	        this.path = source["path"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
 	}
 
 }
@@ -139,22 +147,6 @@ export namespace mediainfo {
 	        this.Codecs = source["Codecs"];
 	    }
 	}
-	export class SubtitleTrack {
-	    index: number;
-	    language: string;
-	    title: string;
-	
-	    static createFrom(source: any = {}) {
-	        return new SubtitleTrack(source);
-	    }
-	
-	    constructor(source: any = {}) {
-	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.index = source["index"];
-	        this.language = source["language"];
-	        this.title = source["title"];
-	    }
-	}
 	export class VideoTrack {
 	    index: number;
 	    codec: string;
@@ -183,20 +175,75 @@ export namespace mediainfo {
 	        this.Codecs = source["Codecs"];
 	    }
 	}
-	export class MediaTrackInfo {
-	    videoTracks: VideoTrack[];
-	    audioTracks: AudioTrack[];
-	    subtitleTracks: SubtitleTrack[];
+
+}
+
+export namespace options {
+	
+	export class SubtitleCastOptions {
+	    Path: string;
+	    BurnIn: boolean;
 	
 	    static createFrom(source: any = {}) {
-	        return new MediaTrackInfo(source);
+	        return new SubtitleCastOptions(source);
 	    }
 	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.videoTracks = this.convertValues(source["videoTracks"], VideoTrack);
-	        this.audioTracks = this.convertValues(source["audioTracks"], AudioTrack);
-	        this.subtitleTracks = this.convertValues(source["subtitleTracks"], SubtitleTrack);
+	        this.Path = source["Path"];
+	        this.BurnIn = source["BurnIn"];
+	    }
+	}
+	export class StreamOptions {
+	    Subtitle: SubtitleCastOptions;
+	    VideoTrack: number;
+	    AudioTrack: number;
+	    CRF: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new StreamOptions(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.Subtitle = this.convertValues(source["Subtitle"], SubtitleCastOptions);
+	        this.VideoTrack = source["VideoTrack"];
+	        this.AudioTrack = source["AudioTrack"];
+	        this.CRF = source["CRF"];
+	    }
+	
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+		    if (!a) {
+		        return a;
+		    }
+		    if (a.slice && a.map) {
+		        return (a as any[]).map(elem => this.convertValues(elem, classs));
+		    } else if ("object" === typeof a) {
+		        if (asMap) {
+		            for (const key of Object.keys(a)) {
+		                a[key] = new classs(a[key]);
+		            }
+		            return a;
+		        }
+		        return new classs(a);
+		    }
+		    return a;
+		}
+	}
+	export class CastOptions {
+	    Stream: StreamOptions;
+	    Debug: boolean;
+	    NoCastJustHost: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new CastOptions(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.Stream = this.convertValues(source["Stream"], StreamOptions);
+	        this.Debug = source["Debug"];
+	        this.NoCastJustHost = source["NoCastJustHost"];
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {

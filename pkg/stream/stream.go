@@ -2,16 +2,6 @@ package stream
 
 import "net/http"
 
-// StreamOptions holds options for streaming
-type StreamOptions struct {
-	SubtitlePath  string
-	SubtitleTrack int
-	VideoTrack    int
-	AudioTrack    int
-	BurnIn        bool `default:"true"`
-	CRF           int
-}
-
 // StreamHandler defines the interface for handling media streams
 type StreamHandler interface {
 	// ServeManifestPlaylist serves the manifest playlist (/playlist.m3u8)

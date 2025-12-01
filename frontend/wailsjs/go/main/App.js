@@ -18,16 +18,8 @@ export function FindSubtitleFile(arg1) {
   return window['go']['main']['App']['FindSubtitleFile'](arg1);
 }
 
-export function GetDefaultQuality() {
-  return window['go']['main']['App']['GetDefaultQuality']();
-}
-
 export function GetMediaFiles(arg1) {
   return window['go']['main']['App']['GetMediaFiles'](arg1);
-}
-
-export function GetMediaTrackInfo(arg1) {
-  return window['go']['main']['App']['GetMediaTrackInfo'](arg1);
 }
 
 export function GetMediaURL(arg1) {
@@ -38,16 +30,12 @@ export function GetQualityOptions() {
   return window['go']['main']['App']['GetQualityOptions']();
 }
 
-export function GetRemoteTrackInfo(arg1) {
-  return window['go']['main']['App']['GetRemoteTrackInfo'](arg1);
-}
-
-export function GetSubtitleTracks(arg1) {
-  return window['go']['main']['App']['GetSubtitleTracks'](arg1);
-}
-
 export function GetSubtitleURL(arg1) {
   return window['go']['main']['App']['GetSubtitleURL'](arg1);
+}
+
+export function GetTrackDisplayInfo(arg1) {
+  return window['go']['main']['App']['GetTrackDisplayInfo'](arg1);
 }
 
 export function LogError(arg1) {
@@ -62,16 +50,8 @@ export function LogWarn(arg1) {
   return window['go']['main']['App']['LogWarn'](arg1);
 }
 
-export function OpenDirectoryDialog() {
-  return window['go']['main']['App']['OpenDirectoryDialog']();
-}
-
 export function OpenFileDialog(arg1, arg2) {
   return window['go']['main']['App']['OpenFileDialog'](arg1, arg2);
-}
-
-export function OpenSubtitleDialog() {
-  return window['go']['main']['App']['OpenSubtitleDialog']();
 }
 
 export function Pause() {

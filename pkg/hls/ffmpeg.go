@@ -3,29 +3,32 @@ package hls
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"wails-cast/pkg/mediainfo"
 )
 
 // TranscodeOptions contains options for transcoding
 type TranscodeOptions struct {
-	InputPath     string
-	OutputPath    string
-	StartTime     float64
-	Duration      int
-	SubtitlePath  string
-	SubtitleTrack int // -2 for none, -1 for external, >= 0 for embedded
-	BurnIn        bool
-	CRF           int
+	InputPath  string
+	OutputPath string
+	StartTime  float64
+	Duration   int
+	Subtitle   string
+	CRF        int
 }
 
 // TranscodeSegment transcodes a segment with optional 100ms wait to avoid wasted work during rapid seeking
 func TranscodeSegment(ctx context.Context, opts TranscodeOptions) error {
 	// Build ffmpeg arguments
-	args := buildTranscodeArgs(opts)
+	args, err := buildTranscodeArgs(opts)
+	if err != nil {
+		return err
+	}
 
 	// log the call
 	fmt.Printf(">>>> ffmpeg %s\n\n", strings.Join(args, " "))
@@ -33,7 +36,7 @@ func TranscodeSegment(ctx context.Context, opts TranscodeOptions) error {
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
 
-	err := cmd.Run()
+	err = cmd.Run()
 	if err != nil {
 		// Check if it was cancelled
 		if ctx.Err() != nil {
@@ -48,12 +51,11 @@ func TranscodeSegment(ctx context.Context, opts TranscodeOptions) error {
 }
 
 // buildTranscodeArgs builds ffmpeg arguments based on options
-func buildTranscodeArgs(opts TranscodeOptions) []string {
+func buildTranscodeArgs(opts TranscodeOptions) ([]string, error) {
 	args := []string{"-y"}
 
 	if opts.StartTime > 0 {
 		args = append(args, "-ss", fmt.Sprintf("%.2f", opts.StartTime))
-		args = append(args, "-copyts")
 	}
 	if opts.Duration > 0 {
 		args = append(args, "-t", fmt.Sprintf("%d", opts.Duration))
@@ -65,47 +67,51 @@ func buildTranscodeArgs(opts TranscodeOptions) []string {
 	args = append(args,
 		"-c:v", "h264_videotoolbox",
 		"-pix_fmt", "yuv420p",
-		"-crf", fmt.Sprintf("%d", opts.CRF),
 		"-c:a", "aac",
 		"-b:a", "96k",
 		"-ac", "2",
 		"-f", "mpegts",
-		// Timestamp handling for proper segment alignment
-		"-avoid_negative_ts", "make_zero",
-		"-start_at_zero",
-		"-vsync", "cfr",
-		"-muxdelay", "0",
-		"-muxpreload", "0",
-		"-g", "48",
+		"-copyts",
 	)
 
-	if opts.BurnIn && opts.SubtitleTrack != -2 {
-		filterStr := buildSubtitleFilter(opts.OutputPath, opts.SubtitlePath, opts.SubtitleTrack, opts.InputPath)
-		if filterStr != "" {
-			args = append(args, "-vf", filterStr)
-		}
+	if opts.CRF > 0 {
+		args = append(args, "-crf", fmt.Sprintf("%d", opts.CRF))
+	}
+
+	filterStr, err := buildSubtitleFilter(opts.OutputPath, opts.Subtitle, opts.InputPath)
+	if err != nil {
+		return nil, err
+	}
+	if filterStr != "" {
+		args = append(args, "-vf", filterStr)
 	}
 
 	// Output file
-	return append(args, opts.OutputPath)
+	return append(args, opts.OutputPath), nil
 }
 
 // buildSubtitleFilter builds the subtitle filter string for ffmpeg
-func buildSubtitleFilter(outputDir string, subtitlePath string, trackIndex int, videoPath string) string {
-	// Check if it's an embedded subtitle track
-	if trackIndex >= 0 {
-		return fmt.Sprintf("subtitles='%s':si=%d:force_style='FontSize=24'", videoPath, trackIndex)
+func buildSubtitleFilter(outputDir string, subtitle string, videoPath string) (string, error) {
+	if path, found := strings.CutPrefix(subtitle, "external:"); found {
+		err := ensureSubtitleLink(outputDir, path)
+		if err != nil {
+			return "", err
+		}
+		return fmt.Sprintf("subtitles='%s':force_style='FontSize=24'", filepath.Join(outputDir, "input_subtitle")), nil
 	}
-
-	ensureSubtitleLink(outputDir, subtitlePath)
-	return fmt.Sprintf("subtitles='%s':force_style='FontSize=24'", filepath.Join(outputDir, "input_subtitle"))
+	if path, found := strings.CutPrefix(subtitle, "embedded:"); found {
+		return fmt.Sprintf("subtitles='%s':si=%s:force_style='FontSize=24'", videoPath, path), nil
+	}
+	return "", nil
 }
 
-func ensureSubtitleLink(outputDir string, subtitlePath string) {
+// ensureSubtitleLink creates a symlink to the subtitle file in the output directory
+func ensureSubtitleLink(outputDir string, subtitlePath string) error {
 	symlinkPath := filepath.Join(outputDir, "input_subtitle")
 	if _, err := os.Lstat(symlinkPath); err != nil {
-		os.Symlink(subtitlePath, symlinkPath)
+		return os.Symlink(subtitlePath, symlinkPath)
 	}
+	return nil
 }
 
 // GetVideoDuration gets the duration of a video file using ffprobe
@@ -131,4 +137,78 @@ func GetVideoDuration(videoPath string) (float64, error) {
 	}
 
 	return duration, nil
+}
+
+// GetMediaTrackInfo gets all track information for a media file using ffprobe
+func GetMediaTrackInfo(mediaPath string) (*mediainfo.MediaTrackInfo, error) {
+	cmd := exec.Command("ffprobe",
+		"-v", "error",
+		"-show_entries", "stream=index,codec_type,codec_name,width,height:stream_tags=language,title",
+		"-of", "json",
+		mediaPath,
+	)
+
+	output, err := cmd.Output()
+	if err != nil {
+		return nil, err
+	}
+
+	var result struct {
+		Streams []struct {
+			Index     int    `json:"index"`
+			CodecType string `json:"codec_type"`
+			CodecName string `json:"codec_name"`
+			Width     int    `json:"width"`
+			Height    int    `json:"height"`
+			Tags      struct {
+				Language string `json:"language"`
+				Title    string `json:"title"`
+			} `json:"tags"`
+		} `json:"streams"`
+	}
+
+	if err := json.Unmarshal(output, &result); err != nil {
+		return nil, err
+	}
+
+	info := &mediainfo.MediaTrackInfo{
+		VideoTracks:    make([]mediainfo.VideoTrack, 0),
+		AudioTracks:    make([]mediainfo.AudioTrack, 0),
+		SubtitleTracks: make([]mediainfo.SubtitleTrack, 0),
+	}
+
+	videoIdx := 0
+	audioIdx := 0
+	subtitleIdx := 0
+
+	for _, stream := range result.Streams {
+		switch stream.CodecType {
+		case "video":
+			resolution := ""
+			if stream.Width > 0 && stream.Height > 0 {
+				resolution = fmt.Sprintf("%dx%d", stream.Width, stream.Height)
+			}
+			info.VideoTracks = append(info.VideoTracks, mediainfo.VideoTrack{
+				Index:      videoIdx,
+				Codec:      stream.CodecName,
+				Resolution: resolution,
+			})
+			videoIdx++
+		case "audio":
+			info.AudioTracks = append(info.AudioTracks, mediainfo.AudioTrack{
+				Index:    audioIdx,
+				Language: stream.Tags.Language,
+			})
+			audioIdx++
+		case "subtitle":
+			info.SubtitleTracks = append(info.SubtitleTracks, mediainfo.SubtitleTrack{
+				Index:    subtitleIdx,
+				Language: stream.Tags.Language,
+				Title:    stream.Tags.Title,
+			})
+			subtitleIdx++
+		}
+	}
+
+	return info, nil
 }
