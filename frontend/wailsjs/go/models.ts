@@ -232,7 +232,6 @@ export namespace options {
 	}
 	export class CastOptions {
 	    Stream: StreamOptions;
-	    Debug: boolean;
 	    NoCastJustHost: boolean;
 	
 	    static createFrom(source: any = {}) {
@@ -242,7 +241,6 @@ export namespace options {
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.Stream = this.convertValues(source["Stream"], StreamOptions);
-	        this.Debug = source["Debug"];
 	        this.NoCastJustHost = source["NoCastJustHost"];
 	    }
 	

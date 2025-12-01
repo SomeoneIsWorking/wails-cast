@@ -3,6 +3,8 @@ import { ref } from "vue";
 import { options, type main } from "../../wailsjs/go/models";
 import { CastOptions, mediaService } from "@/services/media";
 import { useCastStore } from "@/stores/cast";
+import { Play } from "lucide-vue-next";
+import LoadingIcon from "./LoadingIcon.vue";
 
 const props = defineProps<{
   trackInfo: main.TrackDisplayInfo;
@@ -39,7 +41,6 @@ const handleConfirm = async () => {
             : subtitle.value,
       },
     },
-    Debug: true,
     NoCastJustHost: false,
   } as CastOptions;
 
@@ -154,32 +155,13 @@ const handleCancel = () => {
         </button>
         <button
           @click="handleConfirm"
-          v-if="!isLoading"
+          :disabled="isLoading"
           class="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition"
         >
-          Start Casting
+          <Play class="inline-block w-4 h-4 mr-2" v-if="!isLoading" />
+          <LoadingIcon v-else class="inline-block w-4 h-4 mr-2" />
+          {{ isLoading ? "Casting..." : "Cast" }}
         </button>
-        <div
-          v-else
-          class="px-4 py-2 bg-blue-600 text-white rounded flex items-center justify-center"
-        >
-          <svg
-            class="animate-spin h-5 w-5 mr-2 text-white"
-            xmlns="http://www.w3.org/2000/svg"
-            fill="none"
-            viewBox="0 0 24 24"
-          >
-            <circle
-              class="opacity-25"
-              cx="12"
-              cy="12"
-              r="10"
-              stroke="currentColor"
-              stroke-width="4"
-            ></circle>
-          </svg>
-          Casting...
-        </div>
       </div>
     </div>
   </div>
