@@ -55,6 +55,7 @@ type App struct {
 	castManager   *localcast.CastManager
 	playbackState PlaybackState
 	chromecastApp *localcast.ChromecastApp
+	historyStore  *HistoryStore
 	mu            sync.RWMutex
 }
 
@@ -74,6 +75,7 @@ func NewApp() *App {
 	localIP := discovery.GetLocalIP()
 	server := NewServer(localIP, 8888)
 	castManager := localcast.NewCastManager(localIP, 8888)
+	historyStore := NewHistoryStore()
 
 	return &App{
 		discovery:     discovery,
@@ -81,11 +83,15 @@ func NewApp() *App {
 		localIp:       localIP,
 		castManager:   castManager,
 		playbackState: PlaybackState{},
+		historyStore:  historyStore,
 	}
 }
 
 func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
+
+	// Set context for history store to enable events
+	a.historyStore.SetContext(ctx)
 
 	// Start media server
 	go a.mediaServer.Start()
@@ -310,6 +316,11 @@ func (a *App) CastToDevice(deviceIp string, fileNameOrUrl string, options option
 		"subtitle", options.Stream.Subtitle.Path,
 	)
 
+	// Add to history
+	if err := a.historyStore.Add(mediaPath, extractDeviceName(deviceIp)); err != nil {
+		logger.Warn("Failed to add to history", "error", err)
+	}
+
 	return &a.playbackState, nil
 }
 
@@ -501,6 +512,21 @@ func (a *App) LogWarn(message string) {
 // LogError logs an error message from frontend
 func (a *App) LogError(message string) {
 	logger.Error(message)
+}
+
+// GetHistory returns all history items
+func (a *App) GetHistory() []HistoryItem {
+	return a.historyStore.GetAll()
+}
+
+// RemoveFromHistory removes an item from history
+func (a *App) RemoveFromHistory(path string) error {
+	return a.historyStore.Remove(path)
+}
+
+// ClearHistory clears all history
+func (a *App) ClearHistory() error {
+	return a.historyStore.Clear()
 }
 
 // handleChromecastMessage handles messages from Chromecast

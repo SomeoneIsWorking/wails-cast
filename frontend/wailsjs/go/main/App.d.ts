@@ -7,9 +7,13 @@ export function CastToDevice(arg1:string,arg2:string,arg3:options.CastOptions):P
 
 export function ClearCache():Promise<void>;
 
+export function ClearHistory():Promise<void>;
+
 export function DiscoverDevices():Promise<Array<main.Device>>;
 
 export function FindSubtitleFile(arg1:string):Promise<string>;
+
+export function GetHistory():Promise<Array<main.HistoryItem>>;
 
 export function GetMediaFiles(arg1:string):Promise<Array<string>>;
 
@@ -30,6 +34,8 @@ export function LogWarn(arg1:string):Promise<void>;
 export function OpenFileDialog(arg1:string,arg2:Array<string>):Promise<string>;
 
 export function Pause():Promise<void>;
+
+export function RemoveFromHistory(arg1:string):Promise<void>;
 
 export function SeekTo(arg1:number):Promise<void>;
 

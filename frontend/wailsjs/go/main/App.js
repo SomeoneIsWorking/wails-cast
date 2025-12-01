@@ -10,12 +10,20 @@ export function ClearCache() {
   return window['go']['main']['App']['ClearCache']();
 }
 
+export function ClearHistory() {
+  return window['go']['main']['App']['ClearHistory']();
+}
+
 export function DiscoverDevices() {
   return window['go']['main']['App']['DiscoverDevices']();
 }
 
 export function FindSubtitleFile(arg1) {
   return window['go']['main']['App']['FindSubtitleFile'](arg1);
+}
+
+export function GetHistory() {
+  return window['go']['main']['App']['GetHistory']();
 }
 
 export function GetMediaFiles(arg1) {
@@ -56,6 +64,10 @@ export function OpenFileDialog(arg1, arg2) {
 
 export function Pause() {
   return window['go']['main']['App']['Pause']();
+}
+
+export function RemoveFromHistory(arg1) {
+  return window['go']['main']['App']['RemoveFromHistory'](arg1);
 }
 
 export function SeekTo(arg1) {

@@ -4,6 +4,7 @@ import { useCastStore } from "../stores/cast";
 import { Play } from "lucide-vue-next";
 import TrackSelectionModal from "./TrackSelectionModal.vue";
 import FileSelector from "./FileSelector.vue";
+import History from "./History.vue";
 import { GetTrackDisplayInfo } from "../../wailsjs/go/main/App";
 import { main } from "../../wailsjs/go/models";
 import LoadingIcon from './LoadingIcon.vue'
@@ -28,6 +29,10 @@ const handleCast = async (mediaPath: string) => {
   } finally {
     isLoading.value = false;
   }
+};
+
+const handleHistorySelect = (path: string) => {
+  selectedFile.value = path;
 };
 
 const acceptedExtensions = [
@@ -59,6 +64,11 @@ const acceptedExtensions = [
           {{ isLoading ? "Loading..." : "Cast File" }}
         </button>
       </FileSelector>
+    </div>
+
+    <!-- History Section -->
+    <div class="flex-1 overflow-hidden">
+      <History @select="handleHistorySelect" />
     </div>
 
     <!-- Track Selection Modal -->
