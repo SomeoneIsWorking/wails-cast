@@ -1,7 +1,7 @@
-- MUX mode for multitrack: combine V/A via ffmpeg
-- Create separate ffmpeg functions for transcoding a segment, creating a segment, etc
-- Fix subtitle burnin (missing atm)
-- Add library (store extracted URLs)
-- Make extraction full-auto with custom manifest
-- Remove FE try-catch code in favor of global error handling (try-finally can remain for loading states)
-- Replace PlaybackState.(isPlaying|isPaused) with PlaybackState.State ("IDLE", "PLAYING", "PAUSED", "STOPPED")
+- [ ] MUX mode for multitrack: combine V/A via ffmpeg
+- [ ] Create separate ffmpeg functions for transcoding a segment, creating a segment, etc
+- [x] Fix subtitle burnin (missing atm)
+- [x] Add library (store extracted URLs) (added history)
+- [ ] Make extraction full-auto with custom manifest
+- [x] Remove FE try-catch code in favor of global error handling (try-finally can remain for loading states)
+- [x] Replace PlaybackState.(isPlaying|isPaused) with PlaybackState.State ("IDLE", "PLAYING", "PAUSED", "STOPPED")
