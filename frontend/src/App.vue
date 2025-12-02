@@ -5,7 +5,7 @@ import DeviceDiscovery from "./components/DeviceDiscovery.vue";
 import MediaPlayer from "./components/MediaPlayer.vue";
 import FileExplorer from "./components/FileExplorer.vue";
 import PlaybackControl from "./components/PlaybackControl.vue";
-import { Tv, Video, Play, AlertCircle, X } from "lucide-vue-next";
+import { Tv, Video, Play } from "lucide-vue-next";
 
 const store = useCastStore();
 const activeTab = ref<"devices" | "files" | "player">("devices");
@@ -48,7 +48,7 @@ const handleCast = () => {
       </header>
 
       <!-- Playback Control (shown when something is playing) -->
-      <PlaybackControl v-if="store.isCasting"/>
+      <PlaybackControl v-if="store.isCasting" />
 
       <main class="mt-6">
         <!-- Tab Navigation -->
@@ -93,22 +93,6 @@ const handleCast = () => {
             <span class="flex items-center gap-2">
               <Play :size="18" /> Cast
             </span>
-          </button>
-        </div>
-
-        <!-- Error Message -->
-        <div
-          v-if="store.error"
-          class="mb-6 bg-red-900/50 border border-red-700 rounded-lg p-4 flex items-center justify-between"
-        >
-          <span class="flex items-center gap-2">
-            <AlertCircle :size="20" /> {{ store.error }}
-          </span>
-          <button
-            @click="store.clearError"
-            class="text-red-400 hover:text-red-300"
-          >
-            <X :size="20" />
           </button>
         </div>
 

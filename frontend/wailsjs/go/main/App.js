@@ -18,6 +18,10 @@ export function DiscoverDevices() {
   return window['go']['main']['App']['DiscoverDevices']();
 }
 
+export function ExportEmbeddedSubtitles(arg1) {
+  return window['go']['main']['App']['ExportEmbeddedSubtitles'](arg1);
+}
+
 export function GetHistory() {
   return window['go']['main']['App']['GetHistory']();
 }

@@ -3,8 +3,10 @@ import { ref } from "vue";
 import { options, type main } from "../../wailsjs/go/models";
 import { CastOptions, mediaService } from "@/services/media";
 import { useCastStore } from "@/stores/cast";
-import { Play } from "lucide-vue-next";
+import { Play, Download } from "lucide-vue-next";
 import LoadingIcon from "./LoadingIcon.vue";
+import { ExportEmbeddedSubtitles } from "../../wailsjs/go/main/App";
+import { useToast } from "vue-toastification";
 
 const props = defineProps<{
   trackInfo: main.TrackDisplayInfo;
@@ -30,7 +32,9 @@ if (props.trackInfo.nearSubtitle) {
 
 const showDialog = defineModel<boolean>();
 const castStore = useCastStore();
+const toast = useToast();
 const isLoading = ref(false);
+const isExporting = ref(false);
 
 const handleConfirm = async () => {
   const opts = {
@@ -50,14 +54,29 @@ const handleConfirm = async () => {
   try {
     await castStore.startCasting(props.trackInfo.path, opts);
     showDialog.value = false;
+    toast.success("Casting started successfully!");
   } finally {
     isLoading.value = false;
+  }
+};
+
+const handleExportSubtitles = async () => {
+  isExporting.value = true;
+  try {
+    await ExportEmbeddedSubtitles(props.trackInfo.path);
+    toast.success("Subtitles exported successfully!");
+  } finally {
+    isExporting.value = false;
   }
 };
 
 const handleCancel = () => {
   showDialog.value = false;
 };
+
+const hasEmbeddedSubtitles = props.trackInfo.subtitleTracks.some(
+  track => track.path.startsWith("embedded:")
+);
 </script>
 
 <template>
@@ -108,7 +127,18 @@ const handleCancel = () => {
 
       <!-- Subtitle Selection -->
       <div class="mb-6">
-        <h3 class="text-lg font-semibold text-white mb-2">Subtitles</h3>
+        <div class="flex items-center justify-between mb-2">
+          <h3 class="text-lg font-semibold text-white">Subtitles</h3>
+          <button
+            v-if="hasEmbeddedSubtitles"
+            @click="handleExportSubtitles"
+            :disabled="isExporting"
+            class="px-3 py-1 text-sm bg-green-600 text-white rounded hover:bg-green-700 transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+          >
+            <Download class="w-4 h-4" />
+            {{ isExporting ? "Exporting..." : "Export to WebVTT" }}
+          </button>
+        </div>
         <select
           v-model="subtitle"
           class="w-full bg-gray-700 text-white rounded p-2 mb-2"
