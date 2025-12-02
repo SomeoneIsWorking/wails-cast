@@ -88,6 +88,7 @@ export namespace main {
 	export class QualityOption {
 	    Label: string;
 	    Key: string;
+	    Default: boolean;
 	
 	    static createFrom(source: any = {}) {
 	        return new QualityOption(source);
@@ -97,6 +98,7 @@ export namespace main {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.Label = source["Label"];
 	        this.Key = source["Key"];
+	        this.Default = source["Default"];
 	    }
 	}
 	export class SubtitleDisplayItem {
