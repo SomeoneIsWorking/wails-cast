@@ -2,7 +2,7 @@
 import { Device } from "@/services/device";
 import { useCastStore } from "../stores/cast";
 import { RefreshCw, Cast, Check, Loader2, Network } from "lucide-vue-next";
-import { main } from "wailsjs/go/models";
+import { main } from "../../wailsjs/go/models";
 
 const emit = defineEmits<{
   select: [device: Device];

@@ -4,8 +4,30 @@ import App from "./App.vue";
 import "./style.css";
 import { logger } from "./utils/logger";
 import { OnFileDrop } from "../wailsjs/runtime/runtime";
+import Toast, { POSITION, useToast } from "vue-toastification";
+import "vue-toastification/dist/index.css";
+import type { PluginOptions } from "vue-toastification";
 
 const app = createApp(App);
+const toast = useToast();
+
+// Toast configuration
+const toastOptions: PluginOptions = {
+  position: POSITION.TOP_LEFT,
+  timeout: 3000,
+  closeOnClick: true,
+  pauseOnFocusLoss: true,
+  pauseOnHover: true,
+  draggable: true,
+  draggablePercent: 0.6,
+  showCloseButtonOnHover: false,
+  hideProgressBar: false,
+  closeButton: "button",
+  icon: true,
+  rtl: false,
+};
+
+app.use(Toast, toastOptions);
 
 // Redirect console methods to Go backend
 const originalLog = console.log;
@@ -41,6 +63,7 @@ app.config.errorHandler = (err, _instance, info) => {
   const errorMessage = err instanceof Error ? err.message : String(err);
   logger.error(`[App Error] ${info}`, errorMessage);
   originalError(`[App Error] ${info}:`, err);
+  toast.error(errorMessage);
 };
 
 // Global warning handler
@@ -51,8 +74,10 @@ app.config.warnHandler = (msg, _instance, trace) => {
 
 // Unhandled promise rejection
 window.addEventListener("unhandledrejection", (event) => {
-  logger.error("[Unhandled Promise Rejection]", event.reason);
+  const errorMessage = event.reason instanceof Error ? event.reason.message : String(event.reason);
+  logger.error("[Unhandled Promise Rejection]", errorMessage);
   originalError("[Unhandled Promise Rejection]:", event.reason);
+  toast.error(errorMessage);
   event.preventDefault();
 });
 

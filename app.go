@@ -411,6 +411,58 @@ func (a *App) LogError(message string) {
 	logger.Error(message)
 }
 
+// ExportEmbeddedSubtitles exports all embedded subtitle tracks to WebVTT files
+func (a *App) ExportEmbeddedSubtitles(videoPath string) error {
+	if strings.HasPrefix(videoPath, "http://") || strings.HasPrefix(videoPath, "https://") {
+		return fmt.Errorf("cannot export subtitles from remote URLs")
+	}
+
+	trackInfo, err := hls.GetMediaTrackInfo(videoPath)
+	if err != nil {
+		return fmt.Errorf("failed to get track info: %w", err)
+	}
+
+	if len(trackInfo.SubtitleTracks) == 0 {
+		return fmt.Errorf("no embedded subtitles found")
+	}
+
+	baseDir := filepath.Dir(videoPath)
+	baseName := strings.TrimSuffix(filepath.Base(videoPath), filepath.Ext(videoPath))
+	subtitleDir := filepath.Join(baseDir, baseName)
+
+	// Create subtitle directory
+	if err := os.MkdirAll(subtitleDir, 0755); err != nil {
+		return fmt.Errorf("failed to create subtitle directory: %w", err)
+	}
+
+	for _, sub := range trackInfo.SubtitleTracks {
+		lang := sub.Language
+		if lang == "" {
+			lang = fmt.Sprintf("track%d", sub.Index)
+		}
+
+		outputFile := filepath.Join(subtitleDir, fmt.Sprintf("%s.vtt", lang))
+
+		// Use ffmpeg to extract subtitle
+		args := []string{
+			"-i", videoPath,
+			"-map", fmt.Sprintf("0:s:%d", sub.Index),
+			"-f", "webvtt",
+			"-y", // Overwrite output file
+			outputFile,
+		}
+
+		if err := hls.RunFFmpeg(args...); err != nil {
+			logger.Warn("Failed to export subtitle", "index", sub.Index, "language", lang, "error", err)
+			continue
+		}
+
+		logger.Info("Exported subtitle", "file", outputFile)
+	}
+
+	return nil
+}
+
 // GetHistory returns all history items
 func (a *App) GetHistory() []HistoryItem {
 	return a.historyStore.GetAll()

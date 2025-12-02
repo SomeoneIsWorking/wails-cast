@@ -12,10 +12,12 @@ export const useCastStore = defineStore("cast", () => {
   const isLoading = ref(false);
   const isCasting = ref(false);
   const error = ref<string | null>(null);
+
   EventsOn("playback:state", (state: PlaybackState) => {
     playbackState.value = state;
     isCasting.value = playbackState.value.status !== "STOPPED";
   });
+
   // Playback State
   const playbackState = ref<PlaybackState>({
     status: "STOPPED",
@@ -48,53 +50,22 @@ export const useCastStore = defineStore("cast", () => {
     // Reset media if needed, or keep it
   };
 
-  const setLoading = (loading: boolean) => {
-    isLoading.value = loading;
-  };
-
-  const setError = (errorMsg: string | null) => {
-    error.value = errorMsg;
-  };
-
-  const clearError = () => {
-    error.value = null;
-  };
-
+  EventsOn("discovery:complete", () => {
+    isLoading.value = false;
+  });
+  EventsOn("device:found", (device: Device) => {
+    // Avoid duplicates
+    if (!devices.value.find((d) => d.address === device.address)) {
+      setDevices([...devices.value, device]);
+    }
+  });
   const discoverDevices = async () => {
-    setLoading(true);
-    clearError();
-
+    isLoading.value = true;
     // Clear existing devices and register event listeners to update UI as devices are found.
     setDevices([]);
-    const unsubscribers: Array<() => void> = [];
 
-    const deviceHandler = (device: Device) => {
-      // Avoid duplicates
-      if (!devices.value.find((d) => d.address === device.address)) {
-        setDevices([...devices.value, device]);
-      }
-    };
-    const deviceUnsub = EventsOn("device:found", deviceHandler);
-    unsubscribers.push(deviceUnsub);
-
-    const completeHandler = () => {
-      setLoading(false);
-      // Unsubscribe listeners when discovery completes
-      unsubscribers.forEach((u) => u());
-    };
-    const completeUnsub = EventsOn("discovery:complete", completeHandler);
-    unsubscribers.push(completeUnsub);
-
-    try {
-      // Trigger backend discovery (returns quickly since discovery is streamed via events)
-      await deviceService.discoverDevices();
-    } catch (error: unknown) {
-      setError("Failed to discover devices");
-      // Unsubscribe if there's an error
-      unsubscribers.forEach((u) => u());
-      setLoading(false);
-      throw error;
-    }
+    // Trigger backend discovery (returns quickly since discovery is streamed via events)
+    await deviceService.discoverDevices();
   };
 
   const startCasting = async (media: string, pCastOptions: CastOptions) => {
@@ -139,9 +110,6 @@ export const useCastStore = defineStore("cast", () => {
     // Actions
     setDevices,
     selectDevice,
-    setLoading,
-    setError,
-    clearError,
     discoverDevices,
     startCasting,
     reset,

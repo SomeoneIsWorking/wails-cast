@@ -34,7 +34,6 @@ const recast = async () => {
       store.castOptions!
     );
     castResult.value = "Casting to " + store.selectedDevice!.name;
-    store.clearError();
   } finally {
     isCasting.value = false;
   }

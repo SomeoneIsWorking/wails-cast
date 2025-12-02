@@ -12,6 +12,20 @@ import (
 	"wails-cast/pkg/mediainfo"
 )
 
+// RunFFmpeg runs ffmpeg with the given arguments
+func RunFFmpeg(args ...string) error {
+	cmd := exec.Command("ffmpeg", args...)
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+
+	err := cmd.Run()
+	if err != nil {
+		fmt.Println(stderr.String())
+		return err
+	}
+	return nil
+}
+
 // TranscodeOptions contains options for transcoding
 type TranscodeOptions struct {
 	InputPath  string
