@@ -22,80 +22,44 @@ type Inhibitor struct {
 }
 
 // Refresh starts or refreshes sleep inhibition for a brief period (auto-stops after duration)
-func (i *Inhibitor) Refresh(duration time.Duration) error {
-	i.mu.Lock()
-	defer i.mu.Unlock()
-
-	// If already running, just reset the timer
-	if i.cmd != nil && i.cmd.Process != nil {
-		if i.timer != nil {
-			i.timer.Reset(duration)
-		} else {
-			i.timer = time.AfterFunc(duration, func() {
-				i.Stop()
-			})
-		}
-		return nil
+func Refresh() {
+	inhibitor, err := startInhibitor()
+	if err != nil {
+		logger.Error("Failed to start inhibitor", "err", err)
 	}
 
-	// Start new inhibition
-	if err := i.startLocked(); err != nil {
-		return err
-	}
+	inhibitor.Process.Kill()
 
-	// Set up auto-stop timer
-	i.timer = time.AfterFunc(duration, func() {
-		i.Stop()
-	})
-
-	return nil
 }
 
-func (i *Inhibitor) startLocked() error {
-	// Kill existing process if running
-	if i.cmd != nil && i.cmd.Process != nil {
-		i.cmd.Process.Kill()
-		i.cmd = nil
-	}
-
+func startInhibitor() (*exec.Cmd, error) {
 	var cmd *exec.Cmd
 
 	switch runtime.GOOS {
 	case "darwin":
 		// macOS: use caffeinate
-		cmd = exec.Command("caffeinate", "-d") // -d prevents display sleep
+		cmd = exec.Command("caffeinate")
 	case "linux":
 		// Linux: try systemd-inhibit (systemd), then fallback to xdg-screensaver
 		if _, err := exec.LookPath("systemd-inhibit"); err == nil {
-			cmd = exec.Command("systemd-inhibit", "--what=idle:sleep", "--who=wails-cast", "--why=Streaming media", "--mode=block", "sleep", "infinity")
+			cmd = exec.Command("systemd-inhibit", "--what=idle:sleep", "--who=wails-cast", "--why=Streaming media", "--mode=block", "sleep", "1")
 		} else if _, err := exec.LookPath("xdg-screensaver"); err == nil {
 			cmd = exec.Command("xdg-screensaver", "suspend", fmt.Sprintf("%d", os.Getpid()))
 		}
 	case "windows":
-		// Windows: use powercfg or SetThreadExecutionState via PowerShell
-		// Note: This uses a PowerShell command to prevent sleep
-		cmd = exec.Command("powershell", "-Command", "$null = [System.Threading.Thread]::CurrentThread.SetThreadExecutionState(3); while($true){Start-Sleep -Seconds 30}")
+		// Windows: reset sleep timer via PowerShell
+		cmd = exec.Command("powershell", "-Command", "[System.Threading.Thread]::CurrentThread.SetThreadExecutionState(1)")
 	}
 
 	if cmd == nil {
-		if logger != nil {
-			logger.Warn("Sleep inhibition not supported on this platform", "os", runtime.GOOS)
-		}
-		return fmt.Errorf("sleep inhibition not supported on %s", runtime.GOOS)
+		return nil, fmt.Errorf("sleep inhibition not supported on %s", runtime.GOOS)
 	}
 
 	if err := cmd.Start(); err != nil {
-		if logger != nil {
-			logger.Warn("Failed to start sleep inhibition", "error", err)
-		}
-		return err
+		return nil, fmt.Errorf("failed to start sleep inhibitor command: %v", err)
 	}
 
-	i.cmd = cmd
-	if logger != nil {
-		logger.Info("Sleep inhibition enabled", "os", runtime.GOOS)
-	}
-	return nil
+	return cmd, nil
 }
 
 // Stop allows system sleep again

@@ -16,7 +16,6 @@ import (
 
 	localcast "wails-cast/pkg/cast"
 	"wails-cast/pkg/hls"
-	_inhibitor "wails-cast/pkg/inhibitor"
 	_logger "wails-cast/pkg/logger"
 	"wails-cast/pkg/mediainfo"
 	"wails-cast/pkg/options"
@@ -24,7 +23,6 @@ import (
 )
 
 var logger = _logger.Logger
-var inhibitor = _inhibitor.InhibitorInstance
 var customAppID = "7B88BB2E" // Custom receiver app ID
 
 // CastOptions holds options for casting
@@ -103,7 +101,6 @@ func (a *App) startup(ctx context.Context) {
 }
 
 func (a *App) shutdown(ctx context.Context) {
-	inhibitor.Stop()
 	a.mediaServer.Stop()
 }
 
@@ -373,9 +370,6 @@ func (a *App) Unpause() error {
 // StopPlayback stops current playback
 func (a *App) StopPlayback() {
 	a.App.Stop()
-
-	// Allow system sleep again
-	inhibitor.Stop()
 }
 
 // OpenFileDialog opens a file picker dialog
@@ -474,8 +468,6 @@ func (a *App) handleChromecastMessage(msg *cast_proto.CastMessage) {
 				if status.IdleReason == "FINISHED" || status.IdleReason == "INTERRUPTED" {
 					a.playbackState.Status = "STOPPED"
 					a.mu.Unlock()
-					// Allow system sleep when playback finishes
-					inhibitor.Stop()
 					return
 				}
 			}
@@ -486,8 +478,6 @@ func (a *App) handleChromecastMessage(msg *cast_proto.CastMessage) {
 		a.mu.Lock()
 		a.playbackState.Status = "STOPPED"
 		a.mu.Unlock()
-		// Allow system sleep when playback closes/fails
-		inhibitor.Stop()
 	}
 	wails_runtime.EventsEmit(a.ctx, "playback:state", a.playbackState)
 }
