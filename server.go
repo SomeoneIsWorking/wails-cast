@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"sync"
 	"time"
+	"wails-cast/pkg/inhibitor"
 	"wails-cast/pkg/stream"
 )
 
@@ -77,8 +78,6 @@ func (s *Server) Start() error {
 
 // Stop stops the HTTP server
 func (s *Server) Stop() error {
-	// Stop sleep inhibition
-	inhibitor.Stop()
 
 	if s.httpServer != nil {
 		return s.httpServer.Close()
@@ -99,13 +98,14 @@ func (s *Server) handleRequest(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	inhibitor.Refresh(3 * time.Second)
+	inhibitor.Refresh()
 
 	// Main playlist: /playlist.m3u8 or /media.mp4
 	if path == "/playlist.m3u8" {
 		handler.ServeManifestPlaylist(w, r)
 		return
 	}
+
 	var trackIndex int
 
 	// Video track playlists: /video_{i}.m3u8
