@@ -92,7 +92,7 @@ func buildTranscodeArgs(opts TranscodeOptions) ([]string, error) {
 		args = append(args, "-b:v", opts.Bitrate)
 	}
 
-	filterStr, err := buildSubtitleFilter(opts.OutputPath, opts.Subtitle, opts.InputPath)
+	filterStr, err := buildSubtitleFilter(filepath.Dir(opts.OutputPath), opts.Subtitle, opts.InputPath)
 	if err != nil {
 		return nil, err
 	}
