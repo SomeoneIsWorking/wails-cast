@@ -12,13 +12,128 @@ import (
 	"github.com/go-rod/rod/lib/proto"
 )
 
+const (
+	// WaitAfterManifestFound is the time to wait after finding m3u8 to capture subtitles
+	WaitAfterManifestFound = 2 * time.Second
+)
+
+// ExtractedSubtitleTrack represents a captured subtitle file
+type ExtractedSubtitleTrack struct {
+	URL     string // Subtitle URL
+	Content string `json:"-"` // Raw VTT content
+	Charset string // Charset from Content-Type (e.g., "UTF-8", "Windows-1254")
+	Label   string // Optional label (extracted from URL or filename)
+}
+
 // ExtractResult contains the extracted video information
 type ExtractResult struct {
-	URL         string            // Original HLS URL
-	BaseURL     string            // Base URL (scheme + host) for resolving relative paths
-	ManifestRaw string            // Raw m3u8 content
-	Cookies     map[string]string // Captured cookies
-	Headers     map[string]string // Captured headers
+	URL         string                   // Original HLS URL
+	BaseURL     string                   // Base URL (scheme + host) for resolving relative paths
+	ManifestRaw string                   `json:"-"` // Raw m3u8 content
+	Cookies     map[string]string        // Captured cookies
+	Headers     map[string]string        // Captured headers
+	Subtitles   []ExtractedSubtitleTrack // Captured subtitle tracks
+}
+
+// handlePlaylist processes an HLS manifest request
+func handlePlaylist(ctx *rod.Hijack) *ExtractResult {
+	reqURL := ctx.Request.URL().String()
+	contentType := ctx.Response.Headers().Get("Content-Type")
+
+	fmt.Printf("Found HLS stream: %s (Content-Type: %s)\n", reqURL, contentType)
+
+	// Parse base URL
+	parsedURL, err := url.Parse(reqURL)
+	if err != nil {
+		fmt.Printf("Failed to parse URL: %v\n", err)
+		return nil
+	}
+	baseURL := fmt.Sprintf("%s://%s", parsedURL.Scheme, parsedURL.Host)
+	fmt.Printf("Base URL: %s\n", baseURL)
+
+	// Get the response body (m3u8 manifest)
+	manifestContent := ctx.Response.Body()
+	fmt.Printf("Manifest content length: %d bytes\n", len(manifestContent))
+
+	// Capture cookies from request
+	cookies := make(map[string]string)
+	cookieHeader := ctx.Request.Header("Cookie")
+	if cookieHeader != "" {
+		// Parse cookie header
+		for cookie := range strings.SplitSeq(cookieHeader, "; ") {
+			parts := strings.SplitN(cookie, "=", 2)
+			if len(parts) == 2 {
+				cookies[parts[0]] = parts[1]
+			}
+		}
+	}
+	fmt.Printf("Captured %d cookies\n", len(cookies))
+
+	// Capture important headers
+	headers := make(map[string]string)
+	importantHeaders := []string{"User-Agent", "Referer", "Origin", "Accept", "Accept-Language"}
+	for _, headerName := range importantHeaders {
+		if value := ctx.Request.Header(headerName); value != "" {
+			headers[headerName] = value
+		}
+	}
+	fmt.Printf("Captured %d headers\n", len(headers))
+
+	fmt.Printf("Manifest found, waiting %v for subtitles...\n", WaitAfterManifestFound)
+
+	return &ExtractResult{
+		URL:         reqURL,
+		BaseURL:     baseURL,
+		ManifestRaw: manifestContent,
+		Cookies:     cookies,
+		Headers:     headers,
+		Subtitles:   []ExtractedSubtitleTrack{},
+	}
+}
+
+// handleSubtitle processes a VTT subtitle request
+func handleSubtitle(ctx *rod.Hijack, subtitleURLs map[string]bool) *ExtractedSubtitleTrack {
+	reqURL := ctx.Request.URL().String()
+	contentType := ctx.Response.Headers().Get("Content-Type")
+
+	// Skip if already processed
+	if subtitleURLs[reqURL] {
+		return nil
+	}
+	subtitleURLs[reqURL] = true
+
+	fmt.Printf("Found subtitle: %s (Content-Type: %s)\n", reqURL, contentType)
+
+	// Extract charset from Content-Type
+	charset := "UTF-8" // default
+	if strings.Contains(contentType, "charset=") {
+		parts := strings.Split(contentType, "charset=")
+		if len(parts) > 1 {
+			charset = strings.TrimSpace(strings.Split(parts[1], ";")[0])
+		}
+	}
+	fmt.Printf("Subtitle charset: %s\n", charset)
+
+	// Get subtitle content
+	subtitleContent := ctx.Response.Body()
+	fmt.Printf("Subtitle content length: %d bytes\n", len(subtitleContent))
+
+	// Extract label from URL (filename without extension)
+	label := ""
+	if parsedURL, err := url.Parse(reqURL); err == nil {
+		pathParts := strings.Split(parsedURL.Path, "/")
+		if len(pathParts) > 0 {
+			filename := pathParts[len(pathParts)-1]
+			label = strings.TrimSuffix(filename, ".vtt")
+		}
+	}
+
+	return &ExtractedSubtitleTrack{
+		URL:     reqURL,
+		Content: subtitleContent,
+		Charset: charset,
+		Label:   label,
+	}
 }
 
 // ExtractManifestPlaylist opens a browser, navigates to the URL, and extracts the HLS stream
@@ -34,8 +149,14 @@ func ExtractManifestPlaylist(pageURL string) (*ExtractResult, error) {
 	// Create a new page
 	page := browser.MustPage("")
 
-	// Channel to receive the found video
-	foundVideo := make(chan *ExtractResult, 1)
+	// Shared result that will accumulate data
+	var result *ExtractResult
+	var manifestFound bool
+	var manifestFoundTime time.Time
+	subtitleURLs := make(map[string]bool) // Track processed subtitle URLs
+
+	// Channel to signal completion
+	done := make(chan struct{})
 
 	// Setup request hijacking
 	router := page.HijackRequests()
@@ -50,65 +171,53 @@ func ExtractManifestPlaylist(pageURL string) (*ExtractResult, error) {
 
 		// Check Content-Type header
 		contentType := ctx.Response.Headers().Get("Content-Type")
-		if strings.Contains(contentType, "application/vnd.apple.mpegurl") ||
-			strings.Contains(contentType, "application/x-mpegURL") {
-			reqURL := ctx.Request.URL().String()
-			fmt.Printf("Found HLS stream: %s (Content-Type: %s)\n", reqURL, contentType)
 
-			// Parse base URL
-			parsedURL, err := url.Parse(reqURL)
-			if err != nil {
-				fmt.Printf("Failed to parse URL: %v\n", err)
-				return
+		if !manifestFound {
+			// Check for HLS manifest
+			if strings.Contains(contentType, "application/vnd.apple.mpegurl") ||
+				strings.Contains(contentType, "application/x-mpegURL") {
+				if r := handlePlaylist(ctx); r != nil {
+					pastResult := result
+					result = r
+					if pastResult != nil {
+						// Preserve previously found subtitles
+						result.Subtitles = pastResult.Subtitles
+					}
+					manifestFound = true
+					manifestFoundTime = time.Now()
+				}
 			}
-			baseURL := fmt.Sprintf("%s://%s", parsedURL.Scheme, parsedURL.Host)
-			fmt.Printf("Base URL: %s\n", baseURL)
+		}
 
-			// Get the response body (m3u8 manifest) - it's already a string in Rod
-			manifestContent := ctx.Response.Body()
-			fmt.Printf("Manifest content length: %d bytes\n", len(manifestContent))
-
-			// Capture cookies from request
-			cookies := make(map[string]string)
-			cookieHeader := ctx.Request.Header("Cookie")
-			if cookieHeader != "" {
-				// Parse cookie header
-				for _, cookie := range strings.Split(cookieHeader, "; ") {
-					parts := strings.SplitN(cookie, "=", 2)
-					if len(parts) == 2 {
-						cookies[parts[0]] = parts[1]
+		// Check for VTT subtitles
+		if strings.Contains(strings.ToLower(contentType), "text/vtt") {
+			if subtitle := handleSubtitle(ctx, subtitleURLs); subtitle != nil {
+				if result == nil {
+					result = &ExtractResult{
+						Subtitles: []ExtractedSubtitleTrack{},
 					}
 				}
-			}
-			fmt.Printf("Captured %d cookies\n", len(cookies))
-
-			// Capture important headers
-			headers := make(map[string]string)
-			importantHeaders := []string{"User-Agent", "Referer", "Origin", "Accept", "Accept-Language"}
-			for _, headerName := range importantHeaders {
-				if value := ctx.Request.Header(headerName); value != "" {
-					headers[headerName] = value
-				}
-			}
-			fmt.Printf("Captured %d headers\n", len(headers))
-
-			result := &ExtractResult{
-				URL:         reqURL,
-				BaseURL:     baseURL,
-				ManifestRaw: manifestContent,
-				Cookies:     cookies,
-				Headers:     headers,
-			}
-
-			select {
-			case foundVideo <- result:
-			default:
+				result.Subtitles = append(result.Subtitles, *subtitle)
+				fmt.Printf("Captured subtitle '%s' (%d total subtitles)\n", subtitle.Label, len(result.Subtitles))
 			}
 		}
 	})
 
 	// Start the router
 	go router.Run()
+
+	// Goroutine to handle timing logic
+	go func() {
+		ticker := time.NewTicker(100 * time.Millisecond)
+		defer ticker.Stop()
+
+		for range ticker.C {
+			if manifestFound && time.Since(manifestFoundTime) >= WaitAfterManifestFound {
+				close(done)
+				return
+			}
+		}
+	}()
 
 	// Set User Agent to Safari to encourage HLS
 	page.MustSetUserAgent(&proto.NetworkSetUserAgentOverride{
@@ -135,13 +244,21 @@ func ExtractManifestPlaylist(pageURL string) (*ExtractResult, error) {
 		time.Sleep(2 * time.Second) // Wait for player to load
 	}
 
-	fmt.Println("Waiting for video URL... Please play the video if it doesn't start automatically.")
+	fmt.Println("Waiting for video URL and subtitles... Please play the video if it doesn't start automatically.")
 
-	// Wait for URL or timeout
+	// Wait for completion or timeout
 	select {
-	case result := <-foundVideo:
-		return result, nil
+	case <-done:
+		if result != nil {
+			fmt.Printf("Extraction complete: found manifest with %d subtitle(s)\n", len(result.Subtitles))
+			return result, nil
+		}
+		return nil, fmt.Errorf("manifest found but result is nil")
 	case <-time.After(5 * time.Minute):
+		if result != nil {
+			fmt.Printf("Timeout reached, returning partial result with %d subtitle(s)\n", len(result.Subtitles))
+			return result, nil
+		}
 		return nil, fmt.Errorf("timeout waiting for video URL")
 	}
 }

@@ -25,8 +25,6 @@ import (
 var logger = _logger.Logger
 var customAppID = "7B88BB2E" // Custom receiver app ID
 
-// CastOptions holds options for casting
-
 type SubtitleDisplayItem struct {
 	Path  string `json:"path"`
 	Label string `json:"label"`

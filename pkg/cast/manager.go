@@ -66,37 +66,63 @@ func (m *CastManager) cacheDir(videoURL string) string {
 	return cacheDir
 }
 
-func getExtractionJson(videoURL string, cacheDir string) (*extractor.ExtractResult, error) {
+func loadCachedExtraction(cacheDir string) (*extractor.ExtractResult, error) {
 	extractionFile := filepath.Join(cacheDir, "extraction.json")
 
-	var result *extractor.ExtractResult
-
-	if _, err := os.Stat(extractionFile); err == nil {
-		logger.Logger.Info("Found cached extraction, loading...")
-		data, err := os.ReadFile(extractionFile)
-		if err == nil {
-			result = &extractor.ExtractResult{}
-			if err := json.Unmarshal(data, result); err != nil {
-				fmt.Printf("Error unmarshaling cached extraction: %v\n", err)
-				result = nil
-			}
-		}
+	if _, err := os.Stat(extractionFile); err != nil {
+		return nil, err
 	}
 
-	if result != nil {
+	logger.Logger.Info("Found cached extraction, loading...")
+	data, err := os.ReadFile(extractionFile)
+	if err != nil {
+		return nil, err
+	}
+
+	result := &extractor.ExtractResult{}
+	if err := json.Unmarshal(data, result); err != nil {
+		return nil, fmt.Errorf("error unmarshaling cached extraction: %w", err)
+	}
+
+	// Load ManifestRaw from file
+	playlistFile := filepath.Join(cacheDir, "playlist_raw.m3u8")
+	if manifestData, err := os.ReadFile(playlistFile); err == nil {
+		result.ManifestRaw = string(manifestData)
+	}
+
+	return result, nil
+}
+
+func getExtractionJson(videoURL string, cacheDir string) (*extractor.ExtractResult, error) {
+	// Try loading from cache first
+	if result, err := loadCachedExtraction(cacheDir); err == nil {
 		return result, nil
 	}
+
+	// Cache miss - extract fresh
 	fmt.Printf("Extracting video from: %s\n", videoURL)
 	fmt.Println("Please click the PLAY button in the browser window...")
 
-	var err error
-	result, err = extractor.ExtractManifestPlaylist(videoURL)
+	result, err := extractor.ExtractManifestPlaylist(videoURL)
 	if err != nil {
 		return nil, fmt.Errorf("error extracting video: %w", err)
 	}
 
 	// Save extraction result
 	os.MkdirAll(cacheDir, 0755)
+
+	// Save raw playlist
+	playlistFile := filepath.Join(cacheDir, "playlist_raw.m3u8")
+	os.WriteFile(playlistFile, []byte(result.ManifestRaw), 0644)
+
+	// Save subtitles as separate files
+	for i, subtitle := range result.Subtitles {
+		subtitleFile := filepath.Join(cacheDir, fmt.Sprintf("subtitle_%d.vtt", i))
+		os.WriteFile(subtitleFile, []byte(subtitle.Content), 0644)
+	}
+
+	// Save extraction metadata (json:"-" tags exclude ManifestRaw and Content)
+	extractionFile := filepath.Join(cacheDir, "extraction.json")
 	data, err := json.MarshalIndent(result, "", "  ")
 	if err == nil {
 		os.WriteFile(extractionFile, data, 0644)
@@ -115,6 +141,14 @@ func (m *CastManager) GetRemoteTrackInfo(videoURL string) (*mediainfo.MediaTrack
 
 	mediaTrackInfo, err := hls.ExtractTracksFromManifest(manifestRaw)
 
+	mediaTrackInfo.SubtitleTracks = make([]mediainfo.SubtitleTrack, 0)
+	for i := range result.Subtitles {
+		track := mediainfo.SubtitleTrack{
+			Index:    i,
+			Language: fmt.Sprintf("unknown_%d", i),
+		}
+		mediaTrackInfo.SubtitleTracks = append(mediaTrackInfo.SubtitleTracks, track)
+	}
 	if err != nil {
 		return nil, fmt.Errorf("failed to extract tracks from manifest playlist: %w", err)
 	}

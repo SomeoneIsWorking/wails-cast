@@ -118,12 +118,7 @@ func (p *RemoteHandler) cacheMainPlaylist() error {
 		return err
 	}
 
-	// 1. Save Raw
-	rawPath := filepath.Join(p.CacheDir, "playlist_raw.m3u8")
-	if err := os.WriteFile(rawPath, []byte(p.ManifestRaw.Generate()), 0644); err != nil {
-		return fmt.Errorf("failed to save raw manifest playlist: %w", err)
-	}
-
+	// 1. Save Rewritten
 	rewrittenPath := filepath.Join(p.CacheDir, "playlist.m3u8")
 	if err := os.WriteFile(rewrittenPath, []byte(p.Manifest.Generate()), 0644); err != nil {
 		return fmt.Errorf("failed to save rewritten manifest playlist: %w", err)
@@ -466,6 +461,10 @@ func (p *RemoteHandler) transcodeSegment(ctx context.Context, rawPath string, tr
 
 	if p.Options.Subtitle.BurnIn {
 		subtitle = p.Options.Subtitle.Path
+		if index, found := strings.CutPrefix(subtitle, "embedded:"); found {
+			// For remote streams, embedded just means found on website, in this case, we use the cached file
+			subtitle = fmt.Sprintf("external:%s", filepath.Join(p.CacheDir, fmt.Sprintf("subtitle_%s.vtt", index)))
+		}
 	}
 
 	err := hls.TranscodeSegment(ctx, hls.TranscodeOptions{
