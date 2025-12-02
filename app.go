@@ -41,8 +41,9 @@ type TrackDisplayInfo struct {
 }
 
 type QualityOption struct {
-	Label string
-	Key   string
+	Label   string
+	Key     string
+	Default bool
 }
 
 type App struct {
@@ -127,10 +128,10 @@ func (a *App) GetMediaURL(filePath string) string {
 func (a *App) GetQualityOptions() []QualityOption {
 	return []QualityOption{
 		{Label: "Original (Best Quality)", Key: ""},
-		{Label: "Low (Bitrate: 2M)", Key: "2M"},
-		{Label: "Medium (Bitrate: 3M)", Key: "3M"},
-		{Label: "High (Bitrate: 5M)", Key: "5M"},
 		{Label: "Very High (Bitrate: 8M)", Key: "8M"},
+		{Label: "High (Bitrate: 5M)", Key: "5M", Default: true},
+		{Label: "Medium (Bitrate: 3M)", Key: "3M"},
+		{Label: "Low (Bitrate: 2M)", Key: "2M"},
 	}
 }
 

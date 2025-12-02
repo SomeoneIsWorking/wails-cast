@@ -22,7 +22,9 @@ const selectedAudioTrack = ref(0);
 const subtitlePath = ref("");
 const burnSubtitles = ref(false);
 const qualityOptions = await mediaService.getQualityOptions();
-const quality = ref(qualityOptions[0].Key);
+const quality = ref(
+  (qualityOptions.find((x) => x.Default) || qualityOptions[0]).Key
+);
 const subtitle = ref<string>("none");
 
 if (props.trackInfo.nearSubtitle) {
@@ -74,8 +76,8 @@ const handleCancel = () => {
   showDialog.value = false;
 };
 
-const hasEmbeddedSubtitles = props.trackInfo.subtitleTracks.some(
-  track => track.path.startsWith("embedded:")
+const hasEmbeddedSubtitles = props.trackInfo.subtitleTracks.some((track) =>
+  track.path.startsWith("embedded:")
 );
 </script>
 
@@ -152,11 +154,11 @@ const hasEmbeddedSubtitles = props.trackInfo.subtitleTracks.some(
           </option>
         </select>
 
-        <input 
-          v-if="subtitle === 'external'" 
-          type="text" 
-          v-model="subtitlePath" 
-          placeholder="Enter subtitle file path" 
+        <input
+          v-if="subtitle === 'external'"
+          type="text"
+          v-model="subtitlePath"
+          placeholder="Enter subtitle file path"
           class="w-full bg-gray-700 text-white rounded p-2 mt-2"
         />
 
