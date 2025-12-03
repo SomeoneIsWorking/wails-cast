@@ -92,6 +92,7 @@ export namespace main {
 	    geminiModel: string;
 	    defaultQuality: string;
 	    subtitleFontSize: number;
+	    maxOutputWidth: number;
 	
 	    static createFrom(source: any = {}) {
 	        return new Settings(source);
@@ -105,6 +106,7 @@ export namespace main {
 	        this.geminiModel = source["geminiModel"];
 	        this.defaultQuality = source["defaultQuality"];
 	        this.subtitleFontSize = source["subtitleFontSize"];
+	        this.maxOutputWidth = source["maxOutputWidth"];
 	    }
 	}
 	export class SubtitleDisplayItem {
@@ -244,7 +246,7 @@ export namespace options {
 	    VideoTrack: number;
 	    AudioTrack: number;
 	    Bitrate: string;
-	    Resolution: string;
+	    MaxOutputWidth: number;
 	
 	    static createFrom(source: any = {}) {
 	        return new CastOptions(source);
@@ -256,7 +258,7 @@ export namespace options {
 	        this.VideoTrack = source["VideoTrack"];
 	        this.AudioTrack = source["AudioTrack"];
 	        this.Bitrate = source["Bitrate"];
-	        this.Resolution = source["Resolution"];
+	        this.MaxOutputWidth = source["MaxOutputWidth"];
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {

@@ -28,14 +28,14 @@ func RunFFmpeg(args ...string) error {
 
 // TranscodeOptions contains options for transcoding
 type TranscodeOptions struct {
-	InputPath  string
-	OutputPath string
-	StartTime  float64
-	Duration   int
-	Subtitle   string
-	Bitrate    string
-	FontSize   int
-	Resolution string
+	InputPath      string
+	OutputPath     string
+	StartTime      float64
+	Duration       int
+	Subtitle       string
+	Bitrate        string
+	FontSize       int
+	MaxOutputWidth int
 }
 
 // TranscodeSegment transcodes a segment with optional 100ms wait to avoid wasted work during rapid seeking
@@ -90,21 +90,25 @@ func buildTranscodeArgs(opts TranscodeOptions) ([]string, error) {
 		"-copyts",
 	)
 
-	if opts.Resolution != "" {
-		args = append(args, "-s", opts.Resolution)
-	}
+	maxResFilter := fmt.Sprintf("scale='min(%d,iw)':'-2':'force_original_aspect_ratio=decrease'", opts.MaxOutputWidth)
 
 	if opts.Bitrate != "" {
 		args = append(args, "-b:v", opts.Bitrate)
 	}
 
-	filterStr, err := buildSubtitleFilter(filepath.Dir(opts.OutputPath), opts.Subtitle, opts.InputPath, opts.FontSize)
+	subtitleFilter, err := buildSubtitleFilter(filepath.Dir(opts.OutputPath), opts.Subtitle, opts.InputPath, opts.FontSize)
 	if err != nil {
 		return nil, err
 	}
-	if filterStr != "" {
-		args = append(args, "-vf", filterStr)
+
+	filterStr := maxResFilter // Start with the resolution limit filter
+
+	if subtitleFilter != "" {
+		// Combine the max resolution filter and the subtitle filter
+		filterStr = maxResFilter + "," + subtitleFilter
 	}
+
+	args = append(args, "-vf", filterStr)
 
 	// Output file
 	return append(args, opts.OutputPath), nil

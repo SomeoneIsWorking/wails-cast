@@ -20,6 +20,7 @@ func getDefaultSettings() Settings {
 		GeminiModel:                "gemini-2.5-flash",
 		DefaultQuality:             "5M",
 		SubtitleFontSize:           24,
+		MaxOutputWidth:             1920,
 	}
 }
 
@@ -30,6 +31,7 @@ type Settings struct {
 	GeminiModel                string `json:"geminiModel"`
 	DefaultQuality             string `json:"defaultQuality"`
 	SubtitleFontSize           int    `json:"subtitleFontSize"`
+	MaxOutputWidth             int    `json:"maxOutputWidth"`
 }
 
 type SettingsStore struct {
