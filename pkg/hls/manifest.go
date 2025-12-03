@@ -48,7 +48,7 @@ func ManifestMatches(manifest *TranscodeOptions, options options.CastOptions, du
 		return false
 	}
 
-	if manifest.Resolution != options.Resolution {
+	if manifest.MaxOutputWidth != options.MaxOutputWidth {
 		return false
 	}
 

@@ -5,18 +5,10 @@ import {
   UpdateSettings,
   ResetSettings,
 } from "../../wailsjs/go/main/App";
-
-export interface Settings {
-  subtitleBurnInDefault: boolean;
-  defaultTranslationLanguage: string;
-  geminiApiKey: string;
-  geminiModel: string;
-  defaultQuality: string;
-  subtitleFontSize: number;
-}
+import { main } from "../../wailsjs/go/models";
 
 interface SettingDefinition {
-  key: keyof Settings;
+  key: keyof main.Settings;
   label: string;
   description: string;
   type: "boolean" | "text" | "password" | "number" | "select";
@@ -42,7 +34,7 @@ export const qualityOptions = [
 ];
 
 export const useSettingsStore = defineStore("settings", () => {
-  const settings = ref<Settings>(null!);
+  const settings = ref<main.Settings>(null!);
   const searchQuery = ref("");
 
   // Load settings from backend on init
@@ -51,7 +43,7 @@ export const useSettingsStore = defineStore("settings", () => {
   };
 
   // Save settings to backend
-  const saveSettings = async (newSettings: Settings) => {
+  const saveSettings = async (newSettings: main.Settings) => {
     await UpdateSettings(newSettings);
     settings.value = newSettings;
   };
@@ -128,6 +120,15 @@ export const useSettingsStore = defineStore("settings", () => {
           description: "Default quality preset for video encoding",
           type: "select",
           options: qualityOptions,
+        },
+        {
+          key: "maxOutputWidth",
+          label: "Max Output Width",
+          description: "Maximum output width for video encoding",
+          type: "number",
+          min: 640,
+          max: 3840,
+          step: 1,
         },
       ],
     },

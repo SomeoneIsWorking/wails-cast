@@ -85,9 +85,7 @@ func (p *RemoteHandler) ServeManifestPlaylist(w http.ResponseWriter, r *http.Req
 	})
 
 	videoVariant := &playlist.VideoVariants[0]
-	if p.Options.Resolution != "" {
-		videoVariant.Resolution = p.Options.Resolution
-	}
+	videoVariant.Resolution = ""
 	videoVariant.URI = videoVariant.URI + "?cachebust=" + time.Now().Format("20060102150405")
 
 	audio := &playlist.AudioGroups[videoVariant.Audio][p.Options.AudioTrack]
@@ -471,14 +469,14 @@ func (p *RemoteHandler) transcodeSegment(ctx context.Context, rawPath string, tr
 	}
 
 	opts := hls.TranscodeOptions{
-		InputPath:  rawPath,
-		OutputPath: transcodedPath,
-		StartTime:  0,
-		Duration:   0,
-		Subtitle:   subtitle,
-		Bitrate:    p.Options.Bitrate,
-		FontSize:   p.Options.Subtitle.FontSize,
-		Resolution: p.Options.Resolution,
+		InputPath:      rawPath,
+		OutputPath:     transcodedPath,
+		StartTime:      0,
+		Duration:       0,
+		Subtitle:       subtitle,
+		Bitrate:        p.Options.Bitrate,
+		FontSize:       p.Options.Subtitle.FontSize,
+		MaxOutputWidth: p.Options.MaxOutputWidth,
 	}
 	err := hls.TranscodeSegment(ctx, opts)
 	if err != nil {

@@ -54,11 +54,9 @@ func (s *LocalHandler) ServeManifestPlaylist(w http.ResponseWriter, r *http.Requ
 		Version: 3,
 		VideoVariants: []hls.VideoVariant{
 			{
-				Index:      0,
-				Bandwidth:  1500000,
-				Resolution: s.Options.Resolution,
-				Codecs:     "avc1.4d401f,mp4a.40.2",
-				URI:        "video_0.m3u8",
+				Index:  0,
+				Codecs: "avc1.4d401f,mp4a.40.2",
+				URI:    "video_0.m3u8",
 			},
 		},
 	}
@@ -156,14 +154,14 @@ func (s *LocalHandler) transcodeSegment(ctx context.Context, segmentPath string,
 	}
 
 	opts := hls.TranscodeOptions{
-		InputPath:  filepath.Join(s.OutputDir, "input_video"),
-		OutputPath: segmentPath,
-		StartTime:  startTime,
-		Duration:   s.SegmentSize,
-		Subtitle:   subtitle,
-		Resolution: s.Options.Resolution,
-		Bitrate:    s.Options.Bitrate,
-		FontSize:   s.Options.Subtitle.FontSize,
+		InputPath:      filepath.Join(s.OutputDir, "input_video"),
+		OutputPath:     segmentPath,
+		StartTime:      startTime,
+		Duration:       s.SegmentSize,
+		Subtitle:       subtitle,
+		MaxOutputWidth: s.Options.MaxOutputWidth,
+		Bitrate:        s.Options.Bitrate,
+		FontSize:       s.Options.Subtitle.FontSize,
 	}
 
 	err := hls.TranscodeSegment(ctx, opts)
