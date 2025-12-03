@@ -3,9 +3,10 @@ import { ref } from "vue";
 import { options, type main } from "../../wailsjs/go/models";
 import { CastOptions, mediaService } from "@/services/media";
 import { useCastStore } from "@/stores/cast";
-import { Play, Download } from "lucide-vue-next";
+import { Play, Download, Languages } from "lucide-vue-next";
 import LoadingIcon from "./LoadingIcon.vue";
-import { ExportEmbeddedSubtitles } from "../../wailsjs/go/main/App";
+import TranslationStreamModal from "./TranslationStreamModal.vue";
+import { ExportEmbeddedSubtitles, TranslateExportedSubtitles } from "../../wailsjs/go/main/App";
 import { useToast } from "vue-toastification";
 
 const props = defineProps<{
@@ -20,7 +21,7 @@ const emit = defineEmits<{
 const selectedVideoTrack = ref(0);
 const selectedAudioTrack = ref(0);
 const subtitlePath = ref("");
-const burnSubtitles = ref(false);
+const burnSubtitles = ref(true);
 const qualityOptions = await mediaService.getQualityOptions();
 const quality = ref(
   (qualityOptions.find((x) => x.Default) || qualityOptions[0]).Key
@@ -37,6 +38,9 @@ const castStore = useCastStore();
 const toast = useToast();
 const isLoading = ref(false);
 const isExporting = ref(false);
+const isTranslating = ref(false);
+const targetLanguage = ref("English");
+const showTranslationModal = ref(false);
 
 const handleConfirm = async () => {
   const opts = {
@@ -70,6 +74,30 @@ const handleExportSubtitles = async () => {
   } finally {
     isExporting.value = false;
   }
+};
+
+const handleTranslateSubtitles = async () => {
+  if (!targetLanguage.value.trim()) {
+    toast.error("Please enter a target language");
+    return;
+  }
+  
+  isTranslating.value = true;
+  try {
+    const translatedFiles = await TranslateExportedSubtitles(
+      props.trackInfo.path,
+      targetLanguage.value,
+    );
+    toast.success(`Translated ${translatedFiles.length} subtitle(s) to ${targetLanguage.value}!`);
+  } catch (error: any) {
+    toast.error(`Translation failed: ${error.message || error}`);
+  } finally {
+    isTranslating.value = false;
+  }
+};
+
+const openTranslationModal = () => {
+  showTranslationModal.value = true;
 };
 
 const handleCancel = () => {
@@ -141,6 +169,45 @@ const hasEmbeddedSubtitles = props.trackInfo.subtitleTracks.some((track) =>
             {{ isExporting ? "Exporting..." : "Export to WebVTT" }}
           </button>
         </div>
+
+        <!-- Translation Section -->
+        <div v-if="hasEmbeddedSubtitles" class="mb-4 p-3 bg-gray-700/50 rounded border border-gray-600">
+          <div class="flex items-center gap-2 mb-2">
+            <Languages class="w-4 h-4 text-blue-400" />
+            <h4 class="text-sm font-semibold text-white">Translate Exported Subtitles</h4>
+          </div>
+          <div class="flex gap-2">
+            <div v-if="!isTranslating" class="flex gap-2 w-full">
+              <input
+                v-model="targetLanguage"
+                type="text"
+                placeholder="Target language (e.g., Turkish)"
+                class="flex-1 bg-gray-700 text-white rounded p-2 text-sm"
+              />
+              <button
+                @click="handleTranslateSubtitles"
+                :disabled="!targetLanguage.trim()"
+                class="px-4 py-2 text-sm bg-blue-600 text-white rounded hover:bg-blue-700 transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+              >
+                <Languages class="w-4 h-4" />
+                Translate
+              </button>
+            </div>
+            <div v-else class="flex gap-2 w-full items-center">
+              <div class="flex-1 bg-gray-700 text-white rounded p-2 text-sm">
+                Translating to {{ targetLanguage }}...
+              </div>
+              <button
+                @click="openTranslationModal"
+                class="px-4 py-2 text-sm bg-green-600 text-white rounded hover:bg-green-700 transition flex items-center gap-2"
+              >
+                <LoadingIcon class="w-4 h-4" />
+                View Progress
+              </button>
+            </div>
+          </div>
+        </div>
+
         <select
           v-model="subtitle"
           class="w-full bg-gray-700 text-white rounded p-2 mb-2"
@@ -207,4 +274,9 @@ const hasEmbeddedSubtitles = props.trackInfo.subtitleTracks.some((track) =>
       </div>
     </div>
   </div>
+
+  <TranslationStreamModal
+    v-model="showTranslationModal"
+    :target-language="targetLanguage"
+  />
 </template>

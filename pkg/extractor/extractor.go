@@ -150,7 +150,7 @@ func ExtractManifestPlaylist(pageURL string) (*ExtractResult, error) {
 	page := browser.MustPage("")
 
 	// Shared result that will accumulate data
-	var result *ExtractResult
+	var result = ExtractResult{}
 	var manifestFound bool
 	var manifestFoundTime time.Time
 	subtitleURLs := make(map[string]bool) // Track processed subtitle URLs
@@ -177,12 +177,11 @@ func ExtractManifestPlaylist(pageURL string) (*ExtractResult, error) {
 			if strings.Contains(contentType, "application/vnd.apple.mpegurl") ||
 				strings.Contains(contentType, "application/x-mpegURL") {
 				if r := handlePlaylist(ctx); r != nil {
-					pastResult := result
-					result = r
-					if pastResult != nil {
-						// Preserve previously found subtitles
-						result.Subtitles = pastResult.Subtitles
-					}
+					result.BaseURL = r.BaseURL
+					result.Cookies = r.Cookies
+					result.Headers = r.Headers
+					result.URL = r.URL
+					result.ManifestRaw = r.ManifestRaw
 					manifestFound = true
 					manifestFoundTime = time.Now()
 				}
@@ -192,11 +191,6 @@ func ExtractManifestPlaylist(pageURL string) (*ExtractResult, error) {
 		// Check for VTT subtitles
 		if strings.Contains(strings.ToLower(contentType), "text/vtt") {
 			if subtitle := handleSubtitle(ctx, subtitleURLs); subtitle != nil {
-				if result == nil {
-					result = &ExtractResult{
-						Subtitles: []ExtractedSubtitleTrack{},
-					}
-				}
 				result.Subtitles = append(result.Subtitles, *subtitle)
 				fmt.Printf("Captured subtitle '%s' (%d total subtitles)\n", subtitle.Label, len(result.Subtitles))
 			}
@@ -249,15 +243,15 @@ func ExtractManifestPlaylist(pageURL string) (*ExtractResult, error) {
 	// Wait for completion or timeout
 	select {
 	case <-done:
-		if result != nil {
+		if manifestFound {
 			fmt.Printf("Extraction complete: found manifest with %d subtitle(s)\n", len(result.Subtitles))
-			return result, nil
+			return &result, nil
 		}
 		return nil, fmt.Errorf("manifest found but result is nil")
 	case <-time.After(5 * time.Minute):
-		if result != nil {
+		if manifestFound {
 			fmt.Printf("Timeout reached, returning partial result with %d subtitle(s)\n", len(result.Subtitles))
-			return result, nil
+			return &result, nil
 		}
 		return nil, fmt.Errorf("timeout waiting for video URL")
 	}
