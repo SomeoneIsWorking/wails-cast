@@ -467,7 +467,7 @@ func (p *RemoteHandler) transcodeSegment(ctx context.Context, rawPath string, tr
 		}
 	}
 
-	err := hls.TranscodeSegment(ctx, hls.TranscodeOptions{
+	opts := hls.TranscodeOptions{
 		InputPath:  rawPath,
 		OutputPath: transcodedPath,
 		StartTime:  0,
@@ -475,20 +475,13 @@ func (p *RemoteHandler) transcodeSegment(ctx context.Context, rawPath string, tr
 		Subtitle:   subtitle,
 		Bitrate:    p.Options.Bitrate,
 		FontSize:   p.Options.Subtitle.FontSize,
-	})
+	}
+	err := hls.TranscodeSegment(ctx, opts)
 	if err != nil {
 		return err
 	}
 	logger.Logger.Info("Transcoded segment", "input", rawPath, "output", transcodedPath, "duration", time.Since(startTime).Seconds())
-
-	manifest := hls.SegmentManifest{
-		Duration:  0,
-		Subtitle:  p.Options.Subtitle.Path,
-		CreatedAt: time.Now().Format(time.RFC3339),
-		Bitrate:   p.Options.Bitrate,
-		FontSize:  p.Options.Subtitle.FontSize,
-	}
-	err = manifest.Save(transcodedPath + ".json")
+	err = opts.Save(transcodedPath + ".json")
 	return err
 }
 
