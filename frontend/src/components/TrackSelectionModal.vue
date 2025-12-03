@@ -3,6 +3,7 @@ import { ref } from "vue";
 import { options, type main } from "../../wailsjs/go/models";
 import { CastOptions, mediaService } from "@/services/media";
 import { useCastStore } from "@/stores/cast";
+import { useSettingsStore } from "@/stores/settings";
 import { Play, Download, Languages } from "lucide-vue-next";
 import LoadingIcon from "./LoadingIcon.vue";
 import TranslationStreamModal from "./TranslationStreamModal.vue";
@@ -18,12 +19,17 @@ const emit = defineEmits<{
   confirm: [options: options.CastOptions];
 }>();
 
+const castStore = useCastStore();
+const settingsStore = useSettingsStore();
+const toast = useToast();
+
 const selectedVideoTrack = ref(0);
 const selectedAudioTrack = ref(0);
 const subtitlePath = ref("");
-const burnSubtitles = ref(true);
+const burnSubtitles = ref(settingsStore.settings.subtitleBurnInDefault);
 const qualityOptions = await mediaService.getQualityOptions();
 const quality = ref(
+  settingsStore.settings.defaultQuality || 
   (qualityOptions.find((x) => x.Default) || qualityOptions[0]).Key
 );
 const subtitle = ref<string>("none");
@@ -34,12 +40,10 @@ if (props.trackInfo.nearSubtitle) {
 }
 
 const showDialog = defineModel<boolean>();
-const castStore = useCastStore();
-const toast = useToast();
 const isLoading = ref(false);
 const isExporting = ref(false);
 const isTranslating = ref(false);
-const targetLanguage = ref("English");
+const targetLanguage = ref(settingsStore.settings.defaultTranslationLanguage);
 const showTranslationModal = ref(false);
 
 const handleConfirm = async () => {

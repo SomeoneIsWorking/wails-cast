@@ -5,10 +5,15 @@ import DeviceDiscovery from "./components/DeviceDiscovery.vue";
 import MediaPlayer from "./components/MediaPlayer.vue";
 import FileExplorer from "./components/FileExplorer.vue";
 import PlaybackControl from "./components/PlaybackControl.vue";
-import { Tv, Video, Play } from "lucide-vue-next";
+import Settings from "./components/Settings.vue";
+import ConfirmModal from "./components/ConfirmModal.vue";
+import { useConfirm } from "./composables/useConfirm";
+import { Tv, Video, Play, Settings as SettingsIcon } from "lucide-vue-next";
 
 const store = useCastStore();
 const activeTab = ref<"devices" | "files" | "player">("devices");
+const showSettings = ref(false);
+const { showConfirmModal, confirmOptions, isConfirmLoading } = useConfirm();
 
 onMounted(() => {
   store.discoverDevices();
@@ -39,12 +44,23 @@ const handleCast = () => {
     <div class="container mx-auto px-4 py-6 max-w-6xl">
       <!-- Header -->
       <header class="mb-6">
-        <h1
-          class="text-4xl font-bold bg-linear-to-r from-blue-400 to-purple-500 bg-clip-text text-transparent"
-        >
-          Wails Cast
-        </h1>
-        <p class="text-gray-400 mt-1">Cast your local videos to any device</p>
+        <div class="flex items-center justify-between">
+          <div>
+            <h1
+              class="text-4xl font-bold bg-linear-to-r from-blue-400 to-purple-500 bg-clip-text text-transparent"
+            >
+              Wails Cast
+            </h1>
+            <p class="text-gray-400 mt-1">Cast your local videos to any device</p>
+          </div>
+          <button
+            @click="showSettings = true"
+            class="btn-icon text-gray-400 hover:text-white"
+            title="Settings"
+          >
+            <SettingsIcon :size="24" />
+          </button>
+        </div>
       </header>
 
       <!-- Playback Control (shown when something is playing) -->
@@ -134,5 +150,21 @@ const handleCast = () => {
         </section>
       </main>
     </div>
+
+    <!-- Settings Modal -->
+    <Settings v-model="showSettings" />
+
+    <!-- Global Confirm Modal -->
+    <ConfirmModal
+      v-model="showConfirmModal"
+      :title="confirmOptions.title"
+      :message="confirmOptions.message"
+      :confirm-text="confirmOptions.confirmText"
+      :cancel-text="confirmOptions.cancelText"
+      :variant="confirmOptions.variant"
+      :loading="isConfirmLoading"
+      @confirm="(confirmOptions as any)._handleConfirm?.()"
+      @cancel="(confirmOptions as any)._handleCancel?.()"
+    />
   </div>
 </template>

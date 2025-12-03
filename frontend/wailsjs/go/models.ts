@@ -101,6 +101,28 @@ export namespace main {
 	        this.Default = source["Default"];
 	    }
 	}
+	export class Settings {
+	    subtitleBurnInDefault: boolean;
+	    defaultTranslationLanguage: string;
+	    geminiApiKey: string;
+	    geminiModel: string;
+	    defaultQuality: string;
+	    subtitleFontSize: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new Settings(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.subtitleBurnInDefault = source["subtitleBurnInDefault"];
+	        this.defaultTranslationLanguage = source["defaultTranslationLanguage"];
+	        this.geminiApiKey = source["geminiApiKey"];
+	        this.geminiModel = source["geminiModel"];
+	        this.defaultQuality = source["defaultQuality"];
+	        this.subtitleFontSize = source["subtitleFontSize"];
+	    }
+	}
 	export class SubtitleDisplayItem {
 	    path: string;
 	    label: string;

@@ -1,0 +1,148 @@
+@import "tailwindcss";
+
+@import "tailwindcss";
+
+.settings-overlay {
+  @apply fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4;
+}
+
+.settings-modal {
+  @apply bg-gray-800 rounded-2xl shadow-2xl max-w-4xl w-full max-h-[90vh] flex flex-col border border-gray-700;
+}
+
+.settings-header {
+  @apply flex items-center justify-between px-6 py-4 border-b border-gray-700;
+}
+
+.settings-title {
+  @apply text-2xl font-bold text-white m-0;
+}
+
+.btn-close {
+  @apply p-2 rounded-lg hover:bg-gray-700 transition-colors text-gray-400 hover:text-white;
+}
+
+.settings-search {
+  @apply relative px-6 py-4 border-b border-gray-700;
+}
+
+.search-icon {
+  @apply absolute left-9 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400 pointer-events-none;
+}
+
+.search-input {
+  @apply w-full pl-11 pr-10 py-3 bg-gray-700 border border-gray-600 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all;
+}
+
+.search-clear {
+  @apply absolute right-9 top-1/2 -translate-y-1/2 p-1 rounded hover:bg-gray-600 transition-colors text-gray-400 hover:text-white;
+}
+
+.settings-content {
+  @apply flex-1 overflow-y-auto px-6 py-4;
+}
+
+.settings-empty {
+  @apply flex flex-col items-center justify-center py-16 text-center;
+}
+
+.settings-category {
+  @apply mb-8 last:mb-0;
+}
+
+.category-header {
+  @apply flex items-center gap-2 mb-4 pb-2 border-b border-gray-700;
+}
+
+.category-title {
+  @apply text-lg font-semibold text-white m-0;
+}
+
+.category-content {
+  @apply space-y-4;
+}
+
+.setting-item {
+  @apply items-start justify-between gap-6 rounded-lg transition-colors;
+}
+
+.setting-info {
+  @apply flex-1 min-w-0 text-left;
+}
+
+.setting-label {
+  @apply block text-sm font-medium text-white mb-1 cursor-pointer;
+}
+
+.setting-description {
+  @apply text-xs text-gray-400 m-0;
+}
+
+.setting-panel {
+  @apply flex items-center gap-2;
+}
+
+.setting-panel > input,
+.setting-panel > select {
+  @apply min-w-[16rem];
+}
+
+.setting-control {
+  @apply shrink-0;
+}
+
+/* Toggle Switch */
+.toggle-switch {
+  @apply relative inline-block w-12 h-6 cursor-pointer;
+}
+
+.toggle-switch input {
+  @apply opacity-0 w-0 h-0;
+}
+
+.toggle-slider {
+  @apply absolute inset-0 bg-gray-600 rounded-full transition-all duration-200 cursor-pointer;
+}
+
+.toggle-slider::before {
+  @apply absolute content-[''] h-5 w-5 left-0.5 bottom-0.5 bg-white rounded-full transition-all duration-200;
+}
+
+.toggle-switch input:checked + .toggle-slider {
+  @apply bg-blue-600;
+}
+
+.toggle-switch input:checked + .toggle-slider::before {
+  @apply translate-x-6;
+}
+
+.toggle-switch:hover .toggle-slider {
+  @apply bg-gray-500;
+}
+
+.toggle-switch input:checked:hover + .toggle-slider {
+  @apply bg-blue-500;
+}
+
+/* Number Input */
+.number-control {
+  @apply flex items-center gap-1;
+}
+
+/* Footer */
+.settings-footer {
+  @apply flex items-center justify-between gap-3 px-6 py-4 border-t border-gray-700;
+}
+
+.btn-reset {
+  @apply px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white font-medium transition-colors flex items-center gap-2;
+}
+
+.btn-done {
+  @apply px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white font-medium transition-colors flex items-center gap-2;
+}
+
+/* Custom background color for better visual hierarchy */
+.bg-gray-750 {
+  background-color: #1f2937;
+}

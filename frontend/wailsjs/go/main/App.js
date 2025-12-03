@@ -38,6 +38,10 @@ export function GetQualityOptions() {
   return window['go']['main']['App']['GetQualityOptions']();
 }
 
+export function GetSettings() {
+  return window['go']['main']['App']['GetSettings']();
+}
+
 export function GetSubtitleURL(arg1) {
   return window['go']['main']['App']['GetSubtitleURL'](arg1);
 }
@@ -70,6 +74,10 @@ export function RemoveFromHistory(arg1) {
   return window['go']['main']['App']['RemoveFromHistory'](arg1);
 }
 
+export function ResetSettings() {
+  return window['go']['main']['App']['ResetSettings']();
+}
+
 export function SeekTo(arg1) {
   return window['go']['main']['App']['SeekTo'](arg1);
 }
@@ -84,6 +92,10 @@ export function TranslateExportedSubtitles(arg1, arg2) {
 
 export function Unpause() {
   return window['go']['main']['App']['Unpause']();
+}
+
+export function UpdateSettings(arg1) {
+  return window['go']['main']['App']['UpdateSettings'](arg1);
 }
 
 export function UpdateSubtitleSettings(arg1) {

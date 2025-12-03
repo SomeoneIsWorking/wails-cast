@@ -38,7 +38,7 @@ type Translator struct {
 }
 
 // NewTranslator creates a new translator instance
-func NewTranslator(apiKey string) (*Translator, error) {
+func NewTranslator(apiKey string, model string) (*Translator, error) {
 	ctx := context.Background()
 	client, err := genai.NewClient(ctx, &genai.ClientConfig{
 		APIKey:  apiKey,
@@ -48,9 +48,14 @@ func NewTranslator(apiKey string) (*Translator, error) {
 		return nil, fmt.Errorf("failed to create Gemini client: %w", err)
 	}
 
+	// Use provided model or fallback to default
+	if model == "" {
+		model = defaultModel
+	}
+
 	return &Translator{
 		client: client,
-		model:  defaultModel,
+		model:  model,
 	}, nil
 }
 
