@@ -2,30 +2,27 @@
 import { ref } from "vue";
 import { useCastStore } from "../stores/cast";
 import { Play } from "lucide-vue-next";
-import TrackSelectionModal from "./TrackSelectionModal.vue";
 import FileSelector from "./FileSelector.vue";
 import History from "./History.vue";
 import { GetTrackDisplayInfo } from "../../wailsjs/go/main/App";
-import { main } from "../../wailsjs/go/models";
 import LoadingIcon from "./LoadingIcon.vue";
 import { isAcceptedFileWithHttp } from "@/utils/file";
 const emit = defineEmits<{
-  select: [path: string];
+  options: [];
 }>();
 
 const store = useCastStore();
 const selectedFile = ref("");
 const isLoading = ref(false);
-const trackInfo = ref<main.TrackDisplayInfo | null>(null);
-const showTrackModal = ref(false);
 
 const handleCast = async (mediaPath: string) => {
   if (!store.selectedDevice) return;
 
   isLoading.value = true;
   try {
-    trackInfo.value = await GetTrackDisplayInfo(mediaPath);
-    showTrackModal.value = true;
+    const trackInfo = await GetTrackDisplayInfo(mediaPath);
+    store.setTrackInfo(trackInfo);
+    emit("options");
   } finally {
     isLoading.value = false;
   }
@@ -75,15 +72,5 @@ const acceptedExtensions = [
     <div class="flex-1 overflow-hidden">
       <History @select="handleHistorySelect" />
     </div>
-
-    <!-- Track Selection Modal -->
-    <Suspense>
-      <TrackSelectionModal
-        v-if="trackInfo"
-        :key="trackInfo.path"
-        v-model="showTrackModal"
-        :track-info="trackInfo"
-      />
-    </Suspense>
   </div>
 </template>

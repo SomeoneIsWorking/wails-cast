@@ -73,7 +73,7 @@ const selectDevice = (device: Device) => {
       <!-- Device Count -->
       <div
         v-if="store.hasDevices && !store.isLoading"
-        class="text-center text-sm text-gray-500"
+        class="text-sm text-gray-500"
       >
         Found {{ store.devices.length }} device{{
           store.devices.length > 1 ? "s" : ""

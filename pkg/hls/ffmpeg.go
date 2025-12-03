@@ -34,6 +34,7 @@ type TranscodeOptions struct {
 	Duration   int
 	Subtitle   string
 	Bitrate    string
+	FontSize   int
 }
 
 // TranscodeSegment transcodes a segment with optional 100ms wait to avoid wasted work during rapid seeking
@@ -92,7 +93,7 @@ func buildTranscodeArgs(opts TranscodeOptions) ([]string, error) {
 		args = append(args, "-b:v", opts.Bitrate)
 	}
 
-	filterStr, err := buildSubtitleFilter(filepath.Dir(opts.OutputPath), opts.Subtitle, opts.InputPath)
+	filterStr, err := buildSubtitleFilter(filepath.Dir(opts.OutputPath), opts.Subtitle, opts.InputPath, opts.FontSize)
 	if err != nil {
 		return nil, err
 	}
@@ -105,16 +106,19 @@ func buildTranscodeArgs(opts TranscodeOptions) ([]string, error) {
 }
 
 // buildSubtitleFilter builds the subtitle filter string for ffmpeg
-func buildSubtitleFilter(outputDir string, subtitle string, videoPath string) (string, error) {
+func buildSubtitleFilter(outputDir string, subtitle string, videoPath string, fontSize int) (string, error) {
+	if fontSize == 0 {
+		fontSize = 24
+	}
 	if path, found := strings.CutPrefix(subtitle, "external:"); found {
 		err := ensureSubtitleLink(outputDir, path)
 		if err != nil {
 			return "", err
 		}
-		return fmt.Sprintf("subtitles='%s':force_style='FontSize=24'", filepath.Join(outputDir, "input_subtitle")), nil
+		return fmt.Sprintf("subtitles='%s':force_style='FontSize=%d'", filepath.Join(outputDir, "input_subtitle"), fontSize), nil
 	}
 	if path, found := strings.CutPrefix(subtitle, "embedded:"); found {
-		return fmt.Sprintf("subtitles='%s':si=%s:force_style='FontSize=24'", videoPath, path), nil
+		return fmt.Sprintf("subtitles='%s':si=%s:force_style='FontSize=%d'", videoPath, path, fontSize), nil
 	}
 	return "", nil
 }

@@ -18,7 +18,7 @@ func getDefaultSettings() Settings {
 		DefaultTranslationLanguage: "English",
 		GeminiApiKey:               "",
 		GeminiModel:                "gemini-2.5-flash",
-		DefaultQuality:             "original",
+		DefaultQuality:             "5M",
 		SubtitleFontSize:           24,
 	}
 }

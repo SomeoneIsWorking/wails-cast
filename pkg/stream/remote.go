@@ -474,6 +474,7 @@ func (p *RemoteHandler) transcodeSegment(ctx context.Context, rawPath string, tr
 		Duration:   0,
 		Subtitle:   subtitle,
 		Bitrate:    p.Options.Bitrate,
+		FontSize:   p.Options.Subtitle.FontSize,
 	})
 	if err != nil {
 		return err
@@ -485,6 +486,7 @@ func (p *RemoteHandler) transcodeSegment(ctx context.Context, rawPath string, tr
 		Subtitle:  p.Options.Subtitle.Path,
 		CreatedAt: time.Now().Format(time.RFC3339),
 		Bitrate:   p.Options.Bitrate,
+		FontSize:  p.Options.Subtitle.FontSize,
 	}
 	err = manifest.Save(transcodedPath + ".json")
 	return err

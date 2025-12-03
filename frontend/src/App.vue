@@ -2,7 +2,7 @@
 import { ref, onMounted } from "vue";
 import { useCastStore } from "./stores/cast";
 import DeviceDiscovery from "./components/DeviceDiscovery.vue";
-import MediaPlayer from "./components/MediaPlayer.vue";
+import CastOptions from "./components/CastOptions.vue";
 import FileExplorer from "./components/FileExplorer.vue";
 import PlaybackControl from "./components/PlaybackControl.vue";
 import Settings from "./components/Settings.vue";
@@ -11,7 +11,7 @@ import { useConfirm } from "./composables/useConfirm";
 import { Tv, Video, Play, Settings as SettingsIcon } from "lucide-vue-next";
 
 const store = useCastStore();
-const activeTab = ref<"devices" | "files" | "player">("devices");
+const activeTab = ref<"devices" | "files" | "options">("devices");
 const showSettings = ref(false);
 const { showConfirmModal, confirmOptions, isConfirmLoading } = useConfirm();
 
@@ -26,14 +26,6 @@ onMounted(() => {
 const selectDevice = (device: any) => {
   store.selectDevice(device);
   activeTab.value = "files";
-};
-
-const selectMedia = () => {
-  activeTab.value = "player";
-};
-
-const handleCast = () => {
-  activeTab.value = "player";
 };
 </script>
 
@@ -97,17 +89,17 @@ const handleCast = () => {
             </span>
           </button>
           <button
-            v-if="store.isCasting"
+            v-if="store.trackInfo"
             :class="[
               'px-4 py-2 font-medium transition-all duration-200 border-b-2',
-              activeTab === 'player'
+              activeTab === 'options'
                 ? 'border-blue-500 text-blue-400'
                 : 'border-transparent text-gray-400 hover:text-gray-200',
             ]"
-            @click="activeTab = 'player'"
+            @click="activeTab = 'options'"
           >
             <span class="flex items-center gap-2">
-              <Play :size="18" /> Cast
+              <Play :size="18" /> Cast Options
             </span>
           </button>
         </div>
@@ -126,27 +118,14 @@ const handleCast = () => {
             <strong class="text-gray-300 mr-1">Selected Device:</strong>
             <span class="text-blue-400">{{ store.selectedDevice?.name }}</span>
           </div>
-          <FileExplorer @select="selectMedia" />
+          <FileExplorer @options="activeTab = 'options'" />
         </section>
 
-        <!-- Media Player Tab -->
-        <section class="h-full" v-show="activeTab === 'player'">
-          <MediaPlayer
-            v-if="store.isCasting"
-            :isLoading="store.isLoading"
-            @cast="handleCast"
-            @back="activeTab = 'files'"
-          />
-          <div v-else class="text-center py-12">
-            <Play :size="64" class="text-gray-600 mx-auto mb-4" />
-            <p class="text-gray-400 text-lg mb-2">No media selected</p>
-            <p class="text-gray-500 text-sm mb-6">
-              Select a device and media file to start casting
-            </p>
-            <button @click="activeTab = 'devices'" class="btn-primary">
-              Go to Devices
-            </button>
-          </div>
+        <!-- Cast Options Tab -->
+        <section class="h-full" v-show="activeTab === 'options'">
+          <Suspense>
+            <CastOptions @back="activeTab = 'files'" />
+          </Suspense>
         </section>
       </main>
     </div>

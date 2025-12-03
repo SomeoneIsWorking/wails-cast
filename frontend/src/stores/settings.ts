@@ -33,6 +33,14 @@ interface SettingCategory {
   settings: SettingDefinition[];
 }
 
+export const qualityOptions = [
+  { value: "", label: "Original (Best Quality)" },
+  { value: "8M", label: "Very High (Bitrate: 8M)" },
+  { value: "5M", label: "High (Bitrate: 5M)" },
+  { value: "3M", label: "Medium (Bitrate: 3M)" },
+  { value: "2M", label: "Low (Bitrate: 2M)" },
+];
+
 export const useSettingsStore = defineStore("settings", () => {
   const settings = ref<Settings>(null!);
   const searchQuery = ref("");
@@ -43,17 +51,9 @@ export const useSettingsStore = defineStore("settings", () => {
   };
 
   // Save settings to backend
-  const saveSettings = async () => {
-    await UpdateSettings(settings.value);
-  };
-
-  // Update individual setting
-  const updateSetting = async <K extends keyof Settings>(
-    key: K,
-    value: Settings[K]
-  ) => {
-    settings.value[key] = value;
-    await saveSettings();
+  const saveSettings = async (newSettings: Settings) => {
+    await UpdateSettings(newSettings);
+    settings.value = newSettings;
   };
 
   // Reset to defaults
@@ -127,12 +127,7 @@ export const useSettingsStore = defineStore("settings", () => {
           label: "Default Quality",
           description: "Default quality preset for video encoding",
           type: "select",
-          options: [
-            { value: "original", label: "Original (No Transcoding)" },
-            { value: "high", label: "High (1080p)" },
-            { value: "medium", label: "Medium (720p)" },
-            { value: "low", label: "Low (480p)" },
-          ],
+          options: qualityOptions,
         },
       ],
     },
@@ -173,7 +168,6 @@ export const useSettingsStore = defineStore("settings", () => {
     hasSearchResults,
 
     // Actions
-    updateSetting,
     resetToDefaults,
     loadSettings,
     saveSettings,

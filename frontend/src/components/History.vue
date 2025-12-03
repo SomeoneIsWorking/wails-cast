@@ -87,7 +87,7 @@ const handleClearAll = async () => {
       v-else-if="!historyStore.hasHistory"
       class="flex-1 flex items-center justify-center p-8"
     >
-      <p class="text-gray-500 dark:text-gray-400 text-center">
+      <p class="text-gray-500 dark:text-gray-400">
         No recent casts. Start casting to see your history here.
       </p>
     </div>

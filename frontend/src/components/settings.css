@@ -43,7 +43,7 @@
 }
 
 .settings-empty {
-  @apply flex flex-col items-center justify-center py-16 text-center;
+  @apply flex flex-col items-center justify-center py-16;
 }
 
 .settings-category {
