@@ -1,6 +1,7 @@
 package stream
 
 import (
+	"context"
 	"crypto/md5"
 	"encoding/hex"
 	"fmt"
@@ -125,10 +126,10 @@ func (s *LocalHandler) ServeSegment(w http.ResponseWriter, r *http.Request, trac
 	}
 
 	manifest, err := hls.LoadSegmentManifest(segmentPath + ".json")
-	needsRegeneration := err != nil || !hls.ManifestMatches(manifest, s.Options, segmentDuration)
+	needsRegeneration := err != nil || !hls.ManifestMatches(manifest, s.Options, s.SegmentSize)
 
 	if !hls.CacheExists(s.OutputDir, segmentName) || needsRegeneration {
-		err := s.transcodeSegment(segmentPath, startTime, r, w, segmentDuration)
+		err := s.transcodeSegment(r.Context(), segmentPath, startTime)
 		if err != nil {
 			http.Error(w, "Transcode failed", http.StatusInternalServerError)
 			logger.Logger.Error("Transcode error", "err", err)
@@ -146,7 +147,7 @@ func (s *LocalHandler) ServeSegment(w http.ResponseWriter, r *http.Request, trac
 	http.ServeFile(w, r, segmentPath)
 }
 
-func (s *LocalHandler) transcodeSegment(segmentPath string, startTime float64, r *http.Request, w http.ResponseWriter, segmentDuration float64) error {
+func (s *LocalHandler) transcodeSegment(ctx context.Context, segmentPath string, startTime float64) error {
 	ensureSymlink(s.VideoPath, s.OutputDir)
 	subtitle := ""
 
@@ -164,23 +165,12 @@ func (s *LocalHandler) transcodeSegment(segmentPath string, startTime float64, r
 		FontSize:   s.Options.Subtitle.FontSize,
 	}
 
-	err := hls.TranscodeSegment(r.Context(), opts)
+	err := hls.TranscodeSegment(ctx, opts)
 	if err != nil {
-		if r.Context().Err() != nil {
-			return err
-		}
-		http.Error(w, "Transcode failed", http.StatusInternalServerError)
 		return err
 	}
 
-	manifest := hls.SegmentManifest{
-		Duration:  segmentDuration,
-		Subtitle:  s.Options.Subtitle.Path,
-		CreatedAt: time.Now().Format(time.RFC3339),
-		Bitrate:   s.Options.Bitrate,
-		FontSize:  s.Options.Subtitle.FontSize,
-	}
-	err = manifest.Save(segmentPath + ".json")
+	err = opts.Save(segmentPath + ".json")
 	return err
 }
 

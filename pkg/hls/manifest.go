@@ -3,22 +3,11 @@ package hls
 import (
 	"encoding/json"
 	"os"
-
 	"wails-cast/pkg/options"
 )
 
-// SegmentManifest stores metadata for each segment
-// This is used by BOTH local file HLS and remote proxy HLS
-type SegmentManifest struct {
-	Duration  float64 `json:"duration"`
-	Subtitle  string  `json:"subtitle"`
-	CreatedAt string  `json:"created_at"`
-	Bitrate   string  `json:"bitrate"`
-	FontSize  int     `json:"fontSize"`
-}
-
 // Save saves manifest JSON for a segment (used by local file HLS)
-func (this *SegmentManifest) Save(manifestPath string) error {
+func (this *TranscodeOptions) Save(manifestPath string) error {
 	data, err := json.MarshalIndent(this, "", "  ")
 	if err != nil {
 		return err
@@ -27,12 +16,12 @@ func (this *SegmentManifest) Save(manifestPath string) error {
 }
 
 // LoadSegmentManifest loads manifest JSON for a segment (used by local file HLS)
-func LoadSegmentManifest(manifestPath string) (*SegmentManifest, error) {
+func LoadSegmentManifest(manifestPath string) (*TranscodeOptions, error) {
 	data, err := os.ReadFile(manifestPath)
 	if err != nil {
 		return nil, err
 	}
-	var manifest SegmentManifest
+	var manifest TranscodeOptions
 	if err := json.Unmarshal(data, &manifest); err != nil {
 		return nil, err
 	}
@@ -40,7 +29,7 @@ func LoadSegmentManifest(manifestPath string) (*SegmentManifest, error) {
 }
 
 // ManifestMatches checks if current parameters match manifest (used by local file HLS)
-func ManifestMatches(manifest *SegmentManifest, options options.CastOptions, duration float64) bool {
+func ManifestMatches(manifest *TranscodeOptions, options options.CastOptions, duration int) bool {
 	if manifest == nil {
 		return false
 	}
@@ -49,18 +38,21 @@ func ManifestMatches(manifest *SegmentManifest, options options.CastOptions, dur
 		if manifest.Subtitle != options.Subtitle.Path {
 			return false
 		}
+
+		if manifest.FontSize != options.Subtitle.FontSize {
+			return false
+		}
 	}
 
-	// Check if duration changed significantly (tolerance of 0.1s)
-	if manifest.Duration > 0 && (manifest.Duration-duration > 0.1 || duration-manifest.Duration > 0.1) {
+	if !options.Subtitle.BurnIn && manifest.Subtitle != "" {
+		return false
+	}
+
+	if manifest.Duration != duration {
 		return false
 	}
 
 	if manifest.Bitrate != options.Bitrate {
-		return false
-	}
-
-	if manifest.FontSize != options.Subtitle.FontSize {
 		return false
 	}
 
