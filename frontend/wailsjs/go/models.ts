@@ -244,6 +244,7 @@ export namespace options {
 	    VideoTrack: number;
 	    AudioTrack: number;
 	    Bitrate: string;
+	    Resolution: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new CastOptions(source);
@@ -255,6 +256,7 @@ export namespace options {
 	        this.VideoTrack = source["VideoTrack"];
 	        this.AudioTrack = source["AudioTrack"];
 	        this.Bitrate = source["Bitrate"];
+	        this.Resolution = source["Resolution"];
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {

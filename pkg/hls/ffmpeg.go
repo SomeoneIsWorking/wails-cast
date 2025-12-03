@@ -35,6 +35,7 @@ type TranscodeOptions struct {
 	Subtitle   string
 	Bitrate    string
 	FontSize   int
+	Resolution string
 }
 
 // TranscodeSegment transcodes a segment with optional 100ms wait to avoid wasted work during rapid seeking
@@ -88,6 +89,10 @@ func buildTranscodeArgs(opts TranscodeOptions) ([]string, error) {
 		"-f", "mpegts",
 		"-copyts",
 	)
+
+	if opts.Resolution != "" {
+		args = append(args, "-s", opts.Resolution)
+	}
 
 	if opts.Bitrate != "" {
 		args = append(args, "-b:v", opts.Bitrate)
