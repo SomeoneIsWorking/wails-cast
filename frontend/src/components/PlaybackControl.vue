@@ -133,10 +133,13 @@ watch(
     if (status === "PLAYING") {
       startLocalTimeIncrement();
     } else {
-      if (localTimeIncrement) clearInterval(localTimeIncrement);
+      if (localTimeIncrement) {
+        clearInterval(localTimeIncrement);
+      }
     }
   }
 );
+
 // Update seek preview when hovering
 const updateTooltipPosition = (event: MouseEvent) => {
   if (!seekBar.value || !playbackState.value.duration) return;
@@ -175,7 +178,9 @@ const onSeekBarClick = async (event: MouseEvent) => {
 
 // Increment local time every second when playing
 const startLocalTimeIncrement = () => {
-  if (localTimeIncrement) clearInterval(localTimeIncrement);
+  if (localTimeIncrement) {
+    clearInterval(localTimeIncrement);
+  }
 
   localTimeIncrement = setInterval(() => {
     if (playbackState.value.status === "PLAYING") {
@@ -233,8 +238,14 @@ const formatTime = (seconds: number) => {
   return `${m}:${s.toString().padStart(2, "0")}`;
 };
 
-onMounted(() => {});
+onMounted(() => {
+  if (playbackState.value.status === "PLAYING") {
+    startLocalTimeIncrement();
+  }
+});
 onUnmounted(() => {
-  if (localTimeIncrement) clearInterval(localTimeIncrement);
+  if (localTimeIncrement) {
+    clearInterval(localTimeIncrement);
+  }
 });
 </script>
