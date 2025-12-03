@@ -1,6 +1,7 @@
-import type { main, options } from "../../wailsjs/go/models";
+import { main, options } from "../../wailsjs/go/models";
 
-export type CastOptions = options.CastOptions;
+type WailsType<T> = Omit<T, "convertValues">;
+export type CastOptions = WailsType<options.CastOptions>;
 export type PlaybackState = main.PlaybackState;
 export type SubtitleDisplayItem = main.SubtitleDisplayItem;
 export type SubtitleOptions = options.SubtitleCastOptions;
@@ -17,12 +18,7 @@ export const mediaService = {
     options: CastOptions
   ): Promise<PlaybackState> {
     const { CastToDevice } = await import("../../wailsjs/go/main/App");
-    return await CastToDevice(deviceURL, mediaPath, options);
-  },
-
-  async getQualityOptions(): Promise<Array<main.QualityOption>> {
-    const { GetQualityOptions } = await import("../../wailsjs/go/main/App");
-    return await GetQualityOptions();
+    return await CastToDevice(deviceURL, mediaPath, options as options.CastOptions);
   },
 
   async updateSubtitleSettings(options: SubtitleOptions): Promise<void> {

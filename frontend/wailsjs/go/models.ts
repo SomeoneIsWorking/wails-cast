@@ -85,22 +85,6 @@ export namespace main {
 	        this.duration = source["duration"];
 	    }
 	}
-	export class QualityOption {
-	    Label: string;
-	    Key: string;
-	    Default: boolean;
-	
-	    static createFrom(source: any = {}) {
-	        return new QualityOption(source);
-	    }
-	
-	    constructor(source: any = {}) {
-	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.Label = source["Label"];
-	        this.Key = source["Key"];
-	        this.Default = source["Default"];
-	    }
-	}
 	export class Settings {
 	    subtitleBurnInDefault: boolean;
 	    defaultTranslationLanguage: string;
@@ -242,6 +226,7 @@ export namespace options {
 	export class SubtitleCastOptions {
 	    Path: string;
 	    BurnIn: boolean;
+	    FontSize: number;
 	
 	    static createFrom(source: any = {}) {
 	        return new SubtitleCastOptions(source);
@@ -251,6 +236,7 @@ export namespace options {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.Path = source["Path"];
 	        this.BurnIn = source["BurnIn"];
+	        this.FontSize = source["FontSize"];
 	    }
 	}
 	export class CastOptions {

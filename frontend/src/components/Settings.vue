@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { ref, watch } from "vue";
 import { useSettingsStore } from "../stores/settings";
 import { useConfirm } from "../composables/useConfirm";
 import {
@@ -16,6 +17,16 @@ const settingsStore = useSettingsStore();
 const showModal = defineModel<boolean>();
 const { confirm } = useConfirm();
 
+// Local copy of settings for editing
+const localSettings = ref({ ...settingsStore.settings });
+
+// Watch for modal opening to create a fresh copy
+watch(showModal, (isOpen) => {
+  if (isOpen) {
+    localSettings.value = { ...settingsStore.settings };
+  }
+});
+
 const handleReset = async () => {
   await confirm({
     title: "Reset Settings",
@@ -25,8 +36,14 @@ const handleReset = async () => {
     variant: "danger",
     onConfirm: async () => {
       await settingsStore.resetToDefaults();
+      localSettings.value = { ...settingsStore.settings };
     },
   });
+};
+
+const handleSave = async () => {
+  await settingsStore.saveSettings(localSettings.value);
+  showModal.value = false;
 };
 
 const handleClose = () => {
@@ -120,13 +137,7 @@ const getIconComponent = (iconName: string) => {
                       <input
                         type="checkbox"
                         :id="setting.key"
-                        :checked="(settingsStore.settings[setting.key] as boolean)"
-                        @change="
-                          settingsStore.updateSetting(
-                            setting.key,
-                            ($event.target as HTMLInputElement).checked
-                          )
-                        "
+                        v-model="localSettings[setting.key]"
                       />
                       <span class="toggle-slider"></span>
                     </label>
@@ -138,13 +149,7 @@ const getIconComponent = (iconName: string) => {
                       class="min-w-60"
                       :type="setting.type"
                       :id="setting.key"
-                      :value="settingsStore.settings[setting.key]"
-                      @input="
-                        settingsStore.updateSetting(
-                          setting.key,
-                          ($event.target as HTMLInputElement).value
-                        )
-                      "
+                      v-model="localSettings[setting.key]"
                       :placeholder="`Enter ${setting.label.toLowerCase()}`"
                     />
                     <!-- Number Input -->
@@ -155,31 +160,19 @@ const getIconComponent = (iconName: string) => {
                       <input
                         type="number"
                         :id="setting.key"
-                        :value="settingsStore.settings[setting.key]"
+                        v-model.number="localSettings[setting.key]"
                         :min="setting.min"
                         :max="setting.max"
                         class="min-w-20"
                         :step="setting.step || 1"
-                        @input="
-                          settingsStore.updateSetting(
-                            setting.key,
-                            Number(($event.target as HTMLInputElement).value)
-                          )
-                        "
                       />
                     </div>
                     <!-- Select Dropdown -->
                     <select
                       v-else-if="setting.type === 'select'"
                       :id="setting.key"
-                      :value="settingsStore.settings[setting.key]"
+                      v-model="localSettings[setting.key]"
                       class="min-w-60"
-                      @change="
-                        settingsStore.updateSetting(
-                          setting.key,
-                          ($event.target as HTMLSelectElement).value
-                        )
-                      "
                     >
                       <option
                         v-for="option in setting.options"
@@ -204,9 +197,9 @@ const getIconComponent = (iconName: string) => {
           <RotateCcw class="w-4 h-4" />
           Reset to Defaults
         </button>
-        <button @click="handleClose" class="btn-done">
+        <button @click="handleSave" class="btn-done">
           <Save class="w-4 h-4" />
-          Done
+          Save
         </button>
       </div>
     </div>
@@ -214,3 +207,6 @@ const getIconComponent = (iconName: string) => {
 </template>
 
 <style scoped src="./settings.css"></style>
+Save" class="btn-done">
+          <Save class="w-4 h-4" />
+          Sav

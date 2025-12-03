@@ -34,10 +34,6 @@ export function GetMediaURL(arg1) {
   return window['go']['main']['App']['GetMediaURL'](arg1);
 }
 
-export function GetQualityOptions() {
-  return window['go']['main']['App']['GetQualityOptions']();
-}
-
 export function GetSettings() {
   return window['go']['main']['App']['GetSettings']();
 }

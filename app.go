@@ -129,16 +129,6 @@ func (a *App) GetMediaURL(filePath string) string {
 	return fmt.Sprintf("http://%s:%d/playlist.m3u8", a.localIp, 8888)
 }
 
-func (a *App) GetQualityOptions() []QualityOption {
-	return []QualityOption{
-		{Label: "Original (Best Quality)", Key: ""},
-		{Label: "Very High (Bitrate: 8M)", Key: "8M"},
-		{Label: "High (Bitrate: 5M)", Key: "5M", Default: true},
-		{Label: "Medium (Bitrate: 3M)", Key: "3M"},
-		{Label: "Low (Bitrate: 2M)", Key: "2M"},
-	}
-}
-
 // GetSubtitleURL returns the URL for subtitle file (for Shaka player)
 func (a *App) GetSubtitleURL(subtitlePath string) string {
 	if subtitlePath == "" {

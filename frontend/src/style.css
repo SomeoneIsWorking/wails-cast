@@ -67,7 +67,7 @@
   }
 
   .drop-zone {
-    @apply border-2 border-dashed border-gray-600 rounded-xl p-8 text-center transition-all duration-200;
+    @apply border-2 border-dashed border-gray-600 rounded-xl p-8 transition-all duration-200;
   }
 
   /* Wails automatically adds this class when dragging over an element with --wails-drop-target */
@@ -86,10 +86,9 @@
 
 #app {
   height: 100vh;
-  text-align: center;
 }
 
-input, select{
+input:not([type=checkbox]), select{
   @apply w-full px-2 py-1 bg-gray-700 border border-gray-600 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm;
 
 }

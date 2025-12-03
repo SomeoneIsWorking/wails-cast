@@ -161,6 +161,7 @@ func (s *LocalHandler) transcodeSegment(segmentPath string, startTime float64, r
 		Duration:   s.SegmentSize,
 		Subtitle:   subtitle,
 		Bitrate:    s.Options.Bitrate,
+		FontSize:   s.Options.Subtitle.FontSize,
 	}
 
 	err := hls.TranscodeSegment(r.Context(), opts)
@@ -177,6 +178,7 @@ func (s *LocalHandler) transcodeSegment(segmentPath string, startTime float64, r
 		Subtitle:  s.Options.Subtitle.Path,
 		CreatedAt: time.Now().Format(time.RFC3339),
 		Bitrate:   s.Options.Bitrate,
+		FontSize:  s.Options.Subtitle.FontSize,
 	}
 	err = manifest.Save(segmentPath + ".json")
 	return err

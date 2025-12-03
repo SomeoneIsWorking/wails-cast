@@ -3,6 +3,7 @@ import { ref, computed } from "vue";
 import { Device, deviceService } from "../services/device";
 import { CastOptions, mediaService, PlaybackState } from "../services/media";
 import { EventsOn } from "../../wailsjs/runtime/runtime";
+import { main } from "../../wailsjs/go/models";
 
 export const useCastStore = defineStore("cast", () => {
   // State
@@ -12,6 +13,11 @@ export const useCastStore = defineStore("cast", () => {
   const isLoading = ref(false);
   const isCasting = ref(false);
   const error = ref<string | null>(null);
+
+  type TrackDisplayInfoWithId = {
+    id: number;
+  } & Omit<main.TrackDisplayInfo, "convertValues">;
+  const trackInfo = ref<TrackDisplayInfoWithId | null>(null);
 
   EventsOn("playback:state", (state: PlaybackState) => {
     playbackState.value = state;
@@ -50,6 +56,10 @@ export const useCastStore = defineStore("cast", () => {
     // Reset media if needed, or keep it
   };
 
+  const setTrackInfo = (info: main.TrackDisplayInfo) => {
+    trackInfo.value = { ...info, id: 1 - (trackInfo.value?.id ?? 0) };
+  };
+
   EventsOn("discovery:complete", () => {
     isLoading.value = false;
   });
@@ -59,6 +69,7 @@ export const useCastStore = defineStore("cast", () => {
       setDevices([...devices.value, device]);
     }
   });
+
   const discoverDevices = async () => {
     isLoading.value = true;
     // Clear existing devices and register event listeners to update UI as devices are found.
@@ -100,6 +111,7 @@ export const useCastStore = defineStore("cast", () => {
     error,
     playbackState,
     castOptions,
+    trackInfo,
 
     // Computed
     hasDevices,
@@ -110,6 +122,7 @@ export const useCastStore = defineStore("cast", () => {
     // Actions
     setDevices,
     selectDevice,
+    setTrackInfo,
     discoverDevices,
     startCasting,
     reset,

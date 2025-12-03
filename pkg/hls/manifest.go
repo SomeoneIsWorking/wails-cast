@@ -14,6 +14,7 @@ type SegmentManifest struct {
 	Subtitle  string  `json:"subtitle"`
 	CreatedAt string  `json:"created_at"`
 	Bitrate   string  `json:"bitrate"`
+	FontSize  int     `json:"fontSize"`
 }
 
 // Save saves manifest JSON for a segment (used by local file HLS)
@@ -56,6 +57,10 @@ func ManifestMatches(manifest *SegmentManifest, options options.CastOptions, dur
 	}
 
 	if manifest.Bitrate != options.Bitrate {
+		return false
+	}
+
+	if manifest.FontSize != options.Subtitle.FontSize {
 		return false
 	}
 

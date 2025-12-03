@@ -19,8 +19,6 @@ export function GetMediaFiles(arg1:string):Promise<Array<string>>;
 
 export function GetMediaURL(arg1:string):Promise<string>;
 
-export function GetQualityOptions():Promise<Array<main.QualityOption>>;
-
 export function GetSettings():Promise<main.Settings>;
 
 export function GetSubtitleURL(arg1:string):Promise<string>;
