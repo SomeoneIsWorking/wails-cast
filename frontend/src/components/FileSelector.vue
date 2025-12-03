@@ -62,7 +62,7 @@ useOnFileDrop({
         v-model="modelValue"
         type="text"
         placeholder="Input URL or file path"
-        class="input-field flex-1"
+        class="flex-1"
       />
       <button @click="openFileDialog" class="btn-secondary">Browse</button>
       <slot></slot>

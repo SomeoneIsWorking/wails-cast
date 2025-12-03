@@ -10,8 +10,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/joho/godotenv"
-
 	"github.com/vishen/go-chromecast/application"
 	cast_proto "github.com/vishen/go-chromecast/cast/proto"
 	wails_runtime "github.com/wailsapp/wails/v2/pkg/runtime"
@@ -56,6 +54,7 @@ type App struct {
 	castManager   *localcast.CastManager
 	playbackState PlaybackState
 	historyStore  *HistoryStore
+	settingsStore *SettingsStore
 	mu            sync.RWMutex
 }
 
@@ -75,6 +74,7 @@ func NewApp() *App {
 	server := NewServer(localIP, 8888)
 	castManager := localcast.NewCastManager(localIP, 8888)
 	historyStore := NewHistoryStore()
+	settingsStore := NewSettingsStore()
 
 	app := &App{
 		App:           application.NewApplication(),
@@ -84,6 +84,7 @@ func NewApp() *App {
 		castManager:   castManager,
 		playbackState: PlaybackState{},
 		historyStore:  historyStore,
+		settingsStore: settingsStore,
 	}
 	app.App.AddMessageFunc(app.handleChromecastMessage)
 	app.App.SetRequestTimeout(30 * time.Second)
@@ -92,12 +93,9 @@ func NewApp() *App {
 
 func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
-	// Load variables from the .env file
-	err := godotenv.Load()
-	if err != nil {
-		// Handle error if the file doesn't exist or there's a problem reading it
-		fmt.Println("Error loading .env file:", err)
-	}
+
+	// Set context for settings store
+	a.settingsStore.SetContext(ctx)
 	// Set context for history store to enable events
 	a.historyStore.SetContext(ctx)
 
@@ -476,11 +474,20 @@ func (a *App) ExportEmbeddedSubtitles(videoPath string) error {
 
 // TranslateExportedSubtitles exports embedded subtitles and translates them
 func (a *App) TranslateExportedSubtitles(videoPath string, targetLanguage string) ([]string, error) {
-	apiKey := os.Getenv("GEMINI_API_KEY")
+	// Get settings for API key and model
+	settings := a.settingsStore.Get()
+
+	// Use settings API key, fallback to environment variable
+	apiKey := settings.GeminiApiKey
+
 	if apiKey == "" {
-		return nil, fmt.Errorf("Gemini API key is required")
+		return nil, fmt.Errorf("Gemini API key is required. Please set it in Settings or GEMINI_API_KEY environment variable")
 	}
 
+	// Use target language from settings if not provided
+	if targetLanguage == "" {
+		targetLanguage = settings.DefaultTranslationLanguage
+	}
 	if targetLanguage == "" {
 		return nil, fmt.Errorf("target language is required")
 	}
@@ -500,15 +507,15 @@ func (a *App) TranslateExportedSubtitles(videoPath string, targetLanguage string
 		logger.Info("Using existing exported subtitles", "dir", subtitleDir)
 	}
 
-	// Create translator
-	translator, err := ai.NewTranslator(apiKey)
+	// Create translator with model from settings
+	translator, err := ai.NewTranslator(apiKey, settings.GeminiModel)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create translator: %w", err)
 	}
 	defer translator.Close()
 
 	// Translate all exported subtitles
-	logger.Info("Translating exported subtitles", "directory", subtitleDir, "target", targetLanguage)
+	logger.Info("Translating exported subtitles", "directory", subtitleDir, "target", targetLanguage, "model", settings.GeminiModel)
 	translatedFiles, err := translator.TranslateEmbeddedSubtitles(a.ctx, subtitleDir, targetLanguage, func(chunk string) {
 		// Stream translation progress to frontend
 		wails_runtime.EventsEmit(a.ctx, "translation:stream", chunk)
@@ -529,6 +536,24 @@ func (a *App) GetHistory() []HistoryItem {
 // RemoveFromHistory removes an item from history
 func (a *App) RemoveFromHistory(path string) error {
 	return a.historyStore.Remove(path)
+}
+
+// GetSettings returns the current settings
+func (a *App) GetSettings() *Settings {
+	return a.settingsStore.Get()
+}
+
+// UpdateSettings updates the settings
+func (a *App) UpdateSettings(settings Settings) error {
+	return a.settingsStore.Update(settings)
+}
+
+// ResetSettings resets settings to defaults
+func (a *App) ResetSettings() (*Settings, error) {
+	if err := a.settingsStore.Reset(); err != nil {
+		return nil, err
+	}
+	return a.settingsStore.Get(), nil
 }
 
 // ClearHistory clears all history

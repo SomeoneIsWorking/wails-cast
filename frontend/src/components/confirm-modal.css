@@ -1,0 +1,61 @@
+@import "tailwindcss";
+
+.confirm-overlay {
+  @apply fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-100 p-4;
+  animation: fadeIn 0.2s ease-out;
+}
+
+.confirm-modal {
+  @apply bg-gray-800 rounded-2xl shadow-2xl max-w-md w-full border border-gray-700;
+  animation: fadeIn 0.2s ease-out, zoomIn 0.2s ease-out;
+}
+
+.confirm-header {
+  @apply flex items-center justify-between px-6 py-4 border-b border-gray-700;
+}
+
+.confirm-title {
+  @apply text-xl font-bold text-white m-0;
+}
+
+.btn-close {
+  @apply p-2 rounded-lg hover:bg-gray-700 transition-colors text-gray-400 hover:text-white disabled:opacity-50 disabled:cursor-not-allowed;
+}
+
+.confirm-content {
+  @apply px-6 py-6;
+}
+
+.confirm-message {
+  @apply text-gray-300 text-base leading-relaxed m-0;
+}
+
+.confirm-footer {
+  @apply flex items-center justify-end gap-3 px-6 py-4 border-t border-gray-700;
+}
+
+.btn-cancel {
+  @apply px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed;
+}
+
+.btn-confirm {
+  @apply px-4 py-2 text-white rounded-lg font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes zoomIn {
+  from {
+    transform: scale(0.95);
+  }
+  to {
+    transform: scale(1);
+  }
+}

@@ -21,6 +21,8 @@ export function GetMediaURL(arg1:string):Promise<string>;
 
 export function GetQualityOptions():Promise<Array<main.QualityOption>>;
 
+export function GetSettings():Promise<main.Settings>;
+
 export function GetSubtitleURL(arg1:string):Promise<string>;
 
 export function GetTrackDisplayInfo(arg1:string):Promise<main.TrackDisplayInfo>;
@@ -37,6 +39,8 @@ export function Pause():Promise<void>;
 
 export function RemoveFromHistory(arg1:string):Promise<void>;
 
+export function ResetSettings():Promise<main.Settings>;
+
 export function SeekTo(arg1:number):Promise<void>;
 
 export function StopPlayback():Promise<void>;
@@ -44,5 +48,7 @@ export function StopPlayback():Promise<void>;
 export function TranslateExportedSubtitles(arg1:string,arg2:string):Promise<Array<string>>;
 
 export function Unpause():Promise<void>;
+
+export function UpdateSettings(arg1:main.Settings):Promise<void>;
 
 export function UpdateSubtitleSettings(arg1:options.SubtitleCastOptions):Promise<void>;
