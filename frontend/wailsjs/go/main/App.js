@@ -78,6 +78,10 @@ export function StopPlayback() {
   return window['go']['main']['App']['StopPlayback']();
 }
 
+export function TranslateExportedSubtitles(arg1, arg2) {
+  return window['go']['main']['App']['TranslateExportedSubtitles'](arg1, arg2);
+}
+
 export function Unpause() {
   return window['go']['main']['App']['Unpause']();
 }

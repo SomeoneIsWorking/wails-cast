@@ -10,10 +10,13 @@ import (
 	"sync"
 	"time"
 
+	"github.com/joho/godotenv"
+
 	"github.com/vishen/go-chromecast/application"
 	cast_proto "github.com/vishen/go-chromecast/cast/proto"
 	wails_runtime "github.com/wailsapp/wails/v2/pkg/runtime"
 
+	"wails-cast/pkg/ai"
 	localcast "wails-cast/pkg/cast"
 	"wails-cast/pkg/hls"
 	_logger "wails-cast/pkg/logger"
@@ -89,7 +92,12 @@ func NewApp() *App {
 
 func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
-
+	// Load variables from the .env file
+	err := godotenv.Load()
+	if err != nil {
+		// Handle error if the file doesn't exist or there's a problem reading it
+		fmt.Println("Error loading .env file:", err)
+	}
 	// Set context for history store to enable events
 	a.historyStore.SetContext(ctx)
 
@@ -464,6 +472,53 @@ func (a *App) ExportEmbeddedSubtitles(videoPath string) error {
 	}
 
 	return nil
+}
+
+// TranslateExportedSubtitles exports embedded subtitles and translates them
+func (a *App) TranslateExportedSubtitles(videoPath string, targetLanguage string) ([]string, error) {
+	apiKey := os.Getenv("GEMINI_API_KEY")
+	if apiKey == "" {
+		return nil, fmt.Errorf("Gemini API key is required")
+	}
+
+	if targetLanguage == "" {
+		return nil, fmt.Errorf("target language is required")
+	}
+
+	// Determine subtitle directory
+	baseDir := filepath.Dir(videoPath)
+	baseName := strings.TrimSuffix(filepath.Base(videoPath), filepath.Ext(videoPath))
+	subtitleDir := filepath.Join(baseDir, baseName)
+
+	// Check if subtitle directory exists, if not export the subtitles
+	if _, err := os.Stat(subtitleDir); os.IsNotExist(err) {
+		logger.Info("Subtitle directory doesn't exist, exporting subtitles", "dir", subtitleDir)
+		if err := a.ExportEmbeddedSubtitles(videoPath); err != nil {
+			return nil, fmt.Errorf("failed to export subtitles: %w", err)
+		}
+	} else {
+		logger.Info("Using existing exported subtitles", "dir", subtitleDir)
+	}
+
+	// Create translator
+	translator, err := ai.NewTranslator(apiKey)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create translator: %w", err)
+	}
+	defer translator.Close()
+
+	// Translate all exported subtitles
+	logger.Info("Translating exported subtitles", "directory", subtitleDir, "target", targetLanguage)
+	translatedFiles, err := translator.TranslateEmbeddedSubtitles(a.ctx, subtitleDir, targetLanguage, func(chunk string) {
+		// Stream translation progress to frontend
+		wails_runtime.EventsEmit(a.ctx, "translation:stream", chunk)
+	})
+	if err != nil {
+		return translatedFiles, fmt.Errorf("translation failed: %w", err)
+	}
+
+	logger.Info("Translation completed", "files", len(translatedFiles))
+	return translatedFiles, nil
 }
 
 // GetHistory returns all history items
