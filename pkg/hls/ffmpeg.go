@@ -88,6 +88,7 @@ func buildTranscodeArgs(opts TranscodeOptions) ([]string, error) {
 		"-ac", "2",
 		"-f", "mpegts",
 		"-copyts",
+		"-filter:a", "loudnorm",
 	)
 
 	maxResFilter := fmt.Sprintf("scale='min(%d,iw)':'-2':'force_original_aspect_ratio=decrease'", opts.MaxOutputWidth)
