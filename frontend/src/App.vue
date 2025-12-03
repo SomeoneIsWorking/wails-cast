@@ -17,10 +17,6 @@ const { showConfirmModal, confirmOptions, isConfirmLoading } = useConfirm();
 
 onMounted(() => {
   store.discoverDevices();
-  window.addEventListener("wheel", (event: WheelEvent) => {
-    event.preventDefault();
-    window.scrollTo(0, window.scrollY + event.deltaY);
-  });
 });
 
 const selectDevice = (device: any) => {
