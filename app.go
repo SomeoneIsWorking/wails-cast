@@ -250,8 +250,6 @@ func (a *App) CastToDevice(deviceIp string, fileNameOrUrl string, options option
 		return nil, err
 	}
 
-	a.App.MediaStart()
-
 	err = a.App.Load(mediaURL+"?cachebust="+time.Now().Format("20060102150405"), application.LoadOptions{
 		StartTime:   0,
 		Transcode:   false,
@@ -264,6 +262,12 @@ func (a *App) CastToDevice(deviceIp string, fileNameOrUrl string, options option
 	if err != nil {
 		return nil, fmt.Errorf("failed to load media on device: %w", err)
 	}
+
+	err = a.App.Update()
+	if err != nil {
+		return nil, fmt.Errorf("failed to update media status: %w", err)
+	}
+
 	logger.Info("Cast successful",
 		"message", fmt.Sprintf("Casting %s to %s via %s", filepath.Base(mediaPath), deviceIp, mediaURL),
 		"device", deviceIp,
