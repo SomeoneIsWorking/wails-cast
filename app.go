@@ -68,6 +68,13 @@ type PlaybackState struct {
 	Duration    float64 `json:"duration"`
 }
 
+func (a *App) createApplication() *application.Application {
+	app := application.NewApplication()
+	app.AddMessageFunc(a.handleChromecastMessage)
+	app.SetRequestTimeout(30 * time.Second)
+	return app
+}
+
 func NewApp() *App {
 	discovery := NewDeviceDiscovery()
 	localIP := discovery.GetLocalIP()
@@ -76,8 +83,7 @@ func NewApp() *App {
 	historyStore := NewHistoryStore()
 	settingsStore := NewSettingsStore()
 
-	app := &App{
-		App:           application.NewApplication(),
+	return &App{
 		discovery:     discovery,
 		mediaServer:   server,
 		localIp:       localIP,
@@ -86,9 +92,6 @@ func NewApp() *App {
 		historyStore:  historyStore,
 		settingsStore: settingsStore,
 	}
-	app.App.AddMessageFunc(app.handleChromecastMessage)
-	app.App.SetRequestTimeout(30 * time.Second)
-	return app
 }
 
 func (a *App) startup(ctx context.Context) {
@@ -239,7 +242,9 @@ func (a *App) CastToDevice(deviceIp string, fileNameOrUrl string, options option
 	a.mu.Unlock()
 
 	mediaURL := a.GetMediaURL(mediaPath)
+	a.StopPlayback()
 
+	a.App = a.createApplication()
 	err = a.App.Start(host, port)
 
 	if err != nil {
@@ -368,7 +373,10 @@ func (a *App) Unpause() error {
 
 // StopPlayback stops current playback
 func (a *App) StopPlayback() {
-	a.App.Stop()
+	if a.App != nil {
+		a.App.Stop()
+		a.App = nil
+	}
 }
 
 // OpenFileDialog opens a file picker dialog
