@@ -6,4 +6,5 @@ type CastOptions struct {
 	VideoTrack int
 	AudioTrack int
 	Bitrate    string
+	Resolution string
 }

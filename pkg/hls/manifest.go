@@ -48,6 +48,10 @@ func ManifestMatches(manifest *TranscodeOptions, options options.CastOptions, du
 		return false
 	}
 
+	if manifest.Resolution != options.Resolution {
+		return false
+	}
+
 	if manifest.Duration != duration {
 		return false
 	}

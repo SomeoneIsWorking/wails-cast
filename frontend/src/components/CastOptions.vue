@@ -46,6 +46,7 @@ const handleConfirm = async () => {
     VideoTrack: selectedVideoTrack.value,
     AudioTrack: selectedAudioTrack.value,
     Bitrate: quality.value,
+    Resolution: "",
     Subtitle: {
       BurnIn: burnSubtitles.value,
       Path:

@@ -56,7 +56,7 @@ func (s *LocalHandler) ServeManifestPlaylist(w http.ResponseWriter, r *http.Requ
 			{
 				Index:      0,
 				Bandwidth:  1500000,
-				Resolution: "1280x720",
+				Resolution: s.Options.Resolution,
 				Codecs:     "avc1.4d401f,mp4a.40.2",
 				URI:        "video_0.m3u8",
 			},
@@ -161,6 +161,7 @@ func (s *LocalHandler) transcodeSegment(ctx context.Context, segmentPath string,
 		StartTime:  startTime,
 		Duration:   s.SegmentSize,
 		Subtitle:   subtitle,
+		Resolution: s.Options.Resolution,
 		Bitrate:    s.Options.Bitrate,
 		FontSize:   s.Options.Subtitle.FontSize,
 	}
