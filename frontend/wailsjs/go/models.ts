@@ -1,3 +1,30 @@
+export namespace hls {
+	
+	export class FFmpegInfo {
+	    ffmpegInstalled: boolean;
+	    ffprobeInstalled: boolean;
+	    ffmpegVersion: string;
+	    ffprobeVersion: string;
+	    ffmpegPath: string;
+	    ffprobePath: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new FFmpegInfo(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.ffmpegInstalled = source["ffmpegInstalled"];
+	        this.ffprobeInstalled = source["ffprobeInstalled"];
+	        this.ffmpegVersion = source["ffmpegVersion"];
+	        this.ffprobeVersion = source["ffprobeVersion"];
+	        this.ffmpegPath = source["ffmpegPath"];
+	        this.ffprobePath = source["ffprobePath"];
+	    }
+	}
+
+}
+
 export namespace main {
 	
 	export class Device {

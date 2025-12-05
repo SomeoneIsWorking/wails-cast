@@ -14,7 +14,8 @@ import (
 
 // RunFFmpeg runs ffmpeg with the given arguments
 func RunFFmpeg(args ...string) error {
-	cmd := exec.Command("ffmpeg", args...)
+	initPaths(false)
+	cmd := exec.Command(ffmpegPath, args...)
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
 
@@ -48,7 +49,8 @@ func TranscodeSegment(ctx context.Context, opts TranscodeOptions) error {
 
 	// log the call
 	fmt.Printf(">>>> ffmpeg %s\n\n", strings.Join(args, " "))
-	cmd := exec.CommandContext(ctx, "ffmpeg", args...)
+	initPaths(false)
+	cmd := exec.CommandContext(ctx, ffmpegPath, args...)
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
 
@@ -144,7 +146,8 @@ func ensureSubtitleLink(outputDir string, subtitlePath string) error {
 
 // GetVideoDuration gets the duration of a video file using ffprobe
 func GetVideoDuration(videoPath string) (float64, error) {
-	cmd := exec.Command("ffprobe",
+	initPaths(false)
+	cmd := exec.Command(ffprobePath,
 		"-v", "error",
 		"-show_entries", "format=duration",
 		"-of", "default=noprint_wrappers=1:nokey=1",
@@ -169,7 +172,8 @@ func GetVideoDuration(videoPath string) (float64, error) {
 
 // GetMediaTrackInfo gets all track information for a media file using ffprobe
 func GetMediaTrackInfo(mediaPath string) (*mediainfo.MediaTrackInfo, error) {
-	cmd := exec.Command("ffprobe",
+	initPaths(false)
+	cmd := exec.Command(ffprobePath,
 		"-v", "error",
 		"-show_entries", "stream=index,codec_type,codec_name,width,height:stream_tags=language,title",
 		"-of", "json",

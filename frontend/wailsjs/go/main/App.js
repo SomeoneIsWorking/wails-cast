@@ -22,6 +22,10 @@ export function ExportEmbeddedSubtitles(arg1) {
   return window['go']['main']['App']['ExportEmbeddedSubtitles'](arg1);
 }
 
+export function GetFFmpegInfo(arg1) {
+  return window['go']['main']['App']['GetFFmpegInfo'](arg1);
+}
+
 export function GetHistory() {
   return window['go']['main']['App']['GetHistory']();
 }
