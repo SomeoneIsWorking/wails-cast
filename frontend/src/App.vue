@@ -109,13 +109,6 @@ const selectDevice = (device: any) => {
 
         <!-- Media Files Tab -->
         <section class="h-full" v-show="activeTab === 'files'">
-          <div
-            v-if="store.hasSelectedDevice"
-            class="mb-4 p-3 bg-gray-800 rounded-lg border border-gray-700"
-          >
-            <strong class="text-gray-300 mr-1">Selected Device:</strong>
-            <span class="text-blue-400">{{ store.selectedDevice?.name }}</span>
-          </div>
           <FileExplorer @options="activeTab = 'options'" />
         </section>
 
