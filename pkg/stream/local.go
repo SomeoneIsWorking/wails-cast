@@ -5,13 +5,11 @@ import (
 	"crypto/md5"
 	"encoding/hex"
 	"fmt"
-	"net/http"
 	"os"
 	"path/filepath"
 	"time"
 
 	"wails-cast/pkg/hls"
-	"wails-cast/pkg/logger"
 	"wails-cast/pkg/options"
 )
 
@@ -48,8 +46,8 @@ func NewLocalHandler(videoPath string, options options.CastOptions, localIP stri
 	}
 }
 
-// ServeManifestPlaylist generates and serves the manifest HLS playlist
-func (s *LocalHandler) ServeManifestPlaylist(w http.ResponseWriter, r *http.Request) {
+// ServeManifestPlaylist generates the manifest HLS playlist
+func (s *LocalHandler) ServeManifestPlaylist(ctx context.Context) (string, error) {
 	manifestPlaylist := &hls.ManifestPlaylist{
 		Version: 3,
 		VideoVariants: []hls.VideoVariant{
@@ -60,14 +58,11 @@ func (s *LocalHandler) ServeManifestPlaylist(w http.ResponseWriter, r *http.Requ
 			},
 		},
 	}
-	w.Header().Set("Access-Control-Allow-Origin", "*")
-	w.Header().Set("Content-Type", "application/vnd.apple.mpegurl")
-	w.Header().Set("Cache-Control", "no-cache")
-	w.Write([]byte(manifestPlaylist.Generate()))
+	return manifestPlaylist.Generate(), nil
 }
 
-// ServeTrackPlaylist generates and serves video or audio track playlists
-func (s *LocalHandler) ServeTrackPlaylist(w http.ResponseWriter, r *http.Request, trackType string, trackIndex int) {
+// ServeTrackPlaylist generates video or audio track playlists
+func (s *LocalHandler) ServeTrackPlaylist(ctx context.Context, trackType string, trackIndex int) (string, error) {
 	trackPlaylist := &hls.TrackPlaylist{
 		Version:        3,
 		TargetDuration: s.SegmentSize,
@@ -103,16 +98,12 @@ func (s *LocalHandler) ServeTrackPlaylist(w http.ResponseWriter, r *http.Request
 		trackPlaylist.Segments = append(trackPlaylist.Segments, segment)
 		cumulativeTime += segmentDuration
 	}
-	w.Header().Set("Access-Control-Allow-Origin", "*")
-	w.Header().Set("Content-Type", "application/vnd.apple.mpegurl")
-	w.Header().Set("Cache-Control", "no-cache")
-	w.Write([]byte(trackPlaylist.Generate()))
-
+	return trackPlaylist.Generate(), nil
 }
 
-// ServeSegment transcodes and serves a segment
-func (s *LocalHandler) ServeSegment(w http.ResponseWriter, r *http.Request, trackType string, trackIndex int, segmentIndex int) {
-	segmentName := filepath.Base(r.URL.Path)
+// ServeSegment transcodes and returns the segment file path
+func (s *LocalHandler) ServeSegment(ctx context.Context, trackType string, trackIndex int, segmentIndex int) (string, error) {
+	segmentName := fmt.Sprintf("segment_%d.ts", segmentIndex)
 
 	hls.EnsureCacheDir(s.OutputDir)
 
@@ -127,22 +118,13 @@ func (s *LocalHandler) ServeSegment(w http.ResponseWriter, r *http.Request, trac
 	needsRegeneration := err != nil || !hls.ManifestMatches(manifest, s.Options, s.SegmentSize)
 
 	if !hls.CacheExists(s.OutputDir, segmentName) || needsRegeneration {
-		err := s.transcodeSegment(r.Context(), segmentPath, startTime)
+		err := s.transcodeSegment(ctx, segmentPath, startTime)
 		if err != nil {
-			http.Error(w, "Transcode failed", http.StatusInternalServerError)
-			logger.Logger.Error("Transcode error", "err", err)
-			return
+			return "", fmt.Errorf("transcode failed: %w", err)
 		}
 	}
 
-	w.Header().Set("Access-Control-Allow-Origin", "*")
-	w.Header().Set("Access-Control-Allow-Methods", "GET, OPTIONS")
-	w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
-	w.Header().Set("Content-Type", "video/mp2t")
-	w.Header().Set("Accept-Ranges", "bytes")
-	w.Header().Set("Cache-Control", "public, max-age=31536000")
-
-	http.ServeFile(w, r, segmentPath)
+	return segmentPath, nil
 }
 
 func (s *LocalHandler) transcodeSegment(ctx context.Context, segmentPath string, startTime float64) error {

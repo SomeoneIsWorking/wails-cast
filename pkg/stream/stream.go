@@ -1,17 +1,20 @@
 package stream
 
-import "net/http"
+import "context"
 
 // StreamHandler defines the interface for handling media streams
 type StreamHandler interface {
-	// ServeManifestPlaylist serves the manifest playlist (/playlist.m3u8)
-	ServeManifestPlaylist(w http.ResponseWriter, r *http.Request)
+	// ServeManifestPlaylist generates the manifest playlist content
+	// Returns the playlist content as string and any error encountered
+	ServeManifestPlaylist(ctx context.Context) (string, error)
 
-	// ServeTrackPlaylist serves video or audio track playlists (/video_i.m3u8, /audio_i.m3u8)
+	// ServeTrackPlaylist generates video or audio track playlists
 	// trackType should be "video" or "audio"
 	// trackIndex is the extracted index from the path
-	ServeTrackPlaylist(w http.ResponseWriter, r *http.Request, trackType string, trackIndex int)
+	// Returns the playlist content as string and any error encountered
+	ServeTrackPlaylist(ctx context.Context, trackType string, trackIndex int) (string, error)
 
-	// ServeSegment serves a media segment
-	ServeSegment(w http.ResponseWriter, r *http.Request, trackType string, trackIndex int, segmentIndex int)
+	// ServeSegment generates a media segment
+	// Returns the file path to serve and any error encountered
+	ServeSegment(ctx context.Context, trackType string, trackIndex int, segmentIndex int) (string, error)
 }

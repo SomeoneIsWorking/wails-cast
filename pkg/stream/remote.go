@@ -74,9 +74,12 @@ func (p *RemoteHandler) GetTrackPlaylist(ctx context.Context, trackType string, 
 	return *trackPlaylist, nil
 }
 
-// ServeManifestPlaylist serves the manifest playlist
-func (p *RemoteHandler) ServeManifestPlaylist(w http.ResponseWriter, r *http.Request) {
-	p.cacheMainPlaylist()
+// ServeManifestPlaylist generates the manifest playlist
+func (p *RemoteHandler) ServeManifestPlaylist(ctx context.Context) (string, error) {
+	err := p.cacheMainPlaylist()
+	if err != nil {
+		return "", fmt.Errorf("failed to cache main playlist: %w", err)
+	}
 
 	playlist := p.Manifest.Clone()
 
@@ -94,22 +97,24 @@ func (p *RemoteHandler) ServeManifestPlaylist(w http.ResponseWriter, r *http.Req
 		videoVariant.Audio: {*audio},
 	}
 
-	w.Header().Set("Access-Control-Allow-Origin", "*")
-	w.Header().Set("Access-Control-Allow-Methods", "GET, OPTIONS")
-	w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
-	w.Header().Set("Content-Type", "application/vnd.apple.mpegurl")
-	w.Header().Set("Cache-Control", "no-cache")
-
-	w.Write([]byte(playlist.Generate()))
+	return playlist.Generate(), nil
 }
 
-// ServeTrackPlaylist serves video or audio track playlists
-func (p *RemoteHandler) ServeTrackPlaylist(w http.ResponseWriter, r *http.Request, trackType string, trackIndex int) {
-	err := p.serveTrackPlaylist(w, r, trackType, trackIndex)
+// ServeTrackPlaylist generates video or audio track playlists
+func (p *RemoteHandler) ServeTrackPlaylist(ctx context.Context, trackType string, trackIndex int) (string, error) {
+	playlistContent, err := p.getTrackPlaylist(ctx, trackType, trackIndex)
 	if err != nil {
-		http.Error(w, fmt.Sprintf("Failed to serve track playlist: %v", err), http.StatusInternalServerError)
-		return
+		return "", err
 	}
+	playlist, err := hls.ParseTrackPlaylist(playlistContent)
+
+	if err != nil {
+		return "", err
+	}
+
+	// Add program date time tags for better sync
+	addProgramDate(playlist)
+	return playlist.Generate(), nil
 }
 
 func (p *RemoteHandler) cacheMainPlaylist() error {
@@ -323,16 +328,14 @@ func (p *RemoteHandler) resolveUrl(relativeURL string) string {
 
 // ServeSegment proxies segment requests with captured cookies and headers,
 // and transcodes them using ffmpeg for compatibility
-func (p *RemoteHandler) ServeSegment(w http.ResponseWriter, r *http.Request, trackType string, trackIndex int, segmentIndex int) {
+func (p *RemoteHandler) ServeSegment(ctx context.Context, trackType string, trackIndex int, segmentIndex int) (string, error) {
 	logger.Logger.Info("Proxying request", "type", trackType, "index", trackIndex, "segment", segmentIndex)
 
-	transcodedPath, err := p.ensureSegmentExistsTranscoded(r.Context(), trackType, trackIndex, segmentIndex)
+	transcodedPath, err := p.ensureSegmentExistsTranscoded(ctx, trackType, trackIndex, segmentIndex)
 	if err != nil {
-		http.Error(w, fmt.Sprintf("Failed to ensure transcoded segment exists: %v", err), http.StatusInternalServerError)
-		return
+		return "", fmt.Errorf("failed to ensure transcoded segment exists: %w", err)
 	}
-	p.serveFile(w, transcodedPath, "video/MP2T")
-
+	return transcodedPath, nil
 }
 
 func (p *RemoteHandler) ensureSegmentExistsTranscoded(ctx context.Context, trackType string, trackIndex int, segmentIndex int) (string, error) {
