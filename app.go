@@ -477,8 +477,8 @@ func (a *App) ExportEmbeddedSubtitles(videoPath string) error {
 	return nil
 }
 
-// TranslateExportedSubtitles exports embedded subtitles and translates them
-func (a *App) TranslateExportedSubtitles(videoPath string, targetLanguage string) ([]string, error) {
+// TranslateExportedSubtitles exports embedded subtitles and translates them in the background
+func (a *App) TranslateExportedSubtitles(videoPath string, targetLanguage string) error {
 	// Get settings for API key and model
 	settings := a.settingsStore.Get()
 
@@ -486,7 +486,7 @@ func (a *App) TranslateExportedSubtitles(videoPath string, targetLanguage string
 	apiKey := settings.GeminiApiKey
 
 	if apiKey == "" {
-		return nil, fmt.Errorf("Gemini API key is required. Please set it in Settings or GEMINI_API_KEY environment variable")
+		return fmt.Errorf("Gemini API key is required. Please set it in Settings or GEMINI_API_KEY environment variable")
 	}
 
 	// Use target language from settings if not provided
@@ -494,7 +494,7 @@ func (a *App) TranslateExportedSubtitles(videoPath string, targetLanguage string
 		targetLanguage = settings.DefaultTranslationLanguage
 	}
 	if targetLanguage == "" {
-		return nil, fmt.Errorf("target language is required")
+		return fmt.Errorf("target language is required")
 	}
 
 	// Determine subtitle directory
@@ -506,31 +506,40 @@ func (a *App) TranslateExportedSubtitles(videoPath string, targetLanguage string
 	if _, err := os.Stat(subtitleDir); os.IsNotExist(err) {
 		logger.Info("Subtitle directory doesn't exist, exporting subtitles", "dir", subtitleDir)
 		if err := a.ExportEmbeddedSubtitles(videoPath); err != nil {
-			return nil, fmt.Errorf("failed to export subtitles: %w", err)
+			return fmt.Errorf("failed to export subtitles: %w", err)
 		}
 	} else {
 		logger.Info("Using existing exported subtitles", "dir", subtitleDir)
 	}
 
-	// Create translator with model from settings
-	translator, err := ai.NewTranslator(apiKey, settings.GeminiModel)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create translator: %w", err)
-	}
-	defer translator.Close()
+	// Run translation in background
+	go func() {
+		// Create translator with model from settings
+		translator, err := ai.NewTranslator(apiKey, settings.GeminiModel)
+		if err != nil {
+			wails_runtime.EventsEmit(a.ctx, "translation:error", fmt.Sprintf("Failed to create translator: %v", err))
+			return
+		}
+		defer translator.Close()
 
-	// Translate all exported subtitles
-	logger.Info("Translating exported subtitles", "directory", subtitleDir, "target", targetLanguage, "model", settings.GeminiModel)
-	translatedFiles, err := translator.TranslateEmbeddedSubtitles(a.ctx, subtitleDir, targetLanguage, func(chunk string) {
-		// Stream translation progress to frontend
-		wails_runtime.EventsEmit(a.ctx, "translation:stream", chunk)
-	})
-	if err != nil {
-		return translatedFiles, fmt.Errorf("translation failed: %w", err)
-	}
+		// Translate all exported subtitles
+		logger.Info("Translating exported subtitles", "directory", subtitleDir, "target", targetLanguage, "model", settings.GeminiModel)
+		translatedFiles, err := translator.TranslateEmbeddedSubtitles(a.ctx, subtitleDir, targetLanguage, func(chunk string) {
+			// Stream translation progress to frontend
+			wails_runtime.EventsEmit(a.ctx, "translation:stream", chunk)
+		})
+		if err != nil {
+			wails_runtime.EventsEmit(a.ctx, "translation:error", fmt.Sprintf("Translation failed: %v", err))
+			return
+		}
 
-	logger.Info("Translation completed", "files", len(translatedFiles))
-	return translatedFiles, nil
+		logger.Info("Translation completed", "files", len(translatedFiles))
+		// Emit completion event with translated file paths
+		wails_runtime.EventsEmit(a.ctx, "translation:complete", translatedFiles)
+	}()
+
+	// Return immediately - translation started
+	return nil
 }
 
 // GetHistory returns all history items

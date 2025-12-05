@@ -46,7 +46,7 @@ export function SeekTo(arg1:number):Promise<void>;
 
 export function StopPlayback():Promise<void>;
 
-export function TranslateExportedSubtitles(arg1:string,arg2:string):Promise<Array<string>>;
+export function TranslateExportedSubtitles(arg1:string,arg2:string):Promise<void>;
 
 export function Unpause():Promise<void>;
 

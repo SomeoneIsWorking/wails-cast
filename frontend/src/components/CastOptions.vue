@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from "vue";
+import { computed, ref, onMounted, onUnmounted } from "vue";
 import { useCastStore } from "@/stores/cast";
 import { useSettingsStore, qualityOptions } from "@/stores/settings";
 import { Play, Download, Languages } from "lucide-vue-next";
@@ -10,6 +10,7 @@ import {
   TranslateExportedSubtitles,
 } from "../../wailsjs/go/main/App";
 import { useToast } from "vue-toastification";
+import { EventsOn, EventsOff } from "../../wailsjs/runtime/runtime";
 
 const emit = defineEmits<{
   back: [];
@@ -87,17 +88,14 @@ const handleTranslateSubtitles = async () => {
 
   isTranslating.value = true;
   try {
-    const translatedFiles = await TranslateExportedSubtitles(
+    await TranslateExportedSubtitles(
       trackInfo.value.path,
       targetLanguage.value
     );
-    toast.success(
-      `Translated ${translatedFiles.length} subtitle(s) to ${targetLanguage.value}!`
-    );
+    toast.info(`Translation started for ${targetLanguage.value}`);
   } catch (error: any) {
-    toast.error(`Translation failed: ${error.message || error}`);
-  } finally {
     isTranslating.value = false;
+    toast.error(`Translation failed: ${error.message || error}`);
   }
 };
 
@@ -108,6 +106,30 @@ const openTranslationModal = () => {
 const hasEmbeddedSubtitles = trackInfo.value?.subtitleTracks.some((track) =>
   track.path.startsWith("embedded:")
 );
+
+onMounted(() => {
+  EventsOn("translation:complete", (translatedFiles: string[]) => {
+    isTranslating.value = false;
+    if (translatedFiles && translatedFiles.length > 0) {
+      // Auto-select external subtitle with the first translated file
+      subtitle.value = "external";
+      subtitlePath.value = translatedFiles[0];
+      toast.success(
+        `Translated ${translatedFiles.length} subtitle(s) to ${targetLanguage.value}!`
+      );
+    }
+  });
+
+  EventsOn("translation:error", (error: string) => {
+    isTranslating.value = false;
+    toast.error(`Translation failed: ${error}`);
+  });
+});
+
+onUnmounted(() => {
+  EventsOff("translation:complete");
+  EventsOff("translation:error");
+});
 </script>
 
 <template>

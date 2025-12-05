@@ -216,11 +216,9 @@ Output the translated subtitles to %s in the same format inside <output></output
 	// Convert to WebVTT format
 	vttContent := vttJson.ToWebVTTString()
 
-	// Create output file path - use parent directory name (video filename without extension)
-	// e.g., somepath/my_video/*.vtt -> somepath/my_video.targetLang.vtt
-	parentDir := filepath.Base(exportedSubtitlesDir)
-	outputDir := filepath.Dir(exportedSubtitlesDir)
-	outputPath := filepath.Join(outputDir, fmt.Sprintf("%s.%s.vtt", parentDir, targetLanguage))
+	// Create output file path - save inside the subtitle directory
+	// e.g., somepath/my_video/*.vtt -> somepath/my_video/targetLang.vtt
+	outputPath := filepath.Join(exportedSubtitlesDir, fmt.Sprintf("%s.vtt", targetLanguage))
 
 	// Write translated subtitle
 	if err := os.WriteFile(outputPath, []byte(vttContent), 0644); err != nil {
