@@ -114,8 +114,18 @@ const hasEmbeddedSubtitles = trackInfo.value?.subtitleTracks.some((track) =>
   <div class="cast-options">
     <div v-if="trackInfo">
       <div class="space-y-6 pm-2">
-        <h2 class="text-2xl font-bold text-white">Cast Options</h2>
-
+        <div class="flex justify-between">
+          <h2 class="text-2xl font-bold text-white">Cast Options</h2>
+            <button
+              @click="handleConfirm"
+              :disabled="isLoading"
+              class="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition flex items-center gap-2"
+            >
+              <Play class="w-4 h-4" v-if="!isLoading" />
+              <LoadingIcon v-else class="w-4 h-4" />
+              {{ isLoading ? "Casting..." : "Start Casting" }}
+            </button>
+        </div>
         <!-- Video Track Selection -->
         <div>
           <h3 class="text-lg font-semibold text-white mb-2">Video Track</h3>
@@ -253,25 +263,6 @@ const hasEmbeddedSubtitles = trackInfo.value?.subtitleTracks.some((track) =>
               {{ option.label }}
             </option>
           </select>
-        </div>
-
-        <!-- Actions -->
-        <div class="flex gap-3 justify-end pt-4 border-t border-gray-700">
-          <button
-            @click="$emit('back')"
-            class="px-4 py-2 bg-gray-600 text-white rounded hover:bg-gray-700 transition"
-          >
-            Cancel
-          </button>
-          <button
-            @click="handleConfirm"
-            :disabled="isLoading"
-            class="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition flex items-center gap-2"
-          >
-            <Play class="w-4 h-4" v-if="!isLoading" />
-            <LoadingIcon v-else class="w-4 h-4" />
-            {{ isLoading ? "Casting..." : "Start Casting" }}
-          </button>
         </div>
       </div>
     </div>
