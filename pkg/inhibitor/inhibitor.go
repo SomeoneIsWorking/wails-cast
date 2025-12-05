@@ -7,6 +7,7 @@ import (
 	"runtime"
 	"sync"
 	"time"
+	"wails-cast/pkg/execresolver"
 	_logger "wails-cast/pkg/logger"
 )
 
@@ -38,17 +39,19 @@ func startInhibitor() (*exec.Cmd, error) {
 	switch runtime.GOOS {
 	case "darwin":
 		// macOS: use caffeinate
-		cmd = exec.Command("caffeinate")
+		caffeinatePath := execresolver.Find("caffeinate")
+		cmd = exec.Command(caffeinatePath)
 	case "linux":
 		// Linux: try systemd-inhibit (systemd), then fallback to xdg-screensaver
-		if _, err := exec.LookPath("systemd-inhibit"); err == nil {
-			cmd = exec.Command("systemd-inhibit", "--what=idle:sleep", "--who=wails-cast", "--why=Streaming media", "--mode=block", "sleep", "1")
-		} else if _, err := exec.LookPath("xdg-screensaver"); err == nil {
-			cmd = exec.Command("xdg-screensaver", "suspend", fmt.Sprintf("%d", os.Getpid()))
+		if systemdPath, exists := execresolver.FindWithCheck("systemd-inhibit"); exists {
+			cmd = exec.Command(systemdPath, "--what=idle:sleep", "--who=wails-cast", "--why=Streaming media", "--mode=block", "sleep", "1")
+		} else if xdgPath, exists := execresolver.FindWithCheck("xdg-screensaver"); exists {
+			cmd = exec.Command(xdgPath, "suspend", fmt.Sprintf("%d", os.Getpid()))
 		}
 	case "windows":
 		// Windows: reset sleep timer via PowerShell
-		cmd = exec.Command("powershell", "-Command", "[System.Threading.Thread]::CurrentThread.SetThreadExecutionState(1)")
+		powershellPath := execresolver.Find("powershell")
+		cmd = exec.Command(powershellPath, "-Command", "[System.Threading.Thread]::CurrentThread.SetThreadExecutionState(1)")
 	}
 
 	if cmd == nil {
