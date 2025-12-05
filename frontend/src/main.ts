@@ -7,6 +7,7 @@ import "vue-toastification/dist/index.css";
 import type { PluginOptions } from "vue-toastification";
 import { useSettingsStore } from "./stores/settings";
 import { setupLoggingHandlers } from "./setupLoggingHandlers";
+import { EventsOn } from "../wailsjs/runtime/runtime";
 
 
 export const app = createApp(App);
@@ -37,5 +38,12 @@ app.use(createPinia());
 
 await useSettingsStore().loadSettings();
 setupLoggingHandlers();
+
+// Listen for stream errors from backend
+EventsOn("stream:error", (data: { message: string; error: string; full: string }) => {
+  toast.error(data.full, {
+    timeout: 5000,
+  });
+});
 
 app.mount("#app");

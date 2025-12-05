@@ -102,6 +102,8 @@ func (a *App) startup(ctx context.Context) {
 	a.settingsStore.SetContext(ctx)
 	// Set context for history store to enable events
 	a.historyStore.SetContext(ctx)
+	// Set context for media server to enable error events
+	a.mediaServer.SetContext(ctx)
 
 	// Start media server
 	go a.mediaServer.Start()

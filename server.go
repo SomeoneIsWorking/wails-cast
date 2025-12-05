@@ -1,12 +1,15 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"sync"
 	"time"
 	"wails-cast/pkg/inhibitor"
 	"wails-cast/pkg/stream"
+
+	wails_runtime "github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
 // Server is an HTTP server for serving media
@@ -17,6 +20,7 @@ type Server struct {
 	streamHandler stream.StreamHandler
 	httpServer    *http.Server
 	seekTime      int
+	ctx           context.Context
 	mu            sync.RWMutex
 }
 
@@ -50,6 +54,13 @@ func (s *Server) SetHandler(handler stream.StreamHandler) {
 
 	s.streamHandler = handler
 	logger.Info("Server handler set")
+}
+
+// SetContext sets the Wails context for event emission
+func (s *Server) SetContext(ctx context.Context) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.ctx = ctx
 }
 
 // SetSubtitlePath sets the subtitle file
@@ -102,7 +113,15 @@ func (s *Server) handleRequest(w http.ResponseWriter, r *http.Request) {
 
 	// Main playlist: /playlist.m3u8 or /media.mp4
 	if path == "/playlist.m3u8" {
-		handler.ServeManifestPlaylist(w, r)
+		playlist, err := handler.ServeManifestPlaylist(r.Context())
+		if err != nil {
+			s.handleError(w, "Failed to generate manifest playlist", err)
+			return
+		}
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		w.Header().Set("Content-Type", "application/vnd.apple.mpegurl")
+		w.Header().Set("Cache-Control", "no-cache")
+		w.Write([]byte(playlist))
 		return
 	}
 
@@ -110,13 +129,29 @@ func (s *Server) handleRequest(w http.ResponseWriter, r *http.Request) {
 
 	// Video track playlists: /video_{i}.m3u8
 	if _, err := fmt.Sscanf(path, "/video_%d.m3u8", &trackIndex); err == nil {
-		handler.ServeTrackPlaylist(w, r, "video", trackIndex)
+		playlist, err := handler.ServeTrackPlaylist(r.Context(), "video", trackIndex)
+		if err != nil {
+			s.handleError(w, "Failed to generate video track playlist", err)
+			return
+		}
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		w.Header().Set("Content-Type", "application/vnd.apple.mpegurl")
+		w.Header().Set("Cache-Control", "no-cache")
+		w.Write([]byte(playlist))
 		return
 	}
 
 	// Audio track playlists: /audio_{i}.m3u8
 	if _, err := fmt.Sscanf(path, "/audio_%d.m3u8", &trackIndex); err == nil {
-		handler.ServeTrackPlaylist(w, r, "audio", trackIndex)
+		playlist, err := handler.ServeTrackPlaylist(r.Context(), "audio", trackIndex)
+		if err != nil {
+			s.handleError(w, "Failed to generate audio track playlist", err)
+			return
+		}
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		w.Header().Set("Content-Type", "application/vnd.apple.mpegurl")
+		w.Header().Set("Cache-Control", "no-cache")
+		w.Write([]byte(playlist))
 		return
 	}
 
@@ -129,7 +164,18 @@ func (s *Server) handleRequest(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		handler.ServeSegment(w, r, "video", trackIndex, segmentIndex)
+		filePath, err := handler.ServeSegment(r.Context(), "video", trackIndex, segmentIndex)
+		if err != nil {
+			s.handleError(w, "Failed to generate video segment", err)
+			return
+		}
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		w.Header().Set("Access-Control-Allow-Methods", "GET, OPTIONS")
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+		w.Header().Set("Content-Type", "video/mp2t")
+		w.Header().Set("Accept-Ranges", "bytes")
+		w.Header().Set("Cache-Control", "public, max-age=31536000")
+		http.ServeFile(w, r, filePath)
 		return
 	}
 
@@ -140,7 +186,18 @@ func (s *Server) handleRequest(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		handler.ServeSegment(w, r, "audio", trackIndex, segmentIndex)
+		filePath, err := handler.ServeSegment(r.Context(), "audio", trackIndex, segmentIndex)
+		if err != nil {
+			s.handleError(w, "Failed to generate audio segment", err)
+			return
+		}
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		w.Header().Set("Access-Control-Allow-Methods", "GET, OPTIONS")
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+		w.Header().Set("Content-Type", "video/mp2t")
+		w.Header().Set("Accept-Ranges", "bytes")
+		w.Header().Set("Cache-Control", "public, max-age=31536000")
+		http.ServeFile(w, r, filePath)
 		return
 	}
 
@@ -164,4 +221,27 @@ func EnsureRequestDuration(r *http.Request) bool {
 		// Connection still alive, proceed with transcode
 	}
 	return false
+}
+
+// handleError logs an error, writes HTTP response, and emits a Wails event
+func (s *Server) handleError(w http.ResponseWriter, message string, err error) {
+	// Log the error
+	logger.Error(message, "error", err)
+
+	// Write HTTP error response
+	http.Error(w, fmt.Sprintf("%s: %v", message, err), http.StatusInternalServerError)
+
+	// Emit Wails event if context is available
+	s.mu.RLock()
+	ctx := s.ctx
+	s.mu.RUnlock()
+
+	if ctx != nil {
+		errorMessage := fmt.Sprintf("%s: %v", message, err)
+		wails_runtime.EventsEmit(ctx, "stream:error", map[string]string{
+			"message": message,
+			"error":   err.Error(),
+			"full":    errorMessage,
+		})
+	}
 }
