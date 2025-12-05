@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path"
 	"path/filepath"
 
 	"wails-cast/pkg/extractor"
@@ -142,10 +143,10 @@ func (m *CastManager) GetRemoteTrackInfo(videoURL string) (*mediainfo.MediaTrack
 	mediaTrackInfo, err := hls.ExtractTracksFromManifest(manifestRaw)
 
 	mediaTrackInfo.SubtitleTracks = make([]mediainfo.SubtitleTrack, 0)
-	for i := range result.Subtitles {
+	for i, subtitle := range result.Subtitles {
 		track := mediainfo.SubtitleTrack{
 			Index:    i,
-			Language: fmt.Sprintf("unknown_%d", i),
+			Language: fmt.Sprintf("%s (index: %d)", path.Base(subtitle.URL), i),
 		}
 		mediaTrackInfo.SubtitleTracks = append(mediaTrackInfo.SubtitleTracks, track)
 	}
