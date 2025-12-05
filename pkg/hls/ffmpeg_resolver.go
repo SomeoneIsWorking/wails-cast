@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"strings"
+	"wails-cast/pkg/execresolver"
 )
 
 var (
@@ -23,38 +23,14 @@ type FFmpegInfo struct {
 	FFprobePath      string `json:"ffprobePath"`
 }
 
-// findExecutable locates an executable in common system paths
-func findExecutable(name string) string {
-	// Common installation paths for macOS
-	commonPaths := []string{
-		"/usr/local/bin",
-		"/opt/homebrew/bin",
-		"/usr/bin",
-		"/opt/local/bin",
-	}
-
-	// First try exec.LookPath with current PATH
-	if path, err := exec.LookPath(name); err == nil {
-		return path
-	}
-
-	// Then check common installation directories
-	for _, dir := range commonPaths {
-		fullPath := filepath.Join(dir, name)
-		if _, err := os.Stat(fullPath); err == nil {
-			return fullPath
-		}
-	}
-
-	// Fall back to just the name (will fail if not in PATH)
-	return name
-}
-
 // initPaths initializes the ffmpeg and ffprobe paths
 func initPaths(forceRefresh bool) {
-	if forceRefresh || ffmpegPath == "" || ffprobePath == "" {
-		ffmpegPath = findExecutable("ffmpeg")
-		ffprobePath = findExecutable("ffprobe")
+	if forceRefresh {
+		ffmpegPath = execresolver.FindRefresh("ffmpeg")
+		ffprobePath = execresolver.FindRefresh("ffprobe")
+	} else if ffmpegPath == "" || ffprobePath == "" {
+		ffmpegPath = execresolver.Find("ffmpeg")
+		ffprobePath = execresolver.Find("ffprobe")
 	}
 }
 
@@ -70,7 +46,7 @@ func GetFFmpegInfo(searchAgain bool) (*FFmpegInfo, error) {
 	// Check ffmpeg
 	if _, err := os.Stat(ffmpegPath); err == nil {
 		info.FFmpegInstalled = true
-		if version := getVersion(ffmpegPath); version != "" {
+		if version := getFFmpegVersion(ffmpegPath); version != "" {
 			info.FFmpegVersion = version
 		}
 	}
@@ -78,7 +54,7 @@ func GetFFmpegInfo(searchAgain bool) (*FFmpegInfo, error) {
 	// Check ffprobe
 	if _, err := os.Stat(ffprobePath); err == nil {
 		info.FFprobeInstalled = true
-		if version := getVersion(ffprobePath); version != "" {
+		if version := getFFmpegVersion(ffprobePath); version != "" {
 			info.FFprobeVersion = version
 		}
 	}
@@ -92,14 +68,14 @@ func GetFFmpegInfo(searchAgain bool) (*FFmpegInfo, error) {
 		if !info.FFprobeInstalled {
 			missing = append(missing, "ffprobe")
 		}
-		return info, fmt.Errorf("%s not found in PATH or common installation directories. Please install ffmpeg (e.g., 'brew install ffmpeg')", strings.Join(missing, " and "))
+		return info, fmt.Errorf("%s not found in PATH or common installation directories", joinWithAnd(missing))
 	}
 
 	return info, nil
 }
 
-// getVersion extracts version from ffmpeg/ffprobe
-func getVersion(execPath string) string {
+// getFFmpegVersion extracts version from ffmpeg/ffprobe
+func getFFmpegVersion(execPath string) string {
 	cmd := exec.Command(execPath, "-version")
 	output, err := cmd.Output()
 	if err != nil {
@@ -116,5 +92,18 @@ func getVersion(execPath string) string {
 		}
 	}
 
+	return ""
+}
+
+func joinWithAnd(items []string) string {
+	if len(items) == 0 {
+		return ""
+	}
+	if len(items) == 1 {
+		return items[0]
+	}
+	if len(items) == 2 {
+		return items[0] + " and " + items[1]
+	}
 	return ""
 }
