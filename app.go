@@ -561,6 +561,11 @@ func (a *App) ResetSettings() (*Settings, error) {
 	return a.settingsStore.Get(), nil
 }
 
+// GetFFmpegInfo returns ffmpeg and ffprobe version information
+func (a *App) GetFFmpegInfo(searchAgain bool) (*hls.FFmpegInfo, error) {
+	return hls.GetFFmpegInfo(searchAgain)
+}
+
 // ClearHistory clears all history
 func (a *App) ClearHistory() error {
 	return a.historyStore.Clear()

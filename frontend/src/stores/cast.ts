@@ -3,7 +3,7 @@ import { ref, computed } from "vue";
 import { Device, deviceService } from "../services/device";
 import { CastOptions, mediaService, PlaybackState } from "../services/media";
 import { EventsOn } from "../../wailsjs/runtime/runtime";
-import { main } from "../../wailsjs/go/models";
+import { hls, main } from "../../wailsjs/go/models";
 
 export const useCastStore = defineStore("cast", () => {
   // State
@@ -13,6 +13,9 @@ export const useCastStore = defineStore("cast", () => {
   const isLoading = ref(false);
   const isCasting = ref(false);
   const error = ref<string | null>(null);
+  const ffmpegAvailable = ref<boolean | null>(null);
+  const ffmpegError = ref<string | null>(null);
+  const ffmpegInfo = ref<hls.FFmpegInfo | null>(null);
 
   type TrackDisplayInfoWithId = {
     id: number;
@@ -101,6 +104,19 @@ export const useCastStore = defineStore("cast", () => {
     isCasting.value = false;
   };
 
+  const checkFFmpeg = async () => {
+    try {
+      const { GetFFmpegInfo } = await import("../../wailsjs/go/main/App");
+      const info = await GetFFmpegInfo(true); // searchAgain = true for retry
+      ffmpegInfo.value = info;
+      ffmpegAvailable.value = info.ffmpegInstalled && info.ffprobeInstalled;
+      ffmpegError.value = null;
+    } catch (err: any) {
+      ffmpegAvailable.value = false;
+      ffmpegError.value = err?.message || "FFmpeg not found";
+    }
+  };
+
   return {
     // State
     devices,
@@ -109,9 +125,12 @@ export const useCastStore = defineStore("cast", () => {
     isLoading,
     isCasting,
     error,
+    ffmpegInfo,
     playbackState,
     castOptions,
     trackInfo,
+    ffmpegAvailable,
+    ffmpegError,
 
     // Computed
     hasDevices,
@@ -126,5 +145,6 @@ export const useCastStore = defineStore("cast", () => {
     discoverDevices,
     startCasting,
     reset,
+    checkFFmpeg,
   };
 });
