@@ -519,9 +519,15 @@ func (a *App) TranslateExportedSubtitles(videoPath string, targetLanguage string
 
 		// Translate all exported subtitles
 		logger.Info("Translating exported subtitles", "directory", subtitleDir, "target", targetLanguage, "model", settings.GeminiModel)
-		translatedFiles, err := translator.TranslateEmbeddedSubtitles(a.ctx, subtitleDir, targetLanguage, func(chunk string) {
-			// Stream translation progress to frontend
-			wails_runtime.EventsEmit(a.ctx, "translation:stream", chunk)
+		translatedFiles, err := translator.TranslateEmbeddedSubtitles(a.ctx, ai.TranslateOptions{
+			ExportedSubtitlesDir: subtitleDir,
+			TargetLanguage:       targetLanguage,
+			PromptTemplate:       settings.TranslatePromptTemplate,
+			MaxSubtitleSamples:   settings.MaxSubtitleSamples,
+			StreamCallback: func(chunk string) {
+				// Stream translation progress to frontend
+				wails_runtime.EventsEmit(a.ctx, "translation:stream", chunk)
+			},
 		})
 		if err != nil {
 			wails_runtime.EventsEmit(a.ctx, "translation:error", fmt.Sprintf("Translation failed: %v", err))

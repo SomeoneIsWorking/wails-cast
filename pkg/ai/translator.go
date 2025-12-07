@@ -3,7 +3,6 @@ package ai
 import (
 	"bytes"
 	"context"
-	_ "embed"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -15,13 +14,14 @@ import (
 	"google.golang.org/genai"
 )
 
-const (
-	defaultModel       = "gemini-2.5-flash"
-	maxSubtitleSamples = 4
-)
-
-//go:embed prompts/translate_subtitles.txt
-var translatePromptTemplate string
+// TranslateOptions contains options for subtitle translation
+type TranslateOptions struct {
+	ExportedSubtitlesDir string
+	TargetLanguage       string
+	PromptTemplate       string
+	MaxSubtitleSamples   int
+	StreamCallback       func(chunk string)
+}
 
 // Priority languages for translation reference
 var priorityLanguages = []string{"eng", "jpn", "fre", "fra", "ita", "spa", "ger", "deu"}
@@ -54,11 +54,6 @@ func NewTranslator(apiKey string, model string) (*Translator, error) {
 		return nil, fmt.Errorf("failed to create Gemini client: %w", err)
 	}
 
-	// Use provided model or fallback to default
-	if model == "" {
-		model = defaultModel
-	}
-
 	return &Translator{
 		client: client,
 		model:  model,
@@ -73,11 +68,11 @@ func (t *Translator) Close() error {
 }
 
 // TranslateEmbeddedSubtitles exports and translates all embedded subtitles
-func (t *Translator) TranslateEmbeddedSubtitles(ctx context.Context, exportedSubtitlesDir, targetLanguage string, streamCallback func(chunk string)) ([]string, error) {
+func (t *Translator) TranslateEmbeddedSubtitles(ctx context.Context, opts TranslateOptions) ([]string, error) {
 	var translatedFiles []string
 
 	// Read all .vtt files in the directory
-	entries, err := os.ReadDir(exportedSubtitlesDir)
+	entries, err := os.ReadDir(opts.ExportedSubtitlesDir)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read subtitle directory: %w", err)
 	}
@@ -95,7 +90,7 @@ func (t *Translator) TranslateEmbeddedSubtitles(ctx context.Context, exportedSub
 			continue
 		}
 
-		subtitlePath := filepath.Join(exportedSubtitlesDir, entry.Name())
+		subtitlePath := filepath.Join(opts.ExportedSubtitlesDir, entry.Name())
 		allSubtitles = append(allSubtitles, subtitleFile{
 			path:     subtitlePath,
 			filename: entry.Name(),
@@ -117,8 +112,8 @@ func (t *Translator) TranslateEmbeddedSubtitles(ctx context.Context, exportedSub
 	}
 
 	// Take only the top N subtitles
-	if len(allSubtitles) > maxSubtitleSamples {
-		allSubtitles = allSubtitles[:maxSubtitleSamples]
+	if len(allSubtitles) > opts.MaxSubtitleSamples {
+		allSubtitles = allSubtitles[:opts.MaxSubtitleSamples]
 	}
 
 	// Collect subtitle content
@@ -153,14 +148,14 @@ func (t *Translator) TranslateEmbeddedSubtitles(ctx context.Context, exportedSub
 	// Combine all subtitles into one prompt
 	combinedSubtitles := strings.Join(subtitleContents, "\n\n")
 
-	tmpl, err := template.New("translate").Parse(translatePromptTemplate)
+	tmpl, err := template.New("translate").Parse(opts.PromptTemplate)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse prompt template: %w", err)
 	}
 
 	var promptBuf bytes.Buffer
 	err = tmpl.Execute(&promptBuf, map[string]string{
-		"TargetLanguage":  targetLanguage,
+		"TargetLanguage":  opts.TargetLanguage,
 		"SubtitleContent": combinedSubtitles,
 	})
 	if err != nil {
@@ -183,8 +178,8 @@ func (t *Translator) TranslateEmbeddedSubtitles(ctx context.Context, exportedSub
 			if part.Text != "" {
 				fmt.Print(part.Text) // Print to console for logging
 				fullResponse.WriteString(part.Text)
-				if streamCallback != nil {
-					streamCallback(part.Text)
+				if opts.StreamCallback != nil {
+					opts.StreamCallback(part.Text)
 				}
 			}
 		}
@@ -223,7 +218,7 @@ func (t *Translator) TranslateEmbeddedSubtitles(ctx context.Context, exportedSub
 
 	// Create output file path - save inside the subtitle directory
 	// e.g., somepath/my_video/*.vtt -> somepath/my_video/targetLang.vtt
-	outputPath := filepath.Join(exportedSubtitlesDir, fmt.Sprintf("%s.vtt", targetLanguage))
+	outputPath := filepath.Join(opts.ExportedSubtitlesDir, fmt.Sprintf("%s.vtt", opts.TargetLanguage))
 
 	// Write translated subtitle
 	if err := os.WriteFile(outputPath, []byte(vttContent), 0644); err != nil {
