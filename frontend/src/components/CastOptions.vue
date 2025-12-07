@@ -103,8 +103,10 @@ const openTranslationModal = () => {
   showTranslationModal.value = true;
 };
 
-const hasEmbeddedSubtitles = trackInfo.value?.subtitleTracks.some((track) =>
-  track.path.startsWith("embedded:")
+const hasEmbeddedSubtitles = computed(() =>
+  trackInfo.value?.subtitleTracks.some((track) =>
+    track.path.startsWith("embedded:")
+  )
 );
 
 onMounted(() => {
@@ -138,15 +140,15 @@ onUnmounted(() => {
       <div class="space-y-6 pm-2">
         <div class="flex justify-between">
           <h2 class="text-2xl font-bold text-white">Cast Options</h2>
-            <button
-              @click="handleConfirm"
-              :disabled="isLoading"
-              class="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition flex items-center gap-2"
-            >
-              <Play class="w-4 h-4" v-if="!isLoading" />
-              <LoadingIcon v-else class="w-4 h-4" />
-              {{ isLoading ? "Casting..." : "Start Casting" }}
-            </button>
+          <button
+            @click="handleConfirm"
+            :disabled="isLoading"
+            class="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition flex items-center gap-2"
+          >
+            <Play class="w-4 h-4" v-if="!isLoading" />
+            <LoadingIcon v-else class="w-4 h-4" />
+            {{ isLoading ? "Casting..." : "Start Casting" }}
+          </button>
         </div>
         <!-- Video Track Selection -->
         <div>
