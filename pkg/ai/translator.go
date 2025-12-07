@@ -1,11 +1,14 @@
 package ai
 
 import (
+	"bytes"
 	"context"
+	_ "embed"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
+	"text/template"
 
 	"wails-cast/pkg/subtitles"
 
@@ -16,6 +19,9 @@ const (
 	defaultModel       = "gemini-2.5-flash"
 	maxSubtitleSamples = 4
 )
+
+//go:embed prompts/translate_subtitles.txt
+var translatePromptTemplate string
 
 // Priority languages for translation reference
 var priorityLanguages = []string{"eng", "jpn", "fre", "fra", "ita", "spa", "ger", "deu"}
@@ -147,26 +153,21 @@ func (t *Translator) TranslateEmbeddedSubtitles(ctx context.Context, exportedSub
 	// Combine all subtitles into one prompt
 	combinedSubtitles := strings.Join(subtitleContents, "\n\n")
 
-	// Create prompt for translation with all subtitles
-	prompt := fmt.Sprintf(`You are a professional subtitle translator. Translate the following subtitle files to %s.
+	tmpl, err := template.New("translate").Parse(translatePromptTemplate)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse prompt template: %w", err)
+	}
 
-The input subtitles are in this format:
-delay: <seconds after previous subtitle>
-duration: <duration in seconds>
-<subtitle text>
+	var promptBuf bytes.Buffer
+	err = tmpl.Execute(&promptBuf, map[string]string{
+		"TargetLanguage":  targetLanguage,
+		"SubtitleContent": combinedSubtitles,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to execute prompt template: %w", err)
+	}
 
-Details to follow:
-1. Translate ONLY the subtitle text to %s
-2. Use the multiple language tracks as reference to understand context
-3. Use consistent terminology across all subtitles (they belong to the same video)
-4. Output your translation in the same format
-5. Put your output inside <output></output> tags
-
-Here are the subtitle files to translate (different language tracks from the same video):
-
-%s
-
-Output the translated subtitles to %s in the same format inside <output></output> tags.`, targetLanguage, targetLanguage, combinedSubtitles, targetLanguage)
+	prompt := promptBuf.String()
 
 	// Generate translation with streaming
 	fmt.Println(prompt)
@@ -194,17 +195,21 @@ Output the translated subtitles to %s in the same format inside <output></output
 		return nil, fmt.Errorf("translation is empty")
 	}
 
-	// Extract content from <output> tags
-	startTag := "<output>"
-	endTag := "</output>"
+	// Extract content from <llm_output> tags, or use full response if tags missing
+	startTag := "<llm_output>"
+	endTag := "</llm_output>"
 	startIdx := strings.Index(translatedText, startTag)
 	endIdx := strings.Index(translatedText, endTag)
 
-	if startIdx == -1 || endIdx == -1 {
-		return nil, fmt.Errorf("translation output not found in expected format (missing <output> tags)")
+	var content string
+	if startIdx != -1 && endIdx != -1 {
+		// Extract from tags
+		content = translatedText[startIdx+len(startTag) : endIdx]
+	} else {
+		// Fallback: use entire response
+		fmt.Println("Warning: <llm_output> tags not found, using entire response")
+		content = translatedText
 	}
-
-	content := translatedText[startIdx+len(startTag) : endIdx]
 	content = strings.TrimSpace(content)
 
 	// Parse simple format output

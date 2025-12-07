@@ -133,10 +133,11 @@ func getExtractionJson(videoURL string, cacheDir string) (*extractor.ExtractResu
 }
 
 // GetRemoteTrackInfo extracts track information from a remote HLS stream
-func (m *CastManager) GetRemoteTrackInfo(videoURL string) (*mediainfo.MediaTrackInfo, error) {
-	result, err := getExtractionJson(videoURL, m.cacheDir(videoURL))
+func (m *CastManager) GetRemoteTrackInfo(videoURL string) (*mediainfo.MediaTrackInfo, string, error) {
+	cacheDir := m.cacheDir(videoURL)
+	result, err := getExtractionJson(videoURL, cacheDir)
 	if err != nil {
-		return nil, fmt.Errorf("failed to extract video: %w", err)
+		return nil, "", fmt.Errorf("failed to extract video: %w", err)
 	}
 
 	manifestRaw, _ := hls.ParseManifestPlaylist(result.ManifestRaw)
@@ -152,7 +153,7 @@ func (m *CastManager) GetRemoteTrackInfo(videoURL string) (*mediainfo.MediaTrack
 		mediaTrackInfo.SubtitleTracks = append(mediaTrackInfo.SubtitleTracks, track)
 	}
 	if err != nil {
-		return nil, fmt.Errorf("failed to extract tracks from manifest playlist: %w", err)
+		return nil, "", fmt.Errorf("failed to extract tracks from manifest playlist: %w", err)
 	}
-	return mediaTrackInfo, nil
+	return mediaTrackInfo, cacheDir, nil
 }
