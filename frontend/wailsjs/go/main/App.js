@@ -14,12 +14,24 @@ export function ClearHistory() {
   return window['go']['main']['App']['ClearHistory']();
 }
 
+export function DeleteAllVideoCache() {
+  return window['go']['main']['App']['DeleteAllVideoCache']();
+}
+
+export function DeleteTranscodedCache() {
+  return window['go']['main']['App']['DeleteTranscodedCache']();
+}
+
 export function DiscoverDevices() {
   return window['go']['main']['App']['DiscoverDevices']();
 }
 
 export function ExportEmbeddedSubtitles(arg1) {
   return window['go']['main']['App']['ExportEmbeddedSubtitles'](arg1);
+}
+
+export function GetCacheStats() {
+  return window['go']['main']['App']['GetCacheStats']();
 }
 
 export function GetFFmpegInfo(arg1) {

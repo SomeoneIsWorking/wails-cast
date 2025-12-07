@@ -16,6 +16,7 @@ import (
 
 	"wails-cast/pkg/ai"
 	localcast "wails-cast/pkg/cast"
+	"wails-cast/pkg/folders"
 	"wails-cast/pkg/hls"
 	_logger "wails-cast/pkg/logger"
 	"wails-cast/pkg/mediainfo"
@@ -351,7 +352,22 @@ func (a *App) UpdateSubtitleSettings(options options.SubtitleCastOptions) error 
 }
 
 func (a *App) ClearCache() error {
-	return nil
+	return folders.DeleteAllCache()
+}
+
+// GetCacheStats returns cache statistics
+func (a *App) GetCacheStats() (*folders.CacheStats, error) {
+	return folders.GetCacheStats()
+}
+
+// DeleteTranscodedCache removes only transcoded video segments
+func (a *App) DeleteTranscodedCache() error {
+	return folders.DeleteTranscodedCache()
+}
+
+// DeleteAllVideoCache removes all video files but keeps metadata
+func (a *App) DeleteAllVideoCache() error {
+	return folders.DeleteAllVideoCache()
 }
 
 // Pause pauses current playback

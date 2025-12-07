@@ -1,3 +1,26 @@
+export namespace folders {
+	
+	export class CacheStats {
+	    totalSize: number;
+	    transcodedSize: number;
+	    rawSegmentsSize: number;
+	    metadataSize: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new CacheStats(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.totalSize = source["totalSize"];
+	        this.transcodedSize = source["transcodedSize"];
+	        this.rawSegmentsSize = source["rawSegmentsSize"];
+	        this.metadataSize = source["metadataSize"];
+	    }
+	}
+
+}
+
 export namespace hls {
 	
 	export class FFmpegInfo {
