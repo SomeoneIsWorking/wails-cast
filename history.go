@@ -8,6 +8,8 @@ import (
 	"sync"
 	"time"
 
+	"wails-cast/pkg/folders"
+
 	wails_runtime "github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
@@ -31,13 +33,7 @@ type HistoryStore struct {
 }
 
 func NewHistoryStore() *HistoryStore {
-	// Get config directory
-	configDir, err := os.UserConfigDir()
-	if err != nil {
-		configDir = "."
-	}
-
-	appConfigDir := filepath.Join(configDir, "wails-cast")
+	appConfigDir := folders.GetConfig()
 	os.MkdirAll(appConfigDir, 0755)
 
 	historyPath := filepath.Join(appConfigDir, historyFileName)
