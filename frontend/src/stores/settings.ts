@@ -124,7 +124,7 @@ export const useSettingsStore = defineStore("settings", () => {
         {
           key: "maxOutputWidth",
           label: "Max Output Width",
-          description: "Maximum output width for video encoding",
+          description: "Maximum output width for video encoding (0 for original width)",
           type: "number",
           min: 640,
           max: 3840,
