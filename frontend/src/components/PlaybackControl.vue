@@ -16,14 +16,14 @@
         <div class="flex items-center gap-3">
           <span
             v-if="playbackState.status === 'PAUSED'"
-            class="px-3 py-1 bg-yellow-900/30 border border-yellow-700 rounded-full text-yellow-400 text-sm font-medium flex items-center gap-1"
+            class="px-3 py-1 bg-yellow-900/30 border border-yellow-700 rounded-md text-yellow-400 text-sm font-medium flex items-center gap-1"
           >
             <Pause :size="14" />
             Paused
           </span>
           <button
             @click="stopPlayback"
-            class="btn-danger flex items-center gap-2"
+            class="btn-danger"
           >
             <Square :size="18" />
             Stop
@@ -48,11 +48,11 @@
           @mousemove="updateTooltipPosition"
           @mouseenter="showTooltip = true"
           @mouseleave="showTooltip = false"
-          class="w-full h-2 bg-white/10 rounded cursor-pointer relative overflow-hidden"
+          class="w-full h-2 bg-white/10 rounded-md cursor-pointer relative overflow-hidden"
           ref="seekBar"
         >
           <div
-            class="h-full bg-linear-to-r from-purple-500 to-purple-600 rounded pointer-events-none transition-all duration-100"
+            class="h-full bg-linear-to-r from-purple-500 to-purple-600 rounded-md pointer-events-none transition-all duration-100"
             :style="{
               width:
                 (playbackState.currentTime / playbackState.duration) * 100 +
@@ -62,7 +62,7 @@
         </div>
         <div
           v-if="showTooltip"
-          class="absolute bottom-full left-0 mb-2 px-2 py-1 bg-black/90 text-white text-xs rounded pointer-events-none whitespace-nowrap z-10"
+          class="absolute bottom-full left-0 mb-2 px-2 py-1 bg-black/90 text-white text-xs rounded-md pointer-events-none whitespace-nowrap z-10"
           :style="{
             left: tooltipPosition + 'px',
             transform: 'translateX(-50%)',
@@ -75,24 +75,24 @@
       <!-- Controls -->
       <div class="flex items-center justify-center gap-2">
         <button @click="seekRelative(-30)" class="btn-icon" title="Rewind 30s">
-          <Rewind :size="20" />
+          <Rewind :size="18" />
         </button>
         <button @click="seekRelative(-10)" class="btn-icon" title="Rewind 10s">
-          <SkipBack :size="20" />
+          <SkipBack :size="18" />
         </button>
         <button
           @click="togglePause"
-          class="btn-success px-6 py-3 flex items-center gap-2 text-lg"
+          class="btn-success"
         >
-          <Play v-if="playbackState.status === 'PAUSED'" :size="20" />
-          <Pause v-else :size="20" />
+          <Play v-if="playbackState.status === 'PAUSED'" :size="18" />
+          <Pause v-else :size="18" />
           {{ playbackState.status === "PAUSED" ? "Play" : "Pause" }}
         </button>
         <button @click="seekRelative(10)" class="btn-icon" title="Forward 10s">
-          <SkipForward :size="20" />
+          <SkipForward :size="18" />
         </button>
         <button @click="seekRelative(30)" class="btn-icon" title="Forward 30s">
-          <FastForward :size="20" />
+          <FastForward :size="18" />
         </button>
       </div>
     </div>

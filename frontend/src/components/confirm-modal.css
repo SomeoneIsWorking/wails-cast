@@ -6,7 +6,7 @@
 }
 
 .confirm-modal {
-  @apply bg-gray-800 rounded-2xl shadow-2xl max-w-md w-full border border-gray-700;
+  @apply bg-gray-800 rounded-md shadow-2xl max-w-md w-full border border-gray-700;
   animation: fadeIn 0.2s ease-out, zoomIn 0.2s ease-out;
 }
 
@@ -16,10 +16,6 @@
 
 .confirm-title {
   @apply text-xl font-bold text-white m-0;
-}
-
-.btn-close {
-  @apply p-2 rounded-lg hover:bg-gray-700 transition-colors text-gray-400 hover:text-white disabled:opacity-50 disabled:cursor-not-allowed;
 }
 
 .confirm-content {
@@ -34,12 +30,8 @@
   @apply flex items-center justify-end gap-3 px-6 py-4 border-t border-gray-700;
 }
 
-.btn-cancel {
-  @apply px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed;
-}
-
 .btn-confirm {
-  @apply px-4 py-2 text-white rounded-lg font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2;
+  @apply px-4 py-2 text-white rounded-md font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2;
 }
 
 @keyframes fadeIn {

@@ -365,7 +365,7 @@ const getIconComponent = (iconName: string) => {
                   <div class="flex flex-col gap-2">
                     <button
                       @click="handleDeleteTranscodedCache"
-                      class="cache-btn cache-btn-warning"
+                      class="btn-warning btn-sm w-full"
                     >
                       <Trash2 class="w-4 h-4" />
                       Delete Transcoded Cache
@@ -375,7 +375,7 @@ const getIconComponent = (iconName: string) => {
                     </button>
                     <button
                       @click="handleDeleteAllVideoCache"
-                      class="cache-btn cache-btn-warning"
+                      class="btn-warning btn-sm w-full"
                     >
                       <Trash2 class="w-4 h-4" />
                       Delete All Video Cache
@@ -390,7 +390,7 @@ const getIconComponent = (iconName: string) => {
                     </button>
                     <button
                       @click="handleDeleteAllCache"
-                      class="cache-btn cache-btn-danger"
+                      class="btn-danger btn-sm w-full"
                     >
                       <Trash2 class="w-4 h-4" />
                       Delete All Cache
@@ -409,11 +409,11 @@ const getIconComponent = (iconName: string) => {
 
       <!-- Footer -->
       <div class="settings-footer">
-        <button @click="handleReset" class="btn-reset">
+        <button @click="handleReset" class="btn-secondary">
           <RotateCcw class="w-4 h-4" />
           Reset to Defaults
         </button>
-        <button @click="handleSave" class="btn-done">
+        <button @click="handleSave" class="btn-primary">
           <Save class="w-4 h-4" />
           Save
         </button>
