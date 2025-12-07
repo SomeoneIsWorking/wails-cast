@@ -93,10 +93,14 @@ func buildTranscodeArgs(opts TranscodeOptions) ([]string, error) {
 		"-filter:a", "loudnorm",
 	)
 
-	maxResFilter := fmt.Sprintf("scale='min(%d,iw)':'-2':'force_original_aspect_ratio=decrease'", opts.MaxOutputWidth)
-
 	if opts.Bitrate != "" {
 		args = append(args, "-b:v", opts.Bitrate)
+	}
+
+	var filterStr []string
+
+	if opts.MaxOutputWidth > 0 {
+		filterStr = append(filterStr, fmt.Sprintf("scale='min(%d,iw)':'-2':'force_original_aspect_ratio=decrease'", opts.MaxOutputWidth))
 	}
 
 	subtitleFilter, err := buildSubtitleFilter(filepath.Dir(opts.OutputPath), opts.Subtitle, opts.InputPath, opts.FontSize)
@@ -104,15 +108,14 @@ func buildTranscodeArgs(opts TranscodeOptions) ([]string, error) {
 		return nil, err
 	}
 
-	filterStr := maxResFilter // Start with the resolution limit filter
-
 	if subtitleFilter != "" {
 		// Combine the max resolution filter and the subtitle filter
-		filterStr = maxResFilter + "," + subtitleFilter
+		filterStr = append(filterStr, subtitleFilter)
 	}
 
-	args = append(args, "-vf", filterStr)
-
+	if len(filterStr) > 0 {
+		args = append(args, "-vf", strings.Join(filterStr, ","))
+	}
 	// Output file
 	return append(args, opts.OutputPath), nil
 }

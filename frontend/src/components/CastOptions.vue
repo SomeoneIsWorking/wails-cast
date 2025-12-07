@@ -47,7 +47,7 @@ const handleConfirm = async () => {
     VideoTrack: selectedVideoTrack.value,
     AudioTrack: selectedAudioTrack.value,
     Bitrate: quality.value,
-    MaxOutputWidth: 1920,
+    MaxOutputWidth: settingsStore.settings.maxOutputWidth,
     Subtitle: {
       BurnIn: burnSubtitles.value,
       Path:

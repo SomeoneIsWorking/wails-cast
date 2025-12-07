@@ -22,7 +22,7 @@ func getDefaultSettings() Settings {
 		GeminiModel:                "gemini-2.5-flash",
 		DefaultQuality:             "5M",
 		SubtitleFontSize:           24,
-		MaxOutputWidth:             1920,
+		MaxOutputWidth:             0,
 	}
 }
 
