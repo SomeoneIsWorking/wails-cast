@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 
 	"wails-cast/pkg/extractor"
+	"wails-cast/pkg/folders"
 	"wails-cast/pkg/hls"
 	"wails-cast/pkg/logger"
 	"wails-cast/pkg/mediainfo"
@@ -27,7 +28,7 @@ type CastManager struct {
 
 // NewCastManager creates a new CastManager
 func NewCastManager(localIP string, proxyPort int) *CastManager {
-	cacheRoot := filepath.Join(os.TempDir(), "wails-cast-cache")
+	cacheRoot := folders.GetCache()
 	os.MkdirAll(cacheRoot, 0755)
 	return &CastManager{
 		LocalIP:   localIP,

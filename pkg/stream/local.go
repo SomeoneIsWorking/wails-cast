@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"time"
 
+	"wails-cast/pkg/folders"
 	"wails-cast/pkg/hls"
 	"wails-cast/pkg/options"
 )
@@ -32,7 +33,7 @@ func NewLocalHandler(videoPath string, options options.CastOptions, localIP stri
 
 	hash := md5.Sum([]byte(videoPath))
 	cacheKey := hex.EncodeToString(hash[:])
-	baseDir := filepath.Join(os.TempDir(), "wails-cast-hls")
+	baseDir := folders.GetCache()
 	outputDir := filepath.Join(baseDir, cacheKey)
 	hls.EnsureCacheDir(outputDir)
 

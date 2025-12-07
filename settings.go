@@ -6,6 +6,8 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
+
+	"wails-cast/pkg/folders"
 )
 
 const (
@@ -42,13 +44,7 @@ type SettingsStore struct {
 }
 
 func NewSettingsStore() *SettingsStore {
-	// Get config directory
-	configDir, err := os.UserConfigDir()
-	if err != nil {
-		configDir = "."
-	}
-
-	appConfigDir := filepath.Join(configDir, "wails-cast")
+	appConfigDir := folders.GetConfig()
 	os.MkdirAll(appConfigDir, 0755)
 
 	settingsPath := filepath.Join(appConfigDir, settingsFileName)
