@@ -1,10 +1,10 @@
 package options
 
-// CastOptions holds options for streaming
+// CastOptions holds options for casting media
 type CastOptions struct {
-	Subtitle       SubtitleCastOptions
+	SubtitlePath   string
+	SubtitleBurnIn bool
 	VideoTrack     int
 	AudioTrack     int
 	Bitrate        string
-	MaxOutputWidth int
 }

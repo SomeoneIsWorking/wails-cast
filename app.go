@@ -189,10 +189,21 @@ func (a *App) GetTrackDisplayInfo(fileNameOrUrl string) (*TrackDisplayInfo, erro
 }
 
 // CastToDevice casts media (local file or remote URL) to a device
-func (a *App) CastToDevice(deviceIp string, fileNameOrUrl string, options options.CastOptions) (*PlaybackState, error) {
+func (a *App) CastToDevice(deviceIp string, fileNameOrUrl string, castOptions options.CastOptions) (*PlaybackState, error) {
 	// Determine if input is a local file or remote URL
 	isRemote := strings.HasPrefix(fileNameOrUrl, "http://") || strings.HasPrefix(fileNameOrUrl, "https://")
-
+	settings := a.GetSettings()
+	options := &options.StreamOptions{
+		Subtitle: options.SubtitleCastOptions{
+			Path:     castOptions.SubtitlePath,
+			BurnIn:   castOptions.SubtitleBurnIn,
+			FontSize: settings.SubtitleFontSize,
+		},
+		VideoTrack:     castOptions.VideoTrack,
+		AudioTrack:     castOptions.AudioTrack,
+		Bitrate:        castOptions.Bitrate,
+		MaxOutputWidth: settings.MaxOutputWidth,
+	}
 	var mediaPath string
 	var duration float64
 	var err error
@@ -429,18 +440,18 @@ func (a *App) OpenFileDialog(title string, filters []string) (string, error) {
 }
 
 // LogInfo logs an info message from frontend
-func (a *App) LogInfo(message string) {
-	logger.Info(message)
+func (a *App) LogInfo(message string, args ...any) {
+	logger.Info(message, args...)
 }
 
 // LogWarn logs a warning message from frontend
-func (a *App) LogWarn(message string) {
-	logger.Warn(message)
+func (a *App) LogWarn(message string, args ...any) {
+	logger.Warn(message, args...)
 }
 
 // LogError logs an error message from frontend
-func (a *App) LogError(message string) {
-	logger.Error(message)
+func (a *App) LogError(message string, args ...any) {
+	logger.Error(message, args...)
 }
 
 // ExportEmbeddedSubtitles exports all embedded subtitle tracks to WebVTT files

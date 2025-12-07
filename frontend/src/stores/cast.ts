@@ -1,9 +1,9 @@
 import { defineStore } from "pinia";
 import { ref, computed } from "vue";
 import { Device, deviceService } from "../services/device";
-import { CastOptions, mediaService, PlaybackState } from "../services/media";
 import { EventsOn } from "../../wailsjs/runtime/runtime";
-import { hls, main } from "../../wailsjs/go/models";
+import { hls, main, options } from "../../wailsjs/go/models";
+import { mediaService } from "@/services/media";
 
 export const useCastStore = defineStore("cast", () => {
   // State
@@ -16,19 +16,15 @@ export const useCastStore = defineStore("cast", () => {
   const ffmpegAvailable = ref<boolean | null>(null);
   const ffmpegError = ref<string | null>(null);
   const ffmpegInfo = ref<hls.FFmpegInfo | null>(null);
+  const trackInfo = ref<main.TrackDisplayInfo | null>(null);
 
-  type TrackDisplayInfoWithId = {
-    id: number;
-  } & Omit<main.TrackDisplayInfo, "convertValues">;
-  const trackInfo = ref<TrackDisplayInfoWithId | null>(null);
-
-  EventsOn("playback:state", (state: PlaybackState) => {
+  EventsOn("playback:state", (state: main.PlaybackState) => {
     playbackState.value = state;
     isCasting.value = playbackState.value.status !== "STOPPED";
   });
 
   // Playback State
-  const playbackState = ref<PlaybackState>({
+  const playbackState = ref<main.PlaybackState>({
     status: "STOPPED",
     mediaPath: "",
     mediaName: "",
@@ -39,7 +35,7 @@ export const useCastStore = defineStore("cast", () => {
   });
 
   // Cast Options
-  const castOptions = ref<CastOptions>();
+  const castOptions = ref<options.CastOptions>();
 
   // Computed
   const hasDevices = computed(() => devices.value.length > 0);
@@ -60,7 +56,7 @@ export const useCastStore = defineStore("cast", () => {
   };
 
   const setTrackInfo = (info: main.TrackDisplayInfo) => {
-    trackInfo.value = { ...info, id: 1 - (trackInfo.value?.id ?? 0) };
+    trackInfo.value = info;
   };
 
   EventsOn("discovery:complete", () => {
@@ -82,7 +78,7 @@ export const useCastStore = defineStore("cast", () => {
     await deviceService.discoverDevices();
   };
 
-  const startCasting = async (media: string, pCastOptions: CastOptions) => {
+  const startCasting = async (media: string, pCastOptions: options.CastOptions) => {
     if (!selectedDevice.value) return;
 
     castOptions.value = pCastOptions;

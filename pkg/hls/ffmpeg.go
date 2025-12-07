@@ -40,7 +40,7 @@ type TranscodeOptions struct {
 }
 
 // TranscodeSegment transcodes a segment with optional 100ms wait to avoid wasted work during rapid seeking
-func TranscodeSegment(ctx context.Context, opts TranscodeOptions) error {
+func TranscodeSegment(ctx context.Context, opts *TranscodeOptions) error {
 	// Build ffmpeg arguments
 	args, err := buildTranscodeArgs(opts)
 	if err != nil {
@@ -69,7 +69,7 @@ func TranscodeSegment(ctx context.Context, opts TranscodeOptions) error {
 }
 
 // buildTranscodeArgs builds ffmpeg arguments based on options
-func buildTranscodeArgs(opts TranscodeOptions) ([]string, error) {
+func buildTranscodeArgs(opts *TranscodeOptions) ([]string, error) {
 	args := []string{"-y"}
 
 	if opts.StartTime > 0 {

@@ -11,10 +11,7 @@ import {
 } from "../../wailsjs/go/main/App";
 import { useToast } from "vue-toastification";
 import { EventsOn, EventsOff } from "../../wailsjs/runtime/runtime";
-
-const emit = defineEmits<{
-  back: [];
-}>();
+import { options } from "../../wailsjs/go/models";
 
 const castStore = useCastStore();
 const settingsStore = useSettingsStore();
@@ -43,19 +40,15 @@ const showTranslationModal = ref(false);
 const handleConfirm = async () => {
   if (!trackInfo.value) return;
 
-  const opts = {
+  const opts: options.CastOptions = {
     VideoTrack: selectedVideoTrack.value,
     AudioTrack: selectedAudioTrack.value,
     Bitrate: quality.value,
-    MaxOutputWidth: settingsStore.settings.maxOutputWidth,
-    Subtitle: {
-      BurnIn: burnSubtitles.value,
-      Path:
-        subtitle.value === "external"
-          ? "external:" + subtitlePath.value
-          : subtitle.value,
-      FontSize: settingsStore.settings.subtitleFontSize,
-    },
+    SubtitleBurnIn: burnSubtitles.value,
+    SubtitlePath:
+      subtitle.value === "external"
+        ? "external:" + subtitlePath.value
+        : subtitle.value,
   };
 
   isLoading.value = true;
@@ -298,7 +291,6 @@ onUnmounted(() => {
         <p class="text-gray-500 text-sm mb-6">
           Select a media file to configure cast options
         </p>
-        <button @click="$emit('back')" class="btn-primary">Go to Files</button>
       </div>
     </div>
 

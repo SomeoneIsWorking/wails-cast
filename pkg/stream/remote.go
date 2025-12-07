@@ -33,7 +33,7 @@ type RemoteHandler struct {
 	AudioPlaylistURL    string // For demuxed HLS: URL of audio playlist
 	VideoPlaylistURL    string // For demuxed HLS: URL of video playlist
 	IsManifestRewritten bool
-	Options             options.CastOptions
+	Options             *options.StreamOptions
 	Duration            float64 // Total duration of the stream in seconds
 }
 
@@ -43,7 +43,7 @@ type MainMap struct {
 }
 
 // NewRemoteHandler creates a new HLS handler
-func NewRemoteHandler(localIP string, cacheDir string, options options.CastOptions) *RemoteHandler {
+func NewRemoteHandler(localIP string, cacheDir string, options *options.StreamOptions) *RemoteHandler {
 	os.MkdirAll(cacheDir, 0755)
 
 	return &RemoteHandler{
@@ -471,7 +471,7 @@ func (p *RemoteHandler) transcodeSegment(ctx context.Context, rawPath string, tr
 		}
 	}
 
-	opts := hls.TranscodeOptions{
+	opts := &hls.TranscodeOptions{
 		InputPath:      rawPath,
 		OutputPath:     transcodedPath,
 		StartTime:      0,
