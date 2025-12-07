@@ -62,16 +62,16 @@ export function GetTrackDisplayInfo(arg1) {
   return window['go']['main']['App']['GetTrackDisplayInfo'](arg1);
 }
 
-export function LogError(arg1) {
-  return window['go']['main']['App']['LogError'](arg1);
+export function LogError(arg1, arg2) {
+  return window['go']['main']['App']['LogError'](arg1, arg2);
 }
 
-export function LogInfo(arg1) {
-  return window['go']['main']['App']['LogInfo'](arg1);
+export function LogInfo(arg1, arg2) {
+  return window['go']['main']['App']['LogInfo'](arg1, arg2);
 }
 
-export function LogWarn(arg1) {
-  return window['go']['main']['App']['LogWarn'](arg1);
+export function LogWarn(arg1, arg2) {
+  return window['go']['main']['App']['LogWarn'](arg1, arg2);
 }
 
 export function OpenFileDialog(arg1, arg2) {

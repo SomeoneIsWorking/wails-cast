@@ -37,7 +37,7 @@ func NewCastManager(localIP string, proxyPort int) *CastManager {
 	}
 }
 
-func (m *CastManager) CreateRemoteHandler(videoURL string, options options.CastOptions) (*stream.RemoteHandler, error) {
+func (m *CastManager) CreateRemoteHandler(videoURL string, options *options.StreamOptions) (*stream.RemoteHandler, error) {
 	// 1. Calculate hash of video URL for cache key
 	cacheDir := m.cacheDir(videoURL)
 

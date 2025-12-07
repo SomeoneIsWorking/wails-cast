@@ -150,7 +150,7 @@ func ExtractManifestPlaylist(pageURL string) (*ExtractResult, error) {
 	page := browser.MustPage("")
 
 	// Shared result that will accumulate data
-	var result = ExtractResult{}
+	var result = &ExtractResult{}
 	var manifestFound bool
 	var manifestFoundTime time.Time
 	subtitleURLs := make(map[string]bool) // Track processed subtitle URLs
@@ -276,13 +276,13 @@ func ExtractManifestPlaylist(pageURL string) (*ExtractResult, error) {
 	case <-done:
 		if manifestFound {
 			fmt.Printf("Extraction complete: found manifest with %d subtitle(s)\n", len(result.Subtitles))
-			return &result, nil
+			return result, nil
 		}
 		return nil, fmt.Errorf("manifest found but result is nil")
 	case <-time.After(5 * time.Minute):
 		if manifestFound {
 			fmt.Printf("Timeout reached, returning partial result with %d subtitle(s)\n", len(result.Subtitles))
-			return &result, nil
+			return result, nil
 		}
 		return nil, fmt.Errorf("timeout waiting for video URL")
 	}

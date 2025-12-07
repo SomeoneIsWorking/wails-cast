@@ -275,6 +275,26 @@ export namespace mediainfo {
 
 export namespace options {
 	
+	export class CastOptions {
+	    SubtitlePath: string;
+	    SubtitleBurnIn: boolean;
+	    VideoTrack: number;
+	    AudioTrack: number;
+	    Bitrate: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new CastOptions(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.SubtitlePath = source["SubtitlePath"];
+	        this.SubtitleBurnIn = source["SubtitleBurnIn"];
+	        this.VideoTrack = source["VideoTrack"];
+	        this.AudioTrack = source["AudioTrack"];
+	        this.Bitrate = source["Bitrate"];
+	    }
+	}
 	export class SubtitleCastOptions {
 	    Path: string;
 	    BurnIn: boolean;
@@ -290,44 +310,6 @@ export namespace options {
 	        this.BurnIn = source["BurnIn"];
 	        this.FontSize = source["FontSize"];
 	    }
-	}
-	export class CastOptions {
-	    Subtitle: SubtitleCastOptions;
-	    VideoTrack: number;
-	    AudioTrack: number;
-	    Bitrate: string;
-	    MaxOutputWidth: number;
-	
-	    static createFrom(source: any = {}) {
-	        return new CastOptions(source);
-	    }
-	
-	    constructor(source: any = {}) {
-	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.Subtitle = this.convertValues(source["Subtitle"], SubtitleCastOptions);
-	        this.VideoTrack = source["VideoTrack"];
-	        this.AudioTrack = source["AudioTrack"];
-	        this.Bitrate = source["Bitrate"];
-	        this.MaxOutputWidth = source["MaxOutputWidth"];
-	    }
-	
-		convertValues(a: any, classs: any, asMap: boolean = false): any {
-		    if (!a) {
-		        return a;
-		    }
-		    if (a.slice && a.map) {
-		        return (a as any[]).map(elem => this.convertValues(elem, classs));
-		    } else if ("object" === typeof a) {
-		        if (asMap) {
-		            for (const key of Object.keys(a)) {
-		                a[key] = new classs(a[key]);
-		            }
-		            return a;
-		        }
-		        return new classs(a);
-		    }
-		    return a;
-		}
 	}
 
 }

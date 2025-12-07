@@ -29,7 +29,7 @@ func LoadSegmentManifest(manifestPath string) (*TranscodeOptions, error) {
 }
 
 // ManifestMatches checks if current parameters match manifest (used by local file HLS)
-func ManifestMatches(manifest *TranscodeOptions, options options.CastOptions, duration int) bool {
+func ManifestMatches(manifest *TranscodeOptions, options *options.StreamOptions, duration int) bool {
 	if manifest == nil {
 		return false
 	}

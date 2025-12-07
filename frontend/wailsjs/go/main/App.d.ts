@@ -35,11 +35,11 @@ export function GetSubtitleURL(arg1:string):Promise<string>;
 
 export function GetTrackDisplayInfo(arg1:string):Promise<main.TrackDisplayInfo>;
 
-export function LogError(arg1:string):Promise<void>;
+export function LogError(arg1:string,arg2:Array<any>):Promise<void>;
 
-export function LogInfo(arg1:string):Promise<void>;
+export function LogInfo(arg1:string,arg2:Array<any>):Promise<void>;
 
-export function LogWarn(arg1:string):Promise<void>;
+export function LogWarn(arg1:string,arg2:Array<any>):Promise<void>;
 
 export function OpenFileDialog(arg1:string,arg2:Array<string>):Promise<string>;
 

@@ -4,8 +4,8 @@ import { isAcceptedFile } from '../utils/file'
 type DropEventDetail = { x: number; y: number; paths: string[] }
 
 interface Options {
-  dropZoneRef?: Ref<HTMLElement | null>
-  acceptedExtensions?: string[]
+  dropZoneRef: Ref<HTMLElement | null>
+  acceptedExtensions: string[]
   onDrop: (paths: string[]) => void
 }
 
