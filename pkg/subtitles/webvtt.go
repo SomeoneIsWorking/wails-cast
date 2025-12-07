@@ -93,12 +93,15 @@ func ParseSimpleFormat(content string) (*WebVTTJson, error) {
 func Parse(vttContent string) (*WebVTTJson, error) {
 	var rawEntries []rawEntry
 
-	// Split by double newlines to get individual subtitle blocks
-	blocks := strings.Split(vttContent, "\n\n")
+	// Normalize line endings
+	vttContent = strings.ReplaceAll(vttContent, "\r\n", "\n")
 
-	for _, block := range blocks {
+	// Split by double newlines to get individual subtitle blocks
+	blocks := strings.SplitSeq(vttContent, "\n\n")
+
+	for block := range blocks {
 		block = strings.TrimSpace(block)
-		if block == "" || strings.HasPrefix(block, "WEBVTT") {
+		if block == "" || strings.HasPrefix(block, "WEBVTT") || strings.HasPrefix(block, "NOTE") {
 			continue
 		}
 
@@ -115,6 +118,10 @@ func Parse(vttContent string) (*WebVTTJson, error) {
 			if strings.Contains(line, "-->") {
 				timestampLine = line
 			} else if timestampLine != "" && strings.TrimSpace(line) != "" {
+				// Skip sequence numbers (lines that are just numbers)
+				if _, err := strconv.Atoi(strings.TrimSpace(line)); err == nil && timestampLine == "" {
+					continue
+				}
 				// This is subtitle text
 				textLines = append(textLines, line)
 			}
@@ -123,6 +130,9 @@ func Parse(vttContent string) (*WebVTTJson, error) {
 		if timestampLine == "" {
 			continue
 		}
+
+		// Normalize SRT-style timestamps (comma) to VTT-style (dot)
+		timestampLine = strings.ReplaceAll(timestampLine, ",", ".")
 
 		// Parse timestamps
 		parts := strings.Split(timestampLine, "-->")

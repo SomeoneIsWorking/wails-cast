@@ -149,7 +149,7 @@ func (a *App) GetTrackDisplayInfo(fileNameOrUrl string) (*TrackDisplayInfo, erro
 	var err error
 	remote := strings.HasPrefix(fileNameOrUrl, "http://") || strings.HasPrefix(fileNameOrUrl, "https://")
 	if remote {
-		trackInfo, err = a.castManager.GetRemoteTrackInfo(fileNameOrUrl)
+		trackInfo, _, err = a.castManager.GetRemoteTrackInfo(fileNameOrUrl)
 	} else {
 		trackInfo, err = hls.GetMediaTrackInfo(fileNameOrUrl)
 	}
@@ -526,19 +526,32 @@ func (a *App) TranslateExportedSubtitles(videoPath string, targetLanguage string
 		return fmt.Errorf("target language is required")
 	}
 
-	// Determine subtitle directory
-	baseDir := filepath.Dir(videoPath)
-	baseName := strings.TrimSuffix(filepath.Base(videoPath), filepath.Ext(videoPath))
-	subtitleDir := filepath.Join(baseDir, baseName)
+	// Determine subtitle directory based on whether it's remote or local
+	var subtitleDir string
+	isRemote := strings.HasPrefix(videoPath, "http://") || strings.HasPrefix(videoPath, "https://")
 
-	// Check if subtitle directory exists, if not export the subtitles
-	if _, err := os.Stat(subtitleDir); os.IsNotExist(err) {
-		logger.Info("Subtitle directory doesn't exist, exporting subtitles", "dir", subtitleDir)
-		if err := a.ExportEmbeddedSubtitles(videoPath); err != nil {
-			return fmt.Errorf("failed to export subtitles: %w", err)
+	if isRemote {
+		_, cacheDir, err := a.castManager.GetRemoteTrackInfo(videoPath)
+		if err != nil {
+			return fmt.Errorf("failed to extract track info: %w", err)
 		}
+		subtitleDir = cacheDir
+		logger.Info("Using remote subtitle cache directory", "dir", subtitleDir)
 	} else {
-		logger.Info("Using existing exported subtitles", "dir", subtitleDir)
+		// For local files, use the standard subtitle directory
+		baseDir := filepath.Dir(videoPath)
+		baseName := strings.TrimSuffix(filepath.Base(videoPath), filepath.Ext(videoPath))
+		subtitleDir = filepath.Join(baseDir, baseName)
+
+		// Check if subtitle directory exists, if not export the subtitles
+		if _, err := os.Stat(subtitleDir); os.IsNotExist(err) {
+			logger.Info("Subtitle directory doesn't exist, exporting subtitles", "dir", subtitleDir)
+			if err := a.ExportEmbeddedSubtitles(videoPath); err != nil {
+				return fmt.Errorf("failed to export subtitles: %w", err)
+			}
+		} else {
+			logger.Info("Using existing exported subtitles", "dir", subtitleDir)
+		}
 	}
 
 	// Run translation in background

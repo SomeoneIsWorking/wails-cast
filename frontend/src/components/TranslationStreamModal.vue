@@ -108,7 +108,7 @@ const handleClose = () => {
             v-model="targetLanguage"
             type="text"
             placeholder="Target language (e.g., Turkish)"
-            class=" bg-gray-700 w-50! text-white rounded-md p-2 text-sm"
+            class="bg-gray-700 w-50! text-white rounded-md p-2 text-sm"
           />
           <button
             @click="handleTranslateSubtitles"
@@ -120,10 +120,10 @@ const handleClose = () => {
           </button>
         </template>
         <template v-else>
-          <div class="bg-gray-700 text-white rounded-md p-2 text-sm">
+          <div class="bg-gray-700 text-white rounded-md p-2 flex px-4 text-sm items-center">
+            <LoadingIcon class="w-4 h-4 mr-2" />
             Translating to {{ targetLanguage }}...
           </div>
-          <LoadingIcon class="w-4 h-4" />
         </template>
       </div>
       <!-- Stream Output -->
