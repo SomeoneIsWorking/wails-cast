@@ -33,11 +33,23 @@ const localSettings = ref({ ...settingsStore.settings });
 const cacheStats = ref<folders.CacheStats | null>(null);
 const loadingCache = ref(false);
 
+// Active category for navigation
+const activeCategory = ref<string>("subtitles");
+
+const scrollToCategory = (categoryId: string) => {
+  activeCategory.value = categoryId;
+  const element = document.getElementById(`category-${categoryId}`);
+  if (element) {
+    element.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+};
+
 // Watch for modal opening to create a fresh copy
 watch(showModal, (isOpen) => {
   if (isOpen) {
     localSettings.value = { ...settingsStore.settings };
     loadCacheStats();
+    activeCategory.value = "subtitles";
   }
 });
 
@@ -187,18 +199,52 @@ const getIconComponent = (iconName: string) => {
         </button>
       </div>
 
-      <!-- Settings Content -->
-      <div class="settings-content">
-        <div v-if="!settingsStore.hasSearchResults" class="settings-empty">
-          <Search class="w-12 h-12 text-gray-600 mb-3" />
-          <p class="text-gray-400">No settings found matching your search</p>
+      <!-- Settings Body with Sidebar -->
+      <div class="settings-body">
+        <!-- Left Sidebar Navigation -->
+        <div class="settings-sidebar">
+          <nav class="category-nav">
+            <button
+              v-for="category in settingsStore.settingCategories"
+              :key="category.id"
+              @click="scrollToCategory(category.id)"
+              :class="[
+                'category-nav-item',
+                { 'category-nav-item-active': activeCategory === category.id },
+              ]"
+            >
+              <component
+                :is="getIconComponent(category.icon)"
+                class="w-5 h-5"
+              />
+              <span>{{ category.label }}</span>
+            </button>
+            <button
+              @click="scrollToCategory('cache')"
+              :class="[
+                'category-nav-item',
+                { 'category-nav-item-active': activeCategory === 'cache' },
+              ]"
+            >
+              <HardDrive class="w-5 h-5" />
+              <span>Cache Management</span>
+            </button>
+          </nav>
         </div>
 
-        <div
-          v-for="category in settingsStore.filteredCategories"
-          :key="category.id"
-          class="settings-category"
-        >
+        <!-- Settings Content -->
+        <div class="settings-content">
+          <div v-if="!settingsStore.hasSearchResults" class="settings-empty">
+            <Search class="w-12 h-12 text-gray-600 mb-3" />
+            <p class="text-gray-400">No settings found matching your search</p>
+          </div>
+
+          <div
+            v-for="category in settingsStore.filteredCategories"
+            :key="category.id"
+            :id="`category-${category.id}`"
+            class="settings-category"
+          >
           <div class="category-header">
             <component
               :is="getIconComponent(category.icon)"
@@ -281,12 +327,12 @@ const getIconComponent = (iconName: string) => {
           </div>
         </div>
 
-        <!-- Cache Management Section -->
-        <div class="settings-category">
-          <div class="category-header">
-            <HardDrive class="w-5 h-5 text-blue-400" />
-            <h3 class="category-title">Cache Management</h3>
-          </div>
+          <!-- Cache Management Section -->
+          <div id="category-cache" class="settings-category">
+            <div class="category-header">
+              <HardDrive class="w-5 h-5 text-blue-400" />
+              <h3 class="category-title">Cache Management</h3>
+            </div>
 
           <div class="category-content">
             <div class="setting-item">
@@ -356,6 +402,7 @@ const getIconComponent = (iconName: string) => {
                 </div>
               </div>
             </div>
+          </div>
           </div>
         </div>
       </div>
