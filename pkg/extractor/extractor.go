@@ -218,6 +218,37 @@ func ExtractManifestPlaylist(pageURL string) (*ExtractResult, error) {
 		UserAgent: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.0 Safari/605.1.15",
 	})
 
+	// Override media capability detection APIs to trick JW Player into thinking
+	// the browser supports all codecs, even though Chromium lacks H.264/AAC.
+	// This prevents JW Player error 102630 (empty playlist due to codec filtering).
+	page.MustEvalOnNewDocument(`
+		// Override HTMLMediaElement.canPlayType to always return "probably"
+		const originalCanPlayType = HTMLMediaElement.prototype.canPlayType;
+		HTMLMediaElement.prototype.canPlayType = function(type) {
+			console.log('[Codec Override] canPlayType called with:', type);
+			// Always return "probably" for any video/audio type
+			if (type && (type.includes('video') || type.includes('audio'))) {
+				return 'probably';
+			}
+			return originalCanPlayType.call(this, type);
+		};
+
+		// Override MediaSource.isTypeSupported to always return true
+		if (window.MediaSource && MediaSource.isTypeSupported) {
+			const originalIsTypeSupported = MediaSource.isTypeSupported;
+			MediaSource.isTypeSupported = function(type) {
+				console.log('[Codec Override] MediaSource.isTypeSupported called with:', type);
+				// Always return true for any codec type
+				if (type && (type.includes('video') || type.includes('audio'))) {
+					return true;
+				}
+				return originalIsTypeSupported.call(this, type);
+			};
+		}
+
+		console.log('[Codec Override] Media capability detection overrides installed');
+	`)
+
 	fmt.Printf("Navigating to %s...\n", pageURL)
 	page.MustNavigate(pageURL)
 	page.MustWaitLoad()
