@@ -1,23 +1,73 @@
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted } from "vue";
-import { X } from "lucide-vue-next";
+import { ref, onMounted, onUnmounted, computed } from "vue";
+import { X, Download, Languages } from "lucide-vue-next";
 import { EventsOn, EventsOff } from "../../wailsjs/runtime/runtime";
+import {
+  ExportEmbeddedSubtitles,
+  TranslateExportedSubtitles,
+} from "../../wailsjs/go/main/App";
+import { useToast } from "vue-toastification";
+import { useCastStore } from "@/stores/cast";
+import { useSettingsStore } from "@/stores/settings";
+import LoadingIcon from "./LoadingIcon.vue";
 
-defineProps<{
-  targetLanguage: string;
-}>();
+const castStore = useCastStore();
+const settingsStore = useSettingsStore();
+const toast = useToast();
 
 const showDialog = defineModel<boolean>();
 const streamContent = ref("");
+const isExporting = ref(false);
+const isTranslating = ref(false);
+const targetLanguage = ref(settingsStore.settings.defaultTranslationLanguage);
+
+const trackInfo = computed(() => castStore.trackInfo);
+
+const handleExportSubtitles = async () => {
+  if (!trackInfo.value) return;
+
+  isExporting.value = true;
+  try {
+    await ExportEmbeddedSubtitles(trackInfo.value.path);
+    toast.success("Subtitles exported successfully!");
+  } finally {
+    isExporting.value = false;
+  }
+};
+
+const handleTranslateSubtitles = async () => {
+  if (!trackInfo.value) return;
+  if (!targetLanguage.value.trim()) {
+    toast.error("Please enter a target language");
+    return;
+  }
+
+  isTranslating.value = true;
+  try {
+    await TranslateExportedSubtitles(
+      trackInfo.value.path,
+      targetLanguage.value
+    );
+    toast.info(`Translation started for ${targetLanguage.value}`);
+  } catch (error: any) {
+    isTranslating.value = false;
+    toast.error(`Translation failed: ${error.message || error}`);
+  }
+};
 
 onMounted(() => {
   EventsOn("translation:stream", (chunk: string) => {
     streamContent.value += chunk;
   });
+
+  EventsOn("translation:complete", () => {
+    isTranslating.value = false;
+  });
 });
 
 onUnmounted(() => {
   EventsOff("translation:stream");
+  EventsOff("translation:complete");
 });
 
 const handleClose = () => {
@@ -36,18 +86,49 @@ const handleClose = () => {
       class="bg-gray-800 rounded-md p-6 max-w-4xl w-full mx-4 max-h-[80vh] flex flex-col"
     >
       <div class="flex items-center justify-between mb-4">
-        <h2 class="text-2xl font-bold text-white">
-          Translating to {{ targetLanguage }}
-        </h2>
-        <button
-          @click="handleClose"
-          class="btn-close"
-        >
+        <h2 class="text-2xl font-bold text-white">Subtitle Options</h2>
+        <button @click="handleClose" class="btn-close">
           <X class="w-6 h-6" />
         </button>
       </div>
 
+      <!-- Export Section -->
+      <div class="mb-4 flex gap-2">
+        <button
+          @click="handleExportSubtitles"
+          :disabled="isExporting"
+          class="btn-primary text-sm text-nowrap"
+        >
+          <Download class="w-4 h-4" />
+          {{ isExporting ? "Exporting..." : "Export to WebVTT" }}
+        </button>
+        <div class="flex-1"></div>
+        <template v-if="!isTranslating">
+          <input
+            v-model="targetLanguage"
+            type="text"
+            placeholder="Target language (e.g., Turkish)"
+            class=" bg-gray-700 w-50! text-white rounded-md p-2 text-sm"
+          />
+          <button
+            @click="handleTranslateSubtitles"
+            :disabled="!targetLanguage.trim()"
+            class="btn-primary text-sm"
+          >
+            <Languages class="w-4 h-4" />
+            Translate
+          </button>
+        </template>
+        <template v-else>
+          <div class="bg-gray-700 text-white rounded-md p-2 text-sm">
+            Translating to {{ targetLanguage }}...
+          </div>
+          <LoadingIcon class="w-4 h-4" />
+        </template>
+      </div>
+      <!-- Stream Output -->
       <div
+        v-if="streamContent"
         class="flex-1 overflow-y-auto bg-gray-900 rounded-md p-4 font-mono text-sm text-green-400"
       >
         <pre class="whitespace-pre-wrap text-left">{{ streamContent }}</pre>

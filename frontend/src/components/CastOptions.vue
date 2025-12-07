@@ -2,13 +2,9 @@
 import { computed, ref, onMounted, onUnmounted } from "vue";
 import { useCastStore } from "@/stores/cast";
 import { useSettingsStore, qualityOptions } from "@/stores/settings";
-import { Play, Download, Languages } from "lucide-vue-next";
+import { Play } from "lucide-vue-next";
 import LoadingIcon from "./LoadingIcon.vue";
 import TranslationStreamModal from "./TranslationStreamModal.vue";
-import {
-  ExportEmbeddedSubtitles,
-  TranslateExportedSubtitles,
-} from "../../wailsjs/go/main/App";
 import { useToast } from "vue-toastification";
 import { EventsOn, EventsOff } from "../../wailsjs/runtime/runtime";
 import { options } from "../../wailsjs/go/models";
@@ -32,9 +28,6 @@ if (trackInfo.value?.nearSubtitle) {
 }
 
 const isLoading = ref(false);
-const isExporting = ref(false);
-const isTranslating = ref(false);
-const targetLanguage = ref(settingsStore.settings.defaultTranslationLanguage);
 const showTranslationModal = ref(false);
 
 const handleConfirm = async () => {
@@ -60,38 +53,6 @@ const handleConfirm = async () => {
   }
 };
 
-const handleExportSubtitles = async () => {
-  if (!trackInfo.value) return;
-
-  isExporting.value = true;
-  try {
-    await ExportEmbeddedSubtitles(trackInfo.value.path);
-    toast.success("Subtitles exported successfully!");
-  } finally {
-    isExporting.value = false;
-  }
-};
-
-const handleTranslateSubtitles = async () => {
-  if (!trackInfo.value) return;
-  if (!targetLanguage.value.trim()) {
-    toast.error("Please enter a target language");
-    return;
-  }
-
-  isTranslating.value = true;
-  try {
-    await TranslateExportedSubtitles(
-      trackInfo.value.path,
-      targetLanguage.value
-    );
-    toast.info(`Translation started for ${targetLanguage.value}`);
-  } catch (error: any) {
-    isTranslating.value = false;
-    toast.error(`Translation failed: ${error.message || error}`);
-  }
-};
-
 const openTranslationModal = () => {
   showTranslationModal.value = true;
 };
@@ -104,19 +65,17 @@ const hasEmbeddedSubtitles = computed(() =>
 
 onMounted(() => {
   EventsOn("translation:complete", (translatedFiles: string[]) => {
-    isTranslating.value = false;
     if (translatedFiles && translatedFiles.length > 0) {
       // Auto-select external subtitle with the first translated file
       subtitle.value = "external";
       subtitlePath.value = translatedFiles[0];
       toast.success(
-        `Translated ${translatedFiles.length} subtitle(s) to ${targetLanguage.value}!`
+        `Translated subtitle(s) completed!`
       );
     }
   });
 
   EventsOn("translation:error", (error: string) => {
-    isTranslating.value = false;
     toast.error(`Translation failed: ${error}`);
   });
 });
@@ -184,56 +143,11 @@ onUnmounted(() => {
             <h3 class="text-lg font-semibold text-white">Subtitles</h3>
             <button
               v-if="hasEmbeddedSubtitles"
-              @click="handleExportSubtitles"
-              :disabled="isExporting"
+              @click="openTranslationModal"
               class="btn-success text-sm"
             >
-              <Download class="w-4 h-4" />
-              {{ isExporting ? "Exporting..." : "Export to WebVTT" }}
+              More Options
             </button>
-          </div>
-
-          <!-- Translation Section -->
-          <div
-            v-if="hasEmbeddedSubtitles"
-            class="mb-4 p-3 bg-gray-700/50 rounded-md border border-gray-600"
-          >
-            <div class="flex items-center gap-2 mb-2">
-              <Languages class="w-4 h-4 text-blue-400" />
-              <h4 class="text-sm font-semibold text-white">
-                Translate Exported Subtitles
-              </h4>
-            </div>
-            <div class="flex gap-2">
-              <div v-if="!isTranslating" class="flex gap-2 w-full">
-                <input
-                  v-model="targetLanguage"
-                  type="text"
-                  placeholder="Target language (e.g., Turkish)"
-                  class="flex-1 bg-gray-700 text-white rounded-md p-2 text-sm"
-                />
-                <button
-                  @click="handleTranslateSubtitles"
-                  :disabled="!targetLanguage.trim()"
-                  class="btn-primary text-sm"
-                >
-                  <Languages class="w-4 h-4" />
-                  Translate
-                </button>
-              </div>
-              <div v-else class="flex gap-2 w-full items-center">
-                <div class="flex-1 bg-gray-700 text-white rounded-md p-2 text-sm">
-                  Translating to {{ targetLanguage }}...
-                </div>
-                <button
-                  @click="openTranslationModal"
-                  class="btn-success text-sm"
-                >
-                  <LoadingIcon class="w-4 h-4" />
-                  View Progress
-                </button>
-              </div>
-            </div>
           </div>
 
           <select
@@ -296,7 +210,6 @@ onUnmounted(() => {
 
     <TranslationStreamModal
       v-model="showTranslationModal"
-      :target-language="targetLanguage"
     />
   </div>
 </template>
