@@ -11,7 +11,7 @@ interface SettingDefinition {
   key: keyof main.Settings;
   label: string;
   description: string;
-  type: "boolean" | "text" | "password" | "number" | "select";
+  type: "boolean" | "text" | "password" | "number" | "select" | "textarea";
   min?: number;
   max?: number;
   step?: number;
@@ -106,6 +106,21 @@ export const useSettingsStore = defineStore("settings", () => {
           label: "Gemini Model",
           description: "Which Gemini model to use",
           type: "text",
+        },
+        {
+          key: "translatePromptTemplate",
+          label: "Translation Prompt Template",
+          description: "Custom prompt template for subtitle translation. Use {{.TargetLanguage}} and {{.SubtitleContent}} as placeholders.",
+          type: "textarea",
+        },
+        {
+          key: "maxSubtitleSamples",
+          label: "Max Subtitle Samples",
+          description: "Maximum number of reference subtitle tracks to use for translation",
+          type: "number",
+          min: 1,
+          max: 10,
+          step: 1,
         },
       ],
     },

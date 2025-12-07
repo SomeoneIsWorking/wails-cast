@@ -26,6 +26,34 @@ const settingsStore = useSettingsStore();
 const showModal = defineModel<boolean>();
 const { confirm } = useConfirm();
 
+// Textarea modal state
+const textareaModal = ref<{
+  show: boolean;
+  key: string;
+  label: string;
+  value: string;
+} | null>(null);
+
+const openTextareaModal = (key: string, label: string, value: string) => {
+  textareaModal.value = {
+    show: true,
+    key,
+    label,
+    value: value || "",
+  };
+};
+
+const closeTextareaModal = () => {
+  textareaModal.value = null;
+};
+
+const saveTextareaModal = () => {
+  if (textareaModal.value) {
+    (localSettings.value as any)[textareaModal.value.key] = textareaModal.value.value;
+    closeTextareaModal();
+  }
+};
+
 // Local copy of settings for editing
 const localSettings = ref({ ...settingsStore.settings });
 
@@ -278,6 +306,14 @@ const getIconComponent = (iconName: string) => {
                       />
                       <span class="toggle-slider"></span>
                     </label>
+                    <!-- Textarea Button -->
+                    <button
+                      v-if="setting.type === 'textarea'"
+                      @click="openTextareaModal(setting.key, setting.label, localSettings[setting.key] as string)"
+                      class="btn-secondary text-sm px-3 py-1.5"
+                    >
+                      View
+                    </button>
                     <!-- Text/Password Input -->
                     <input
                       v-else-if="
@@ -417,6 +453,38 @@ const getIconComponent = (iconName: string) => {
           <Save class="w-4 h-4" />
           Save
         </button>
+      </div>
+    </div>
+
+    <!-- Textarea Edit Modal -->
+    <div
+      v-if="textareaModal?.show"
+      class="settings-overlay"
+      @click.self="closeTextareaModal"
+    >
+      <div class="settings-modal max-w-3xl">
+        <div class="settings-header">
+          <h2 class="settings-title">{{ textareaModal.label }}</h2>
+          <button @click="closeTextareaModal" class="btn-close">
+            <X class="w-5 h-5" />
+          </button>
+        </div>
+        <div class="p-6">
+          <textarea
+            v-model="textareaModal.value"
+            class="w-full h-96 border bg-gray-800 text-white rounded-lg p-4 font-mono text-sm resize-none focus:outline-none focus:ring-2 focus:ring-blue-500"
+            :placeholder="`Enter ${textareaModal.label.toLowerCase()}`"
+          />
+        </div>
+        <div class="settings-footer">
+          <button @click="closeTextareaModal" class="btn-secondary">
+            Cancel
+          </button>
+          <button @click="saveTextareaModal" class="btn-primary">
+            <Save class="w-4 h-4" />
+            Save
+          </button>
+        </div>
       </div>
     </div>
   </div>

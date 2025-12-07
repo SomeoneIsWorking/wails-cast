@@ -143,6 +143,8 @@ export namespace main {
 	    defaultQuality: string;
 	    subtitleFontSize: number;
 	    maxOutputWidth: number;
+	    translatePromptTemplate: string;
+	    maxSubtitleSamples: number;
 	
 	    static createFrom(source: any = {}) {
 	        return new Settings(source);
@@ -157,6 +159,8 @@ export namespace main {
 	        this.defaultQuality = source["defaultQuality"];
 	        this.subtitleFontSize = source["subtitleFontSize"];
 	        this.maxOutputWidth = source["maxOutputWidth"];
+	        this.translatePromptTemplate = source["translatePromptTemplate"];
+	        this.maxSubtitleSamples = source["maxSubtitleSamples"];
 	    }
 	}
 	export class SubtitleDisplayItem {
