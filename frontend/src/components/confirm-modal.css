@@ -6,7 +6,7 @@
 }
 
 .confirm-modal {
-  @apply bg-gray-800 rounded-md shadow-2xl max-w-md w-full border border-gray-700;
+  @apply bg-gray-800 rounded-md shadow-2xl max-w-md w-150 border border-gray-700;
   animation: fadeIn 0.2s ease-out, zoomIn 0.2s ease-out;
 }
 
