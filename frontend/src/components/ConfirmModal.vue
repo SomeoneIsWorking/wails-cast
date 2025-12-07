@@ -90,7 +90,7 @@ const variantClasses = getVariantClasses();
         <button
           @click="handleCancel"
           :disabled="loading"
-          class="btn-cancel"
+          class="btn-secondary"
         >
           {{ cancelText }}
         </button>

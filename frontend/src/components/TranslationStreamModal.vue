@@ -33,7 +33,7 @@ const handleClose = () => {
     @click.self="handleClose"
   >
     <div
-      class="bg-gray-800 rounded-lg p-6 max-w-4xl w-full mx-4 max-h-[80vh] flex flex-col"
+      class="bg-gray-800 rounded-md p-6 max-w-4xl w-full mx-4 max-h-[80vh] flex flex-col"
     >
       <div class="flex items-center justify-between mb-4">
         <h2 class="text-2xl font-bold text-white">
@@ -41,14 +41,14 @@ const handleClose = () => {
         </h2>
         <button
           @click="handleClose"
-          class="text-gray-400 hover:text-white transition"
+          class="btn-close"
         >
           <X class="w-6 h-6" />
         </button>
       </div>
 
       <div
-        class="flex-1 overflow-y-auto bg-gray-900 rounded p-4 font-mono text-sm text-green-400"
+        class="flex-1 overflow-y-auto bg-gray-900 rounded-md p-4 font-mono text-sm text-green-400"
       >
         <pre class="whitespace-pre-wrap text-left">{{ streamContent }}</pre>
       </div>

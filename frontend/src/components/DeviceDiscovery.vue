@@ -32,7 +32,7 @@ const selectDevice = (device: Device) => {
       <button
         @click="store.discoverDevices"
         :disabled="store.isLoading"
-        class="btn-primary flex items-center gap-2"
+        class="btn-primary"
       >
         <RefreshCw :size="18" :class="{ 'animate-spin': store.isLoading }" />
         {{ store.isLoading ? "Searching..." : "Scan Network" }}
@@ -54,7 +54,7 @@ const selectDevice = (device: Device) => {
           ]"
         >
           <div class="flex items-center gap-3">
-            <div class="p-3 bg-blue-600 rounded-lg">
+            <div class="p-3 bg-blue-600 rounded-md">
               <Network :size="24" v-if="device.address == 'local'"></Network>
               <Cast :size="24" v-else />
             </div>

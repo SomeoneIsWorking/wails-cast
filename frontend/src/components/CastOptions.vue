@@ -136,7 +136,7 @@ onUnmounted(() => {
           <button
             @click="handleConfirm"
             :disabled="isLoading"
-            class="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition flex items-center gap-2"
+            class="btn-primary"
           >
             <Play class="w-4 h-4" v-if="!isLoading" />
             <LoadingIcon v-else class="w-4 h-4" />
@@ -148,7 +148,7 @@ onUnmounted(() => {
           <h3 class="text-lg font-semibold text-white mb-2">Video Track</h3>
           <select
             v-model="selectedVideoTrack"
-            class="w-full bg-gray-700 text-white rounded p-2"
+            class="w-full bg-gray-700 text-white rounded-md p-2"
           >
             <option
               v-for="track in trackInfo.videoTracks"
@@ -166,7 +166,7 @@ onUnmounted(() => {
           <h3 class="text-lg font-semibold text-white mb-2">Audio Track</h3>
           <select
             v-model="selectedAudioTrack"
-            class="w-full bg-gray-700 text-white rounded p-2"
+            class="w-full bg-gray-700 text-white rounded-md p-2"
           >
             <option
               v-for="track in trackInfo.audioTracks"
@@ -186,7 +186,7 @@ onUnmounted(() => {
               v-if="hasEmbeddedSubtitles"
               @click="handleExportSubtitles"
               :disabled="isExporting"
-              class="px-3 py-1 text-sm bg-green-600 text-white rounded hover:bg-green-700 transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+              class="btn-success text-sm"
             >
               <Download class="w-4 h-4" />
               {{ isExporting ? "Exporting..." : "Export to WebVTT" }}
@@ -196,7 +196,7 @@ onUnmounted(() => {
           <!-- Translation Section -->
           <div
             v-if="hasEmbeddedSubtitles"
-            class="mb-4 p-3 bg-gray-700/50 rounded border border-gray-600"
+            class="mb-4 p-3 bg-gray-700/50 rounded-md border border-gray-600"
           >
             <div class="flex items-center gap-2 mb-2">
               <Languages class="w-4 h-4 text-blue-400" />
@@ -210,24 +210,24 @@ onUnmounted(() => {
                   v-model="targetLanguage"
                   type="text"
                   placeholder="Target language (e.g., Turkish)"
-                  class="flex-1 bg-gray-700 text-white rounded p-2 text-sm"
+                  class="flex-1 bg-gray-700 text-white rounded-md p-2 text-sm"
                 />
                 <button
                   @click="handleTranslateSubtitles"
                   :disabled="!targetLanguage.trim()"
-                  class="px-4 py-2 text-sm bg-blue-600 text-white rounded hover:bg-blue-700 transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                  class="btn-primary text-sm"
                 >
                   <Languages class="w-4 h-4" />
                   Translate
                 </button>
               </div>
               <div v-else class="flex gap-2 w-full items-center">
-                <div class="flex-1 bg-gray-700 text-white rounded p-2 text-sm">
+                <div class="flex-1 bg-gray-700 text-white rounded-md p-2 text-sm">
                   Translating to {{ targetLanguage }}...
                 </div>
                 <button
                   @click="openTranslationModal"
-                  class="px-4 py-2 text-sm bg-green-600 text-white rounded hover:bg-green-700 transition flex items-center gap-2"
+                  class="btn-success text-sm"
                 >
                   <LoadingIcon class="w-4 h-4" />
                   View Progress
@@ -238,7 +238,7 @@ onUnmounted(() => {
 
           <select
             v-model="subtitle"
-            class="w-full bg-gray-700 text-white rounded p-2 mb-2"
+            class="w-full bg-gray-700 text-white rounded-md p-2 mb-2"
           >
             <option
               v-for="track in trackInfo.subtitleTracks"
@@ -254,7 +254,7 @@ onUnmounted(() => {
             type="text"
             v-model="subtitlePath"
             placeholder="Enter subtitle file path"
-            class="w-full bg-gray-700 text-white rounded p-2 mt-2"
+            class="w-full bg-gray-700 text-white rounded-md p-2 mt-2"
           />
 
           <div v-if="subtitle !== 'none'" class="mt-2">
@@ -270,7 +270,7 @@ onUnmounted(() => {
           <h3 class="text-lg font-semibold text-white mb-2">Quality</h3>
           <select
             v-model="quality"
-            class="w-full bg-gray-700 text-white rounded p-2"
+            class="w-full bg-gray-700 text-white rounded-md p-2"
           >
             <option
               v-for="option in qualityOptions"
