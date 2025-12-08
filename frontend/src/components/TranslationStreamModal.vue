@@ -100,7 +100,7 @@ const handleClose = () => {
           class="btn-primary text-sm text-nowrap"
         >
           <Download class="w-4 h-4" />
-          {{ isExporting ? "Exporting..." : "Export to WebVTT" }}
+          {{ isExporting ? "Exporting..." : "Export embedded to WebVTT" }}
         </button>
         <div class="flex-1"></div>
         <template v-if="!isTranslating">

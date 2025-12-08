@@ -2,34 +2,10 @@
   <div class="card mb-6">
     <div class="card-body">
       <!-- Header -->
-      <div class="flex items-center justify-between mb-4">
-        <div class="flex-1 min-w-0">
-          <h3 class="text-xl font-bold truncate flex items-center gap-2">
-            <Video :size="24" class="text-purple-400" />
-            {{ playbackState.mediaName }}
-          </h3>
-          <p class="text-sm text-gray-400 truncate">
-            <Cast :size="14" class="inline" />
-            {{ playbackState.deviceName }}
-          </p>
-        </div>
-        <div class="flex items-center gap-3">
-          <span
-            v-if="playbackState.status === 'PAUSED'"
-            class="px-3 py-1 bg-yellow-900/30 border border-yellow-700 rounded-md text-yellow-400 text-sm font-medium flex items-center gap-1"
-          >
-            <Pause :size="14" />
-            Paused
-          </span>
-          <button
-            @click="stopPlayback"
-            class="btn-danger"
-          >
-            <Square :size="18" />
-            Stop
-          </button>
-        </div>
-      </div>
+      <h3 class="text-md font-bold flex gap-2 mb-2">
+        <Video :size="24" class="text-purple-400 m-0.5" />
+        {{ playbackState.mediaName }}
+      </h3>
 
       <!-- Time Display -->
       <div class="flex items-center justify-between mb-2 text-sm font-mono">
@@ -73,17 +49,15 @@
       </div>
 
       <!-- Controls -->
-      <div class="flex items-center justify-center gap-2">
+      <div class="flex items-center gap-2">
+        <div class="flex-1"></div>
         <button @click="seekRelative(-30)" class="btn-icon" title="Rewind 30s">
           <Rewind :size="18" />
         </button>
         <button @click="seekRelative(-10)" class="btn-icon" title="Rewind 10s">
           <SkipBack :size="18" />
         </button>
-        <button
-          @click="togglePause"
-          class="btn-success"
-        >
+        <button @click="togglePause" class="btn-success">
           <Play v-if="playbackState.status === 'PAUSED'" :size="18" />
           <Pause v-else :size="18" />
           {{ playbackState.status === "PAUSED" ? "Play" : "Pause" }}
@@ -94,6 +68,12 @@
         <button @click="seekRelative(30)" class="btn-icon" title="Forward 30s">
           <FastForward :size="18" />
         </button>
+        <div class="flex-1 flex justify-end">
+          <button @click="stopPlayback" class="btn-danger">
+            <Square :size="18" />
+            Stop
+          </button>
+        </div>
       </div>
     </div>
   </div>
@@ -104,7 +84,6 @@ import { ref, onMounted, onUnmounted, computed } from "vue";
 import { mediaService } from "../services/media";
 import {
   Video,
-  Cast,
   Pause,
   Play,
   Square,

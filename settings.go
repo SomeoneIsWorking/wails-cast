@@ -16,7 +16,7 @@ const (
 
 func getDefaultSettings() Settings {
 	return Settings{
-		SubtitleBurnInDefault:      true,
+		SubtitleBurnIn:             true,
 		DefaultTranslationLanguage: "English",
 		GeminiApiKey:               "",
 		GeminiModel:                "gemini-2.5-flash",
@@ -29,7 +29,7 @@ func getDefaultSettings() Settings {
 }
 
 type Settings struct {
-	SubtitleBurnInDefault      bool   `json:"subtitleBurnInDefault"`
+	SubtitleBurnIn             bool   `json:"subtitleBurnIn"`
 	DefaultTranslationLanguage string `json:"defaultTranslationLanguage"`
 	GeminiApiKey               string `json:"geminiApiKey"`
 	GeminiModel                string `json:"geminiModel"`
