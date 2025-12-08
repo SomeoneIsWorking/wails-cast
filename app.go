@@ -170,7 +170,7 @@ func (a *App) GetTrackDisplayInfo(fileNameOrUrl string) (*TrackDisplayInfo, erro
 	for _, sub := range trackInfo.SubtitleTracks {
 		subtitleItems = append(subtitleItems, SubtitleDisplayItem{
 			Path:  fmt.Sprintf("embedded:%d", sub.Index),
-			Label: fmt.Sprintf("Embedded: %s", sub.Language),
+			Label: fmt.Sprintf("Embedded: %s", sub.Title),
 		})
 	}
 
