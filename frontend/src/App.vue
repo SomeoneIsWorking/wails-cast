@@ -33,7 +33,7 @@ const selectDevice = (device: any) => {
   >
     <div class="container mx-auto px-4 py-6 max-w-6xl flex-1 flex flex-col">
       <!-- Header -->
-      <header class="mb-6">
+      <header class="px-2">
         <div class="flex items-center justify-between">
           <div>
             <h1
@@ -41,7 +41,6 @@ const selectDevice = (device: any) => {
             >
               Wails Cast
             </h1>
-            <p class="text-gray-400 mt-1">Cast your local videos to any device</p>
           </div>
           <button
             @click="showSettings = true"
@@ -119,7 +118,6 @@ const selectDevice = (device: any) => {
           </Suspense>
         </section>
       </main>
-
     </div>
 
     <!-- Footer -->
