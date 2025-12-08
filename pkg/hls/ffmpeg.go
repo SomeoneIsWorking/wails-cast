@@ -140,10 +140,8 @@ func buildSubtitleFilter(outputDir string, subtitle string, videoPath string, fo
 // ensureSubtitleLink creates a symlink to the subtitle file in the output directory
 func ensureSubtitleLink(outputDir string, subtitlePath string) error {
 	symlinkPath := filepath.Join(outputDir, "input_subtitle")
-	if _, err := os.Lstat(symlinkPath); err != nil {
-		return os.Symlink(subtitlePath, symlinkPath)
-	}
-	return nil
+	os.Remove(symlinkPath)
+	return os.Symlink(subtitlePath, symlinkPath)
 }
 
 // GetVideoDuration gets the duration of a video file using ffprobe
