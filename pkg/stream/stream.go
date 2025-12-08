@@ -17,4 +17,8 @@ type StreamHandler interface {
 	// ServeSegment generates a media segment
 	// Returns the file path to serve and any error encountered
 	ServeSegment(ctx context.Context, trackType string, trackIndex int, segmentIndex int) (string, error)
+
+	// ServeSubtitles returns the subtitle file in WebVTT format
+	// Returns the subtitle content as string and any error encountered
+	ServeSubtitles(ctx context.Context) (string, error)
 }

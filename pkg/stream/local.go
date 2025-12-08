@@ -7,11 +7,13 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"wails-cast/pkg/folders"
 	"wails-cast/pkg/hls"
 	"wails-cast/pkg/options"
+	"wails-cast/pkg/subtitles"
 )
 
 // LocalHandler represents a local file HLS streaming server
@@ -50,7 +52,9 @@ func NewLocalHandler(videoPath string, options *options.StreamOptions, localIP s
 // ServeManifestPlaylist generates the manifest HLS playlist
 func (s *LocalHandler) ServeManifestPlaylist(ctx context.Context) (string, error) {
 	manifestPlaylist := &hls.ManifestPlaylist{
-		Version: 3,
+		Version:        3,
+		AudioGroups:    make(map[string][]hls.AudioMedia),
+		SubtitleGroups: make(map[string][]hls.SubtitleMedia),
 		VideoVariants: []hls.VideoVariant{
 			{
 				Index:  0,
@@ -59,6 +63,24 @@ func (s *LocalHandler) ServeManifestPlaylist(ctx context.Context) (string, error
 			},
 		},
 	}
+
+	// Add subtitle track if available and not burned in
+	if s.Options.Subtitle.Path != "none" && !s.Options.Subtitle.BurnIn {
+		manifestPlaylist.SubtitleGroups["subs"] = []hls.SubtitleMedia{
+			{
+				URI:        "subtitles.vtt",
+				GroupID:    "subs",
+				Name:       "Subtitles",
+				Language:   "en",
+				Default:    true,
+				Autoselect: true,
+				Forced:     false,
+				Index:      0,
+			},
+		}
+		manifestPlaylist.VideoVariants[0].Subtitles = "subs"
+	}
+
 	return manifestPlaylist.Generate(), nil
 }
 
@@ -161,6 +183,62 @@ func ensureSymlink(filePath string, folder string) {
 	if _, err := os.Lstat(linkPath); os.IsNotExist(err) {
 		os.Symlink(filePath, linkPath)
 	}
+}
+
+// ServeSubtitles returns the subtitle file in WebVTT format
+func (s *LocalHandler) ServeSubtitles(ctx context.Context) (string, error) {
+	if s.Options.Subtitle.Path == "none" || s.Options.Subtitle.BurnIn {
+		return "", fmt.Errorf("no external subtitles available")
+	}
+
+	subtitlePath := s.Options.Subtitle.Path
+
+	// Handle external subtitle format
+	if path, found := strings.CutPrefix(subtitlePath, "external:"); found {
+		subtitlePath = path
+	} else if index, found := strings.CutPrefix(subtitlePath, "embedded:"); found {
+		// Extract embedded subtitle to cache
+		cachedPath := filepath.Join(s.OutputDir, fmt.Sprintf("subtitle_%s.vtt", index))
+
+		// Check if already cached
+		if _, err := os.Stat(cachedPath); os.IsNotExist(err) {
+			// Extract using ffmpeg
+			args := []string{
+				"-i", s.VideoPath,
+				"-map", fmt.Sprintf("0:s:%s", index),
+				"-f", "webvtt",
+				"-y",
+				cachedPath,
+			}
+
+			if err := hls.RunFFmpeg(args...); err != nil {
+				return "", fmt.Errorf("failed to extract embedded subtitle: %w", err)
+			}
+		}
+
+		subtitlePath = cachedPath
+	}
+	// Otherwise it's a direct path, use as-is
+
+	// Read subtitle file
+	data, err := os.ReadFile(subtitlePath)
+	if err != nil {
+		return "", fmt.Errorf("failed to read subtitle file: %w", err)
+	}
+
+	// Check if it's already WebVTT
+	content := string(data)
+	if strings.HasPrefix(content, "WEBVTT") {
+		return content, nil
+	}
+
+	// Otherwise parse and convert to WebVTT
+	subtitles, err := subtitles.Parse(content)
+	if err != nil {
+		return "", fmt.Errorf("failed to parse subtitle file: %w", err)
+	}
+
+	return subtitles.ToWebVTTString(), nil
 }
 
 // Cleanup removes session files
