@@ -61,9 +61,9 @@ export const useSettingsStore = defineStore("settings", () => {
       icon: "Subtitles",
       settings: [
         {
-          key: "subtitleBurnInDefault",
-          label: "Burn-in Subtitles by Default",
-          description: "Automatically burn subtitles into video stream",
+          key: "subtitleBurnIn",
+          label: "Burn-in Subtitles",
+          description: "Burn subtitles into video stream",
           type: "boolean",
         },
         {

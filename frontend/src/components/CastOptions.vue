@@ -18,7 +18,7 @@ const trackInfo = computed(() => castStore.trackInfo);
 const selectedVideoTrack = ref(0);
 const selectedAudioTrack = ref(0);
 const subtitlePath = ref("");
-const burnSubtitles = ref(settingsStore.settings.subtitleBurnInDefault);
+
 const quality = ref(settingsStore.settings.defaultQuality);
 const subtitle = ref<string>("none");
 
@@ -37,7 +37,7 @@ const handleConfirm = async () => {
     VideoTrack: selectedVideoTrack.value,
     AudioTrack: selectedAudioTrack.value,
     Bitrate: quality.value,
-    SubtitleBurnIn: burnSubtitles.value,
+    SubtitleBurnIn: settingsStore.settings.subtitleBurnIn,
     SubtitlePath:
       subtitle.value === "external"
         ? "external:" + subtitlePath.value
@@ -69,9 +69,7 @@ onMounted(() => {
       // Auto-select external subtitle with the first translated file
       subtitle.value = "external";
       subtitlePath.value = translatedFiles[0];
-      toast.success(
-        `Translated subtitle(s) completed!`
-      );
+      toast.success(`Translated subtitle(s) completed!`);
     }
   });
 
@@ -89,7 +87,10 @@ onUnmounted(() => {
 <template>
   <div class="cast-options">
     <div v-if="trackInfo">
-      <div class="space-y-6 pm-2">
+      <div
+        class="grid grid-cols-[auto_1fr] gap-3 items-center [&_label]:text-right px-5"
+      >
+        <label></label>
         <div class="flex justify-between">
           <h2 class="text-2xl font-bold text-white">Cast Options</h2>
           <button
@@ -103,26 +104,23 @@ onUnmounted(() => {
           </button>
         </div>
         <!-- Video Track Selection -->
-        <div>
-          <h3 class="text-lg font-semibold text-white mb-2">Video Track</h3>
-          <select
-            v-model="selectedVideoTrack"
-            class="w-full bg-gray-700 text-white rounded-md p-2"
+        <label>Video Track:</label>
+        <select
+          v-model="selectedVideoTrack"
+          class="w-full bg-gray-700 text-white rounded-md p-2"
+        >
+          <option
+            v-for="track in trackInfo.videoTracks"
+            :key="track.index"
+            :value="track.index"
           >
-            <option
-              v-for="track in trackInfo.videoTracks"
-              :key="track.index"
-              :value="track.index"
-            >
-              Track {{ track.index }} - {{ track.codec }}
-              {{ track.resolution || "" }}
-            </option>
-          </select>
-        </div>
-
+            Track {{ track.index }} - {{ track.codec }}
+            {{ track.resolution || "" }}
+          </option>
+        </select>
         <!-- Audio Track Selection -->
-        <div v-if="trackInfo.audioTracks.length > 0">
-          <h3 class="text-lg font-semibold text-white mb-2">Audio Track</h3>
+        <template v-if="trackInfo.audioTracks.length > 0">
+          <label>Audio Track:</label>
           <select
             v-model="selectedAudioTrack"
             class="w-full bg-gray-700 text-white rounded-md p-2"
@@ -135,24 +133,13 @@ onUnmounted(() => {
               Track {{ track.index }} - {{ track.language || "Unknown" }}
             </option>
           </select>
-        </div>
-
+        </template>
         <!-- Subtitle Selection -->
-        <div>
-          <div class="flex items-center justify-between mb-2">
-            <h3 class="text-lg font-semibold text-white">Subtitles</h3>
-            <button
-              v-if="hasEmbeddedSubtitles"
-              @click="openTranslationModal"
-              class="btn-success text-sm"
-            >
-              More Options
-            </button>
-          </div>
-
+        <label>Subtitles:</label>
+        <div class="flex gap-2">
           <select
             v-model="subtitle"
-            class="w-full bg-gray-700 text-white rounded-md p-2 mb-2"
+            class="w-full bg-gray-700 text-white rounded-md p-2"
           >
             <option
               v-for="track in trackInfo.subtitleTracks"
@@ -162,39 +149,37 @@ onUnmounted(() => {
               {{ track.label }}
             </option>
           </select>
-
+          <button
+            v-if="hasEmbeddedSubtitles"
+            @click="openTranslationModal"
+            class="btn-success text-nowrap py-0!"
+          >
+            More Options
+          </button>
+        </div>
+        <template v-if="subtitle === 'external'">
+          <label></label>
           <input
-            v-if="subtitle === 'external'"
             type="text"
             v-model="subtitlePath"
             placeholder="Enter subtitle file path"
-            class="w-full bg-gray-700 text-white rounded-md p-2 mt-2"
-          />
-
-          <div v-if="subtitle !== 'none'" class="mt-2">
-            <label class="flex items-center text-white">
-              <input type="checkbox" v-model="burnSubtitles" class="mr-2" />
-              Burn subtitles into video
-            </label>
-          </div>
-        </div>
-
-        <!-- Quality Selection -->
-        <div>
-          <h3 class="text-lg font-semibold text-white mb-2">Quality</h3>
-          <select
-            v-model="quality"
             class="w-full bg-gray-700 text-white rounded-md p-2"
+          />
+        </template>
+        <!-- Quality Selection -->
+        <label>Quality:</label>
+        <select
+          v-model="quality"
+          class="w-full bg-gray-700 text-white rounded-md p-2"
+        >
+          <option
+            v-for="option in qualityOptions"
+            :key="option.value"
+            :value="option.value"
           >
-            <option
-              v-for="option in qualityOptions"
-              :key="option.value"
-              :value="option.value"
-            >
-              {{ option.label }}
-            </option>
-          </select>
-        </div>
+            {{ option.label }}
+          </option>
+        </select>
       </div>
     </div>
 
@@ -208,8 +193,6 @@ onUnmounted(() => {
       </div>
     </div>
 
-    <TranslationStreamModal
-      v-model="showTranslationModal"
-    />
+    <TranslationStreamModal v-model="showTranslationModal" />
   </div>
 </template>

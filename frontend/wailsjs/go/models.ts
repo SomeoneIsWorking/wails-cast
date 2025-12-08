@@ -136,7 +136,7 @@ export namespace main {
 	    }
 	}
 	export class Settings {
-	    subtitleBurnInDefault: boolean;
+	    subtitleBurnIn: boolean;
 	    defaultTranslationLanguage: string;
 	    geminiApiKey: string;
 	    geminiModel: string;
@@ -152,7 +152,7 @@ export namespace main {
 	
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.subtitleBurnInDefault = source["subtitleBurnInDefault"];
+	        this.subtitleBurnIn = source["subtitleBurnIn"];
 	        this.defaultTranslationLanguage = source["defaultTranslationLanguage"];
 	        this.geminiApiKey = source["geminiApiKey"];
 	        this.geminiModel = source["geminiModel"];
