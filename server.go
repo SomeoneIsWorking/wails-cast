@@ -201,6 +201,20 @@ func (s *Server) handleRequest(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Subtitles: /subtitles.vtt
+	if path == "/subtitles.vtt" {
+		subtitleContent, err := handler.ServeSubtitles(r.Context())
+		if err != nil {
+			s.handleError(w, r, "Failed to serve subtitles", err)
+			return
+		}
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		w.Header().Set("Content-Type", "text/vtt")
+		w.Header().Set("Cache-Control", "public, max-age=31536000")
+		w.Write([]byte(subtitleContent))
+		return
+	}
+
 	// Debug log
 	if path == "/debug/log" {
 		if rh, ok := handler.(*stream.RemoteHandler); ok {

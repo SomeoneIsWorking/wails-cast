@@ -16,6 +16,7 @@ import (
 	"wails-cast/pkg/hls"
 	"wails-cast/pkg/logger"
 	"wails-cast/pkg/options"
+	"wails-cast/pkg/subtitles"
 
 	"github.com/pkg/errors"
 )
@@ -95,6 +96,25 @@ func (p *RemoteHandler) ServeManifestPlaylist(ctx context.Context) (string, erro
 	audio.URI = audio.URI + "?cachebust=" + time.Now().Format("20060102150405")
 	playlist.AudioGroups = map[string][]hls.AudioMedia{
 		videoVariant.Audio: {*audio},
+	}
+
+	// Add subtitle track if available and not burned in
+	if p.Options.Subtitle.Path != "none" && !p.Options.Subtitle.BurnIn {
+		playlist.SubtitleGroups = map[string][]hls.SubtitleMedia{
+			"subs": {
+				{
+					URI:        "subtitles.vtt",
+					GroupID:    "subs",
+					Name:       "Subtitles",
+					Language:   "en",
+					Default:    true,
+					Autoselect: true,
+					Forced:     false,
+					Index:      0,
+				},
+			},
+		}
+		videoVariant.Subtitles = "subs"
 	}
 
 	return playlist.Generate(), nil
@@ -534,6 +554,43 @@ func (p *RemoteHandler) serveFile(w http.ResponseWriter, path string, contentTyp
 	w.Header().Set("Content-Length", fmt.Sprintf("%d", len(data)))
 	w.WriteHeader(http.StatusOK)
 	w.Write(data)
+}
+
+// ServeSubtitles returns the subtitle file in WebVTT format
+func (p *RemoteHandler) ServeSubtitles(ctx context.Context) (string, error) {
+	if p.Options.Subtitle.Path == "none" || p.Options.Subtitle.BurnIn {
+		return "", fmt.Errorf("no external subtitles available")
+	}
+
+	subtitlePath := p.Options.Subtitle.Path
+
+	// Handle embedded subtitles - they're cached in the cache directory
+	if index, found := strings.CutPrefix(subtitlePath, "embedded:"); found {
+		subtitlePath = filepath.Join(p.CacheDir, fmt.Sprintf("subtitle_%s.vtt", index))
+	} else if path, found := strings.CutPrefix(subtitlePath, "external:"); found {
+		subtitlePath = path
+	}
+	// Otherwise it's a direct path, use as-is
+
+	// Read subtitle file
+	data, err := os.ReadFile(subtitlePath)
+	if err != nil {
+		return "", fmt.Errorf("failed to read subtitle file: %w", err)
+	}
+
+	// Check if it's already WebVTT
+	content := string(data)
+	if strings.HasPrefix(content, "WEBVTT") {
+		return content, nil
+	}
+
+	// Otherwise parse and convert to WebVTT
+	subtitles, err := subtitles.Parse(content)
+	if err != nil {
+		return "", fmt.Errorf("failed to parse subtitle file: %w", err)
+	}
+
+	return subtitles.ToWebVTTString(), nil
 }
 
 // downloadFile downloads a file with cookies and headers
