@@ -148,7 +148,8 @@ func (m *CastManager) GetRemoteTrackInfo(videoURL string) (*mediainfo.MediaTrack
 	for i, subtitle := range result.Subtitles {
 		track := mediainfo.SubtitleTrack{
 			Index:    i,
-			Language: fmt.Sprintf("%s (index: %d)", path.Base(subtitle.URL), i),
+			Language: "",
+			Title:    fmt.Sprintf("%s (index: %d)", path.Base(subtitle.URL), i),
 		}
 		mediaTrackInfo.SubtitleTracks = append(mediaTrackInfo.SubtitleTracks, track)
 	}
