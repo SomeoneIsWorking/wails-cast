@@ -115,7 +115,7 @@ func (s *Server) handleRequest(w http.ResponseWriter, r *http.Request) {
 	if path == "/playlist.m3u8" {
 		playlist, err := handler.ServeManifestPlaylist(r.Context())
 		if err != nil {
-			s.handleError(w, "Failed to generate manifest playlist", err)
+			s.handleError(w, r, "Failed to generate manifest playlist", err)
 			return
 		}
 		w.Header().Set("Access-Control-Allow-Origin", "*")
@@ -131,7 +131,7 @@ func (s *Server) handleRequest(w http.ResponseWriter, r *http.Request) {
 	if _, err := fmt.Sscanf(path, "/video_%d.m3u8", &trackIndex); err == nil {
 		playlist, err := handler.ServeTrackPlaylist(r.Context(), "video", trackIndex)
 		if err != nil {
-			s.handleError(w, "Failed to generate video track playlist", err)
+			s.handleError(w, r, "Failed to generate video track playlist", err)
 			return
 		}
 		w.Header().Set("Access-Control-Allow-Origin", "*")
@@ -145,7 +145,7 @@ func (s *Server) handleRequest(w http.ResponseWriter, r *http.Request) {
 	if _, err := fmt.Sscanf(path, "/audio_%d.m3u8", &trackIndex); err == nil {
 		playlist, err := handler.ServeTrackPlaylist(r.Context(), "audio", trackIndex)
 		if err != nil {
-			s.handleError(w, "Failed to generate audio track playlist", err)
+			s.handleError(w, r, "Failed to generate audio track playlist", err)
 			return
 		}
 		w.Header().Set("Access-Control-Allow-Origin", "*")
@@ -166,7 +166,7 @@ func (s *Server) handleRequest(w http.ResponseWriter, r *http.Request) {
 
 		filePath, err := handler.ServeSegment(r.Context(), "video", trackIndex, segmentIndex)
 		if err != nil {
-			s.handleError(w, "Failed to generate video segment", err)
+			s.handleError(w, r, "Failed to generate video segment", err)
 			return
 		}
 		w.Header().Set("Access-Control-Allow-Origin", "*")
@@ -188,7 +188,7 @@ func (s *Server) handleRequest(w http.ResponseWriter, r *http.Request) {
 
 		filePath, err := handler.ServeSegment(r.Context(), "audio", trackIndex, segmentIndex)
 		if err != nil {
-			s.handleError(w, "Failed to generate audio segment", err)
+			s.handleError(w, r, "Failed to generate audio segment", err)
 			return
 		}
 		w.Header().Set("Access-Control-Allow-Origin", "*")
@@ -224,24 +224,26 @@ func EnsureRequestDuration(r *http.Request) bool {
 }
 
 // handleError logs an error, writes HTTP response, and emits a Wails event
-func (s *Server) handleError(w http.ResponseWriter, message string, err error) {
+func (s *Server) handleError(w http.ResponseWriter, r *http.Request, message string, err error) {
+	if r.Context().Err() != nil {
+		return
+	}
+
 	// Log the error
 	logger.Error(message, "error", err)
 
 	// Write HTTP error response
 	http.Error(w, fmt.Sprintf("%s: %v", message, err), http.StatusInternalServerError)
 
-	// Emit Wails event if context is available
+	// Emit Wails event
 	s.mu.RLock()
 	ctx := s.ctx
 	s.mu.RUnlock()
 
-	if ctx != nil {
-		errorMessage := fmt.Sprintf("%s: %v", message, err)
-		wails_runtime.EventsEmit(ctx, "stream:error", map[string]string{
-			"message": message,
-			"error":   err.Error(),
-			"full":    errorMessage,
-		})
-	}
+	errorMessage := fmt.Sprintf("%s: %v", message, err)
+	wails_runtime.EventsEmit(ctx, "stream:error", map[string]string{
+		"message": message,
+		"error":   err.Error(),
+		"full":    errorMessage,
+	})
 }
