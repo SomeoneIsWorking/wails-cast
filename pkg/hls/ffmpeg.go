@@ -90,7 +90,6 @@ func buildTranscodeArgs(opts *TranscodeOptions) ([]string, error) {
 		"-ac", "2",
 		"-f", "mpegts",
 		"-copyts",
-		"-filter:a", "loudnorm",
 	)
 
 	if opts.Bitrate != "" {
