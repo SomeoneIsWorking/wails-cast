@@ -241,12 +241,6 @@ func (a *App) CastToDevice(deviceIp string, fileNameOrUrl string, castOptions op
 		a.mediaServer.SetSubtitlePath(options.Subtitle.Path)
 	}
 
-	if deviceIp == "local" {
-		// Just host the stream without casting
-		logger.Info("Hosting stream without casting", "url", a.GetMediaURL(mediaPath))
-		return &a.playbackState, nil
-	}
-
 	// Update playback state
 	a.mu.Lock()
 	a.playbackState.MediaPath = mediaPath
@@ -255,6 +249,15 @@ func (a *App) CastToDevice(deviceIp string, fileNameOrUrl string, castOptions op
 	a.playbackState.DeviceName = extractDeviceName(deviceIp)
 	a.playbackState.Duration = duration
 	a.mu.Unlock()
+
+	if deviceIp == "local" {
+		// Just host the stream without casting
+		logger.Info("Hosting stream without casting", "url", a.GetMediaURL(mediaPath))
+		a.mu.Lock()
+		a.playbackState.Status = "PLAYING"
+		a.mu.Unlock()
+		return &a.playbackState, nil
+	}
 
 	mediaURL := a.GetMediaURL(mediaPath)
 
@@ -403,7 +406,14 @@ func (a *App) Unpause() error {
 
 // StopPlayback stops current playback
 func (a *App) StopPlayback() error {
-	return a.stopPlayback(true)
+	err := a.stopPlayback(true)
+	if err == nil {
+		a.mu.Lock()
+		a.playbackState.Status = "STOPPED"
+		wails_runtime.EventsEmit(a.ctx, "playback:state", a.playbackState)
+		a.mu.Unlock()
+	}
+	return err
 }
 
 func (a *App) stopPlayback(stopMedia bool) error {

@@ -11,16 +11,13 @@ export const useCastStore = defineStore("cast", () => {
   const selectedDevice = ref<Device | null>(null);
   const selectedMedia = ref<string | null>(null);
   const isLoading = ref(false);
-  const isCasting = ref(false);
+  const isCasting = computed(() => playbackState.value.status !== "STOPPED");
   const error = ref<string | null>(null);
-  const ffmpegAvailable = ref<boolean | null>(null);
-  const ffmpegError = ref<string | null>(null);
   const ffmpegInfo = ref<hls.FFmpegInfo | null>(null);
   const trackInfo = ref<main.TrackDisplayInfo | null>(null);
 
   EventsOn("playback:state", (state: main.PlaybackState) => {
     playbackState.value = state;
-    isCasting.value = playbackState.value.status !== "STOPPED";
   });
 
   // Playback State
@@ -78,7 +75,10 @@ export const useCastStore = defineStore("cast", () => {
     await deviceService.discoverDevices();
   };
 
-  const startCasting = async (media: string, pCastOptions: options.CastOptions) => {
+  const startCasting = async (
+    media: string,
+    pCastOptions: options.CastOptions
+  ) => {
     if (!selectedDevice.value) return;
 
     castOptions.value = pCastOptions;
@@ -89,7 +89,6 @@ export const useCastStore = defineStore("cast", () => {
       media,
       castOptions.value
     );
-    isCasting.value = true;
   };
 
   const reset = () => {
@@ -97,20 +96,11 @@ export const useCastStore = defineStore("cast", () => {
     selectedDevice.value = null;
     selectedMedia.value = null;
     error.value = null;
-    isCasting.value = false;
   };
 
   const checkFFmpeg = async () => {
-    try {
-      const { GetFFmpegInfo } = await import("../../wailsjs/go/main/App");
-      const info = await GetFFmpegInfo(true); // searchAgain = true for retry
-      ffmpegInfo.value = info;
-      ffmpegAvailable.value = info.ffmpegInstalled && info.ffprobeInstalled;
-      ffmpegError.value = null;
-    } catch (err: any) {
-      ffmpegAvailable.value = false;
-      ffmpegError.value = err?.message || "FFmpeg not found";
-    }
+    const { GetFFmpegInfo } = await import("../../wailsjs/go/main/App");
+    ffmpegInfo.value = await GetFFmpegInfo(true);
   };
 
   return {
@@ -125,8 +115,6 @@ export const useCastStore = defineStore("cast", () => {
     playbackState,
     castOptions,
     trackInfo,
-    ffmpegAvailable,
-    ffmpegError,
 
     // Computed
     hasDevices,
