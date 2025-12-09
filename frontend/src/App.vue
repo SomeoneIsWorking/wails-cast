@@ -53,7 +53,7 @@ const selectDevice = (device: any) => {
       </header>
 
       <!-- Playback Control (shown when something is playing) -->
-      <PlaybackControl v-if="store.isCasting" />
+      <PlaybackControl v-if="store.isCasting" class="mt-6"/>
 
       <main class="mt-6">
         <!-- Tab Navigation -->
