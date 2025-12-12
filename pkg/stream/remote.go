@@ -91,11 +91,12 @@ func (p *RemoteHandler) ServeManifestPlaylist(ctx context.Context) (string, erro
 	videoVariant := &playlist.VideoVariants[0]
 	videoVariant.Resolution = ""
 	videoVariant.URI = videoVariant.URI + "?cachebust=" + time.Now().Format("20060102150405")
-
-	audio := &playlist.AudioGroups[videoVariant.Audio][p.Options.AudioTrack]
-	audio.URI = audio.URI + "?cachebust=" + time.Now().Format("20060102150405")
-	playlist.AudioGroups = map[string][]hls.AudioMedia{
-		videoVariant.Audio: {*audio},
+	if len(playlist.AudioGroups) > 0 {
+		audio := &playlist.AudioGroups[videoVariant.Audio][p.Options.AudioTrack]
+		audio.URI = audio.URI + "?cachebust=" + time.Now().Format("20060102150405")
+		playlist.AudioGroups = map[string][]hls.AudioMedia{
+			videoVariant.Audio: {*audio},
+		}
 	}
 
 	// Add subtitle track if available and not burned in
@@ -270,13 +271,15 @@ func (p *RemoteHandler) rewriteMainPlaylist(playlist *hls.ManifestPlaylist) (*hl
 		playlist.VideoVariants[i].URI = fmt.Sprintf("/video_%d.m3u8", i)
 	}
 
-	// Rewrite audio media URIs
-	audioIdx := 0
-	for groupID := range playlist.AudioGroups {
-		for i := range playlist.AudioGroups[groupID] {
-			if playlist.AudioGroups[groupID][i].URI != "" {
-				playlist.AudioGroups[groupID][i].URI = fmt.Sprintf("/audio_%d.m3u8", audioIdx)
-				audioIdx++
+	if len(playlist.AudioGroups) > 0 {
+		// Rewrite audio media URIs
+		audioIdx := 0
+		for groupID := range playlist.AudioGroups {
+			for i := range playlist.AudioGroups[groupID] {
+				if playlist.AudioGroups[groupID][i].URI != "" {
+					playlist.AudioGroups[groupID][i].URI = fmt.Sprintf("/audio_%d.m3u8", audioIdx)
+					audioIdx++
+				}
 			}
 		}
 	}
