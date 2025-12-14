@@ -1,31 +1,18 @@
 <script setup lang="ts">
 import { computed, ref, onMounted, onUnmounted } from "vue";
 import { useCastStore } from "@/stores/cast";
-import { useSettingsStore, qualityOptions } from "@/stores/settings";
+import { qualityOptions } from "@/stores/settings";
 import { Play } from "lucide-vue-next";
 import LoadingIcon from "./LoadingIcon.vue";
 import TranslationStreamModal from "./TranslationStreamModal.vue";
 import { useToast } from "vue-toastification";
 import { EventsOn, EventsOff } from "../../wailsjs/runtime/runtime";
-import { options } from "../../wailsjs/go/models";
+import FileSelector from "./FileSelector.vue";
 
 const castStore = useCastStore();
-const settingsStore = useSettingsStore();
 const toast = useToast();
 
 const trackInfo = computed(() => castStore.trackInfo);
-
-const selectedVideoTrack = ref(0);
-const selectedAudioTrack = ref(0);
-const subtitlePath = ref("");
-
-const quality = ref(settingsStore.settings.defaultQuality);
-const subtitle = ref<string>("none");
-
-if (trackInfo.value?.nearSubtitle) {
-  subtitle.value = "external";
-  subtitlePath.value = trackInfo.value.nearSubtitle;
-}
 
 const isLoading = ref(false);
 const showTranslationModal = ref(false);
@@ -33,20 +20,9 @@ const showTranslationModal = ref(false);
 const handleConfirm = async () => {
   if (!trackInfo.value) return;
 
-  const opts: options.CastOptions = {
-    VideoTrack: selectedVideoTrack.value,
-    AudioTrack: selectedAudioTrack.value,
-    Bitrate: quality.value,
-    SubtitleBurnIn: settingsStore.settings.subtitleBurnIn,
-    SubtitlePath:
-      subtitle.value === "external"
-        ? "external:" + subtitlePath.value
-        : subtitle.value,
-  };
-
   isLoading.value = true;
   try {
-    await castStore.startCasting(trackInfo.value.path, opts);
+    await castStore.startCasting(trackInfo.value.path);
     toast.success("Casting started successfully!");
   } finally {
     isLoading.value = false;
@@ -67,8 +43,10 @@ onMounted(() => {
   EventsOn("translation:complete", (translatedFiles: string[]) => {
     if (translatedFiles && translatedFiles.length > 0) {
       // Auto-select external subtitle with the first translated file
-      subtitle.value = "external";
-      subtitlePath.value = translatedFiles[0];
+      if (castStore.castOptions) {
+        castStore.castOptions.SubtitleType = "external";
+        castStore.castOptions.SubtitlePath = translatedFiles[0];
+      }
       toast.success(`Translated subtitle(s) completed!`);
     }
   });
@@ -106,7 +84,7 @@ onUnmounted(() => {
         <!-- Video Track Selection -->
         <label>Video Track:</label>
         <select
-          v-model="selectedVideoTrack"
+          v-model="castStore.castOptions!.VideoTrack"
           class="w-full bg-gray-700 text-white rounded-md p-2"
         >
           <option
@@ -122,7 +100,7 @@ onUnmounted(() => {
         <template v-if="trackInfo.audioTracks.length > 0">
           <label>Audio Track:</label>
           <select
-            v-model="selectedAudioTrack"
+            v-model="castStore.castOptions!.AudioTrack"
             class="w-full bg-gray-700 text-white rounded-md p-2"
           >
             <option
@@ -138,7 +116,7 @@ onUnmounted(() => {
         <label>Subtitles:</label>
         <div class="flex gap-2">
           <select
-            v-model="subtitle"
+            v-model="castStore.castOptions!.SubtitleType"
             class="w-full bg-gray-700 text-white rounded-md p-2"
           >
             <option
@@ -157,19 +135,18 @@ onUnmounted(() => {
             More Options
           </button>
         </div>
-        <template v-if="subtitle === 'external'">
+        <template v-if="castStore.castOptions?.SubtitleType === 'external'">
           <label></label>
-          <input
-            type="text"
-            v-model="subtitlePath"
-            placeholder="Enter subtitle file path"
-            class="w-full bg-gray-700 text-white rounded-md p-2"
+          <FileSelector
+            v-model="castStore.castOptions.SubtitlePath"
+            placeholder="Select subtitle file"
+            :accepted-extensions="['srt', 'vtt', 'ass']"
           />
         </template>
         <!-- Quality Selection -->
         <label>Quality:</label>
         <select
-          v-model="quality"
+          v-model="castStore.castOptions!.Bitrate"
           class="w-full bg-gray-700 text-white rounded-md p-2"
         >
           <option

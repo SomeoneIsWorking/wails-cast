@@ -104,7 +104,6 @@ export namespace options {
 	
 	export interface CastOptions {
 	    SubtitlePath: string;
-	    SubtitleBurnIn: boolean;
 	    VideoTrack: number;
 	    AudioTrack: number;
 	    Bitrate: string;

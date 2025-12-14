@@ -196,7 +196,7 @@ func (a *App) CastToDevice(deviceIp string, fileNameOrUrl string, castOptions op
 	options := &options.StreamOptions{
 		Subtitle: options.SubtitleCastOptions{
 			Path:     castOptions.SubtitlePath,
-			BurnIn:   castOptions.SubtitleBurnIn,
+			BurnIn:   settings.SubtitleBurnIn,
 			FontSize: settings.SubtitleFontSize,
 		},
 		VideoTrack:     castOptions.VideoTrack,
