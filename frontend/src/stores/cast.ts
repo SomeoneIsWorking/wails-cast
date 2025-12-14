@@ -4,8 +4,19 @@ import { Device, deviceService } from "../services/device";
 import { EventsOn } from "../../wailsjs/runtime/runtime";
 import { hls, main, options } from "../../wailsjs/go/models";
 import { mediaService } from "@/services/media";
+import { useSettingsStore } from "./settings";
+
+interface FrontendCastOptions {
+  VideoTrack: number;
+  AudioTrack: number;
+  Bitrate: string;
+  SubtitleType: string;
+  SubtitlePath: string;
+}
 
 export const useCastStore = defineStore("cast", () => {
+  const settingsStore = useSettingsStore();
+
   // State
   const devices = ref<Device[]>([]);
   const selectedDevice = ref<Device | null>(null);
@@ -32,7 +43,7 @@ export const useCastStore = defineStore("cast", () => {
   });
 
   // Cast Options
-  const castOptions = ref<options.CastOptions>();
+  const castOptions = ref<FrontendCastOptions>();
 
   // Computed
   const hasDevices = computed(() => devices.value.length > 0);
@@ -54,6 +65,13 @@ export const useCastStore = defineStore("cast", () => {
 
   const setTrackInfo = (info: main.TrackDisplayInfo) => {
     trackInfo.value = info;
+    castOptions.value = {
+      VideoTrack: 0,
+      AudioTrack: 0,
+      Bitrate: settingsStore.settings.defaultQuality,
+      SubtitleType: info?.nearSubtitle ? "external" : "none",
+      SubtitlePath: info?.nearSubtitle || "",
+    };
   };
 
   EventsOn("discovery:complete", () => {
@@ -75,27 +93,23 @@ export const useCastStore = defineStore("cast", () => {
     await deviceService.discoverDevices();
   };
 
-  const startCasting = async (
-    media: string,
-    pCastOptions: options.CastOptions
-  ) => {
-    if (!selectedDevice.value) return;
+  const startCasting = async (media: string) => {
+    if (!selectedDevice.value || !castOptions.value) return;
 
-    castOptions.value = pCastOptions;
     selectedMedia.value = media;
+
+    const backendOptions: options.CastOptions = {
+      VideoTrack: castOptions.value.VideoTrack,
+      AudioTrack: castOptions.value.AudioTrack,
+      Bitrate: castOptions.value.Bitrate,
+      SubtitlePath: castOptions.value.SubtitleType === "external" ? "external:" + castOptions.value.SubtitlePath : castOptions.value.SubtitleType,
+    };
 
     playbackState.value = await mediaService.castToDevice(
       selectedDevice.value.host,
       media,
-      castOptions.value
+      backendOptions
     );
-  };
-
-  const reset = () => {
-    devices.value = [];
-    selectedDevice.value = null;
-    selectedMedia.value = null;
-    error.value = null;
   };
 
   const checkFFmpeg = async () => {
@@ -128,7 +142,6 @@ export const useCastStore = defineStore("cast", () => {
     setTrackInfo,
     discoverDevices,
     startCasting,
-    reset,
     checkFFmpeg,
   };
 });
