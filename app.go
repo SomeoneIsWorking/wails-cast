@@ -189,7 +189,7 @@ func (a *App) GetTrackDisplayInfo(fileNameOrUrl string) (*TrackDisplayInfo, erro
 }
 
 // CastToDevice casts media (local file or remote URL) to a device
-func (a *App) CastToDevice(deviceIp string, fileNameOrUrl string, castOptions options.CastOptions) (*PlaybackState, error) {
+func (a *App) CastToDevice(deviceIp string, fileNameOrUrl string, castOptions *options.CastOptions) (*PlaybackState, error) {
 	// Determine if input is a local file or remote URL
 	isRemote := strings.HasPrefix(fileNameOrUrl, "http://") || strings.HasPrefix(fileNameOrUrl, "https://")
 	settings := a.GetSettings()
@@ -256,6 +256,7 @@ func (a *App) CastToDevice(deviceIp string, fileNameOrUrl string, castOptions op
 		a.mu.Lock()
 		a.playbackState.Status = "PLAYING"
 		a.mu.Unlock()
+		a.addToCastHistory(mediaPath, deviceIp, castOptions)
 		return &a.playbackState, nil
 	}
 
@@ -295,11 +296,15 @@ func (a *App) CastToDevice(deviceIp string, fileNameOrUrl string, castOptions op
 	)
 
 	// Add to history
-	if err := a.historyStore.Add(mediaPath, extractDeviceName(deviceIp)); err != nil {
-		logger.Warn("Failed to add to history", "error", err)
-	}
+	a.addToCastHistory(mediaPath, deviceIp, castOptions)
 
 	return &a.playbackState, nil
+}
+
+func (a *App) addToCastHistory(mediaPath string, deviceIp string, castOptions *options.CastOptions) {
+	if err := a.historyStore.Add(mediaPath, extractDeviceName(deviceIp), castOptions); err != nil {
+		logger.Warn("Failed to add to history", "error", err)
+	}
 }
 
 // GetMediaFiles returns media files from a directory

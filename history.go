@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"wails-cast/pkg/folders"
+	"wails-cast/pkg/options"
 
 	wails_runtime "github.com/wailsapp/wails/v2/pkg/runtime"
 )
@@ -19,10 +20,11 @@ const (
 )
 
 type HistoryItem struct {
-	Path       string    `json:"path"`
-	Name       string    `json:"name"`
-	Timestamp  time.Time `json:"timestamp"`
-	DeviceName string    `json:"deviceName"`
+	Path        string               `json:"path"`
+	Name        string               `json:"name"`
+	Timestamp   time.Time            `json:"timestamp"`
+	DeviceName  string               `json:"deviceName"`
+	CastOptions *options.CastOptions `json:"castOptions"`
 }
 
 type HistoryStore struct {
@@ -75,16 +77,17 @@ func (h *HistoryStore) save() error {
 	return os.WriteFile(h.filePath, data, 0644)
 }
 
-func (h *HistoryStore) Add(path, deviceName string) error {
+func (h *HistoryStore) Add(path, deviceName string, castOptions *options.CastOptions) error {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 
 	name := filepath.Base(path)
 	item := HistoryItem{
-		Path:       path,
-		Name:       name,
-		Timestamp:  time.Now(),
-		DeviceName: deviceName,
+		Path:        path,
+		Name:        name,
+		Timestamp:   time.Now(),
+		DeviceName:  deviceName,
+		CastOptions: castOptions,
 	}
 
 	// Remove duplicate if exists

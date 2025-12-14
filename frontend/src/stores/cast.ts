@@ -5,6 +5,8 @@ import { EventsOn } from "../../wailsjs/runtime/runtime";
 import { hls, main, options } from "../../wailsjs/go/models";
 import { mediaService } from "@/services/media";
 import { useSettingsStore } from "./settings";
+import { parseSubtitlePath, buildSubtitlePath } from "@/utils/subtitle";
+import { useHistoryStore } from "./history";
 
 interface FrontendCastOptions {
   VideoTrack: number;
@@ -26,6 +28,7 @@ export const useCastStore = defineStore("cast", () => {
   const error = ref<string | null>(null);
   const ffmpegInfo = ref<hls.FFmpegInfo | null>(null);
   const trackInfo = ref<main.TrackDisplayInfo | null>(null);
+  const historyStore = useHistoryStore();
 
   EventsOn("playback:state", (state: main.PlaybackState) => {
     playbackState.value = state;
@@ -65,13 +68,31 @@ export const useCastStore = defineStore("cast", () => {
 
   const setTrackInfo = (info: main.TrackDisplayInfo) => {
     trackInfo.value = info;
-    castOptions.value = {
-      VideoTrack: 0,
-      AudioTrack: 0,
-      Bitrate: settingsStore.settings.defaultQuality,
-      SubtitleType: info?.nearSubtitle ? "external" : "none",
-      SubtitlePath: info?.nearSubtitle || "",
-    };
+    const historyItem = historyStore.items.find(
+      (item) => item.path === info.path
+    );
+
+    const historyCastOptions = historyItem?.castOptions;
+    if (historyCastOptions) {
+      const subtitleItem = parseSubtitlePath(
+        historyCastOptions.SubtitlePath
+      );
+      castOptions.value = {
+        VideoTrack: historyCastOptions.VideoTrack,
+        AudioTrack: historyCastOptions.AudioTrack,
+        Bitrate: historyCastOptions.Bitrate,
+        SubtitleType: subtitleItem.type,
+        SubtitlePath: subtitleItem.path,
+      };
+    } else {
+      castOptions.value = {
+        VideoTrack: 0,
+        AudioTrack: 0,
+        Bitrate: settingsStore.settings.defaultQuality,
+        SubtitleType: info?.nearSubtitle ? "external" : "none",
+        SubtitlePath: info?.nearSubtitle || "",
+      };
+    }
   };
 
   EventsOn("discovery:complete", () => {
@@ -102,7 +123,10 @@ export const useCastStore = defineStore("cast", () => {
       VideoTrack: castOptions.value.VideoTrack,
       AudioTrack: castOptions.value.AudioTrack,
       Bitrate: castOptions.value.Bitrate,
-      SubtitlePath: castOptions.value.SubtitleType === "external" ? "external:" + castOptions.value.SubtitlePath : castOptions.value.SubtitleType,
+      SubtitlePath: buildSubtitlePath(
+        castOptions.value.SubtitleType,
+        castOptions.value.SubtitlePath
+      ),
     };
 
     playbackState.value = await mediaService.castToDevice(
