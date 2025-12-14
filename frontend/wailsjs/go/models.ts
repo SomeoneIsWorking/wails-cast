@@ -39,6 +39,7 @@ export namespace main {
 	    // Go type: time
 	    timestamp: any;
 	    deviceName: string;
+	    castOptions?: options.CastOptions;
 	}
 	export interface PlaybackState {
 	    status: string;
