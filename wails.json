@@ -9,5 +9,10 @@
   "author": {
     "name": "Barış Hamil",
     "email": "barishamil90@gmail.com"
+  },
+  "bindings": {
+    "ts_generation": {
+      "outputType": "interfaces"
+    }
   }
 }
