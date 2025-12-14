@@ -2,9 +2,10 @@ package options
 
 // StreamOptions holds options for streaming
 type StreamOptions struct {
-	Subtitle       SubtitleCastOptions
-	VideoTrack     int
-	AudioTrack     int
-	Bitrate        string
-	MaxOutputWidth int
+	Subtitle         SubtitleCastOptions
+	VideoTrack       int
+	AudioTrack       int
+	Bitrate          string
+	MaxOutputWidth   int
+	NoTranscodeCache bool
 }

@@ -1,13 +1,13 @@
 <script setup lang="ts">
 import { computed, ref, onMounted, onUnmounted } from "vue";
 import { useCastStore } from "@/stores/cast";
-import { qualityOptions } from "@/stores/settings";
 import { Play } from "lucide-vue-next";
 import LoadingIcon from "./LoadingIcon.vue";
 import TranslationStreamModal from "./TranslationStreamModal.vue";
 import { useToast } from "vue-toastification";
 import { EventsOn, EventsOff } from "../../wailsjs/runtime/runtime";
 import FileSelector from "./FileSelector.vue";
+import { qualityOptions } from "@/data/qualityOptions";
 
 const castStore = useCastStore();
 const toast = useToast();
