@@ -125,7 +125,7 @@ func (s *LocalHandler) ServeTrackPlaylist(ctx context.Context, trackType string,
 }
 
 // ServeSegment transcodes and returns the segment file path
-func (s *LocalHandler) ServeSegment(ctx context.Context, trackType string, trackIndex int, segmentIndex int) (string, error) {
+func (s *LocalHandler) ServeSegment(ctx context.Context, trackType string, trackIndex int, segmentIndex int) ([]byte, error) {
 	segmentName := fmt.Sprintf("segment_%d.ts", segmentIndex)
 
 	hls.EnsureCacheDir(s.OutputDir)
@@ -137,20 +137,28 @@ func (s *LocalHandler) ServeSegment(ctx context.Context, trackType string, track
 		segmentDuration = s.Duration - startTime
 	}
 
-	manifest, err := hls.LoadSegmentManifest(segmentPath + ".json")
-	needsRegeneration := err != nil || !hls.ManifestMatches(manifest, s.Options, s.SegmentSize)
-
-	if !hls.CacheExists(s.OutputDir, segmentName) || needsRegeneration {
-		err := s.transcodeSegment(ctx, segmentPath, startTime)
-		if err != nil {
-			return "", fmt.Errorf("transcode failed: %w", err)
-		}
+	if s.Options.NoTranscodeCache {
+		return s.transcodeSegment(ctx, "pipe:1", startTime)
 	}
 
-	return segmentPath, nil
+	manifest, err := hls.LoadSegmentManifest(segmentPath + ".json")
+
+	needsRegeneration := err != nil ||
+		!hls.ManifestMatches(manifest, s.Options, s.SegmentSize) ||
+		!hls.CacheExists(s.OutputDir, segmentName)
+
+	if needsRegeneration {
+		buffer, err := s.transcodeSegment(ctx, segmentPath, startTime)
+		if err != nil {
+			return nil, fmt.Errorf("transcode failed: %w", err)
+		}
+		return buffer, nil
+	}
+
+	return os.ReadFile(segmentPath)
 }
 
-func (s *LocalHandler) transcodeSegment(ctx context.Context, segmentPath string, startTime float64) error {
+func (s *LocalHandler) transcodeSegment(ctx context.Context, segmentPath string, startTime float64) ([]byte, error) {
 	ensureSymlink(s.VideoPath, s.OutputDir)
 	subtitle := ""
 
@@ -169,13 +177,15 @@ func (s *LocalHandler) transcodeSegment(ctx context.Context, segmentPath string,
 		FontSize:       s.Options.Subtitle.FontSize,
 	}
 
-	err := hls.TranscodeSegment(ctx, opts)
+	output, err := hls.TranscodeSegment(ctx, opts)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
-	err = opts.Save(segmentPath + ".json")
-	return err
+	if segmentPath != "pipe:1" {
+		err = opts.Save(segmentPath + ".json")
+	}
+	return output, err
 }
 
 func ensureSymlink(filePath string, folder string) {

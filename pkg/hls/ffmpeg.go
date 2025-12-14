@@ -40,11 +40,11 @@ type TranscodeOptions struct {
 }
 
 // TranscodeSegment transcodes a segment with optional 100ms wait to avoid wasted work during rapid seeking
-func TranscodeSegment(ctx context.Context, opts *TranscodeOptions) error {
+func TranscodeSegment(ctx context.Context, opts *TranscodeOptions) ([]byte, error) {
 	// Build ffmpeg arguments
 	args, err := buildTranscodeArgs(opts)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	// log the call
@@ -53,19 +53,20 @@ func TranscodeSegment(ctx context.Context, opts *TranscodeOptions) error {
 	cmd := exec.CommandContext(ctx, ffmpegPath, args...)
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
-
-	err = cmd.Run()
+	output, err := cmd.Output()
 	if err != nil {
 		// Check if it was cancelled
 		if ctx.Err() != nil {
-			os.Remove(opts.OutputPath)
-			return ctx.Err()
+			if opts.OutputPath != "pipe:1" {
+				os.Remove(opts.OutputPath)
+			}
+			return nil, ctx.Err()
 		}
 		fmt.Println(stderr.String())
-		return err
+		return nil, err
 	}
 
-	return nil
+	return output, nil
 }
 
 // buildTranscodeArgs builds ffmpeg arguments based on options

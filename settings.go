@@ -25,6 +25,7 @@ func getDefaultSettings() Settings {
 		MaxOutputWidth:             0,
 		TranslatePromptTemplate:    "Create a subtitle translation in {{.TargetLanguage}} based on the references in other languages.\nMultiple language tracks from the same video are provided as reference to help you understand context and maintain consistent terminology.\n\nInput format:\ndelay: <seconds>\nduration: <seconds>\n<text>\n\n{{.SubtitleContent}}\n\nOutput the translation in the same format inside <llm_output></llm_output> tags.",
 		MaxSubtitleSamples:         4,
+		NoTranscodeCache:           false,
 	}
 }
 
@@ -38,6 +39,7 @@ type Settings struct {
 	MaxOutputWidth             int    `json:"maxOutputWidth"`
 	TranslatePromptTemplate    string `json:"translatePromptTemplate"`
 	MaxSubtitleSamples         int    `json:"maxSubtitleSamples"`
+	NoTranscodeCache           bool   `json:"noTranscodeCache"`
 }
 
 type SettingsStore struct {

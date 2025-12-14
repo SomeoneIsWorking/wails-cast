@@ -6,6 +6,7 @@ import {
   ResetSettings,
 } from "../../wailsjs/go/main/App";
 import { main } from "../../wailsjs/go/models";
+import { settingCategories } from "../data/settingCategories";
 
 interface SettingDefinition {
   key: keyof main.Settings;
@@ -18,20 +19,12 @@ interface SettingDefinition {
   options?: { value: string; label: string }[];
 }
 
-interface SettingCategory {
+export interface SettingCategory {
   id: string;
   label: string;
   icon: string;
   settings: SettingDefinition[];
 }
-
-export const qualityOptions = [
-  { value: "", label: "Original (Best Quality)" },
-  { value: "8M", label: "Very High (Bitrate: 8M)" },
-  { value: "5M", label: "High (Bitrate: 5M)" },
-  { value: "3M", label: "Medium (Bitrate: 3M)" },
-  { value: "2M", label: "Low (Bitrate: 2M)" },
-];
 
 export const useSettingsStore = defineStore("settings", () => {
   const settings = ref<main.Settings>(null!);
@@ -53,110 +46,14 @@ export const useSettingsStore = defineStore("settings", () => {
     settings.value = await ResetSettings();
   };
 
-  // Setting categories for organization
-  const settingCategories = computed<SettingCategory[]>(() => [
-    {
-      id: "subtitles",
-      label: "Subtitles",
-      icon: "Subtitles",
-      settings: [
-        {
-          key: "subtitleBurnIn",
-          label: "Burn-in Subtitles",
-          description: "Burn subtitles into video stream",
-          type: "boolean",
-        },
-        {
-          key: "subtitleFontSize",
-          label: "Font Size",
-          description: "Default font size for burned-in subtitles",
-          type: "number",
-          min: 12,
-          max: 72,
-          step: 2,
-        },
-      ],
-    },
-    {
-      id: "translation",
-      label: "Translation",
-      icon: "Languages",
-      settings: [
-        {
-          key: "defaultTranslationLanguage",
-          label: "Default Target Language",
-          description: "Default language for subtitle translation",
-          type: "text",
-        },
-      ],
-    },
-    {
-      id: "ai",
-      label: "AI Configuration",
-      icon: "Brain",
-      settings: [
-        {
-          key: "geminiApiKey",
-          label: "Gemini API Key",
-          description: "Your Google Gemini API key for AI features",
-          type: "password",
-        },
-        {
-          key: "geminiModel",
-          label: "Gemini Model",
-          description: "Which Gemini model to use",
-          type: "text",
-        },
-        {
-          key: "translatePromptTemplate",
-          label: "Translation Prompt Template",
-          description: "Custom prompt template for subtitle translation. Use {{.TargetLanguage}} and {{.SubtitleContent}} as placeholders.",
-          type: "textarea",
-        },
-        {
-          key: "maxSubtitleSamples",
-          label: "Max Subtitle Samples",
-          description: "Maximum number of reference subtitle tracks to use for translation",
-          type: "number",
-          min: 1,
-          max: 10,
-          step: 1,
-        },
-      ],
-    },
-    {
-      id: "quality",
-      label: "Quality",
-      icon: "Settings",
-      settings: [
-        {
-          key: "defaultQuality",
-          label: "Default Quality",
-          description: "Default quality preset for video encoding",
-          type: "select",
-          options: qualityOptions,
-        },
-        {
-          key: "maxOutputWidth",
-          label: "Max Output Width",
-          description: "Maximum output width for video encoding (0 for original width)",
-          type: "number",
-          min: 640,
-          max: 3840,
-          step: 1,
-        },
-      ],
-    },
-  ]);
-
   // Filtered settings based on search query
   const filteredCategories = computed(() => {
     if (!searchQuery.value.trim()) {
-      return settingCategories.value;
+      return settingCategories;
     }
 
     const query = searchQuery.value.toLowerCase();
-    return settingCategories.value
+    return settingCategories
       .map((category) => ({
         ...category,
         settings: category.settings.filter(

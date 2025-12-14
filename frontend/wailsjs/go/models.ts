@@ -60,6 +60,7 @@ export namespace main {
 	    maxOutputWidth: number;
 	    translatePromptTemplate: string;
 	    maxSubtitleSamples: number;
+	    noTranscodeCache: boolean;
 	}
 	export interface SubtitleDisplayItem {
 	    path: string;

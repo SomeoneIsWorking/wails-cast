@@ -164,7 +164,7 @@ func (s *Server) handleRequest(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		filePath, err := handler.ServeSegment(r.Context(), "video", trackIndex, segmentIndex)
+		buffer, err := handler.ServeSegment(r.Context(), "video", trackIndex, segmentIndex)
 		if err != nil {
 			s.handleError(w, r, "Failed to generate video segment", err)
 			return
@@ -175,7 +175,7 @@ func (s *Server) handleRequest(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "video/mp2t")
 		w.Header().Set("Accept-Ranges", "bytes")
 		w.Header().Set("Cache-Control", "public, max-age=31536000")
-		http.ServeFile(w, r, filePath)
+		w.Write(buffer)
 		return
 	}
 
@@ -186,7 +186,7 @@ func (s *Server) handleRequest(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		filePath, err := handler.ServeSegment(r.Context(), "audio", trackIndex, segmentIndex)
+		buffer, err := handler.ServeSegment(r.Context(), "audio", trackIndex, segmentIndex)
 		if err != nil {
 			s.handleError(w, r, "Failed to generate audio segment", err)
 			return
@@ -197,7 +197,7 @@ func (s *Server) handleRequest(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "video/mp2t")
 		w.Header().Set("Accept-Ranges", "bytes")
 		w.Header().Set("Cache-Control", "public, max-age=31536000")
-		http.ServeFile(w, r, filePath)
+		w.Write(buffer)
 		return
 	}
 

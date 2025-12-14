@@ -199,10 +199,11 @@ func (a *App) CastToDevice(deviceIp string, fileNameOrUrl string, castOptions *o
 			BurnIn:   settings.SubtitleBurnIn,
 			FontSize: settings.SubtitleFontSize,
 		},
-		VideoTrack:     castOptions.VideoTrack,
-		AudioTrack:     castOptions.AudioTrack,
-		Bitrate:        castOptions.Bitrate,
-		MaxOutputWidth: settings.MaxOutputWidth,
+		VideoTrack:       castOptions.VideoTrack,
+		AudioTrack:       castOptions.AudioTrack,
+		Bitrate:          castOptions.Bitrate,
+		MaxOutputWidth:   settings.MaxOutputWidth,
+		NoTranscodeCache: settings.NoTranscodeCache,
 	}
 	var mediaPath string
 	var duration float64
