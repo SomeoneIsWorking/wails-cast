@@ -517,7 +517,9 @@ func (p *RemoteHandler) transcodeSegment(ctx context.Context, rawPath string, tr
 		return nil, err
 	}
 	logger.Logger.Info("Transcoded segment", "input", rawPath, "output", transcodedPath, "duration", time.Since(startTime).Seconds())
+if transcodedPath != "pipe:1" {
 	err = opts.Save(transcodedPath + ".json")
+}
 	return buffer, err
 }
 
