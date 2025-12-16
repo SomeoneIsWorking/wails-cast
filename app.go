@@ -98,8 +98,8 @@ func NewApp() *App {
 func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
 	events.Subscribe(func(topic string, payload any) {
-			wails_runtime.EventsEmit(a.ctx, topic, payload)
-		})
+		wails_runtime.EventsEmit(a.ctx, topic, payload)
+	})
 	// Start media server
 	go a.mediaServer.Start()
 
@@ -372,11 +372,17 @@ func (a *App) GetCacheStats() (*folders.CacheStats, error) {
 
 // DeleteTranscodedCache removes only transcoded video segments
 func (a *App) DeleteTranscodedCache() error {
+	if err := a.downloadManager.StopAllAndClear(); err != nil {
+		return err
+	}
 	return folders.DeleteTranscodedCache()
 }
 
 // DeleteAllVideoCache removes all video files but keeps metadata
 func (a *App) DeleteAllVideoCache() error {
+	if err := a.downloadManager.StopAllAndClear(); err != nil {
+		return err
+	}
 	return folders.DeleteAllVideoCache()
 }
 
