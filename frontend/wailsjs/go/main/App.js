@@ -30,6 +30,10 @@ export function ExportEmbeddedSubtitles(arg1) {
   return window['go']['main']['App']['ExportEmbeddedSubtitles'](arg1);
 }
 
+export function GenerateTranslationPrompt(arg1, arg2) {
+  return window['go']['main']['App']['GenerateTranslationPrompt'](arg1, arg2);
+}
+
 export function GetCacheStats() {
   return window['go']['main']['App']['GetCacheStats']();
 }
@@ -88,6 +92,10 @@ export function OpenMediaFolder(arg1) {
 
 export function Pause() {
   return window['go']['main']['App']['Pause']();
+}
+
+export function ProcessPastedTranslation(arg1, arg2, arg3) {
+  return window['go']['main']['App']['ProcessPastedTranslation'](arg1, arg2, arg3);
 }
 
 export function RemoveFromHistory(arg1) {

@@ -20,6 +20,8 @@ export function DiscoverDevices():Promise<Array<main.Device>>;
 
 export function ExportEmbeddedSubtitles(arg1:string):Promise<void>;
 
+export function GenerateTranslationPrompt(arg1:string,arg2:string):Promise<string>;
+
 export function GetCacheStats():Promise<folders.CacheStats>;
 
 export function GetDownloadStatus(arg1:string,arg2:string,arg3:number):Promise<download.DownloadStatus>;
@@ -50,6 +52,8 @@ export function OpenMediaFolder(arg1:string):Promise<void>;
 
 export function Pause():Promise<void>;
 
+export function ProcessPastedTranslation(arg1:string,arg2:string,arg3:string):Promise<Array<string>>;
+
 export function RemoveFromHistory(arg1:string):Promise<void>;
 
 export function ResetSettings():Promise<main.Settings>;
@@ -62,7 +66,7 @@ export function StopDownload(arg1:string,arg2:string,arg3:number):Promise<downlo
 
 export function StopPlayback():Promise<void>;
 
-export function TranslateExportedSubtitles(arg1:string,arg2:string):Promise<void>;
+export function TranslateExportedSubtitles(arg1:string,arg2:string):Promise<Array<string>>;
 
 export function Unpause():Promise<void>;
 
