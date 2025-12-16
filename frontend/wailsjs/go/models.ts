@@ -1,6 +1,9 @@
 export namespace download {
 	
 	export interface DownloadStatus {
+	    Url: string;
+	    MediaType: string;
+	    Track: number;
 	    Downloaded: number;
 	    Total: number;
 	    Status: string;

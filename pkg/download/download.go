@@ -30,12 +30,18 @@ func (d *DownloadManager) GetStatus(url string, mediaType string, track int) (*D
 			return nil, err
 		}
 		return &DownloadStatus{
+			Url:        url,
+			MediaType:  mediaType,
+			Track:      track,
 			Downloaded: downloaded,
 			Total:      total,
 			Status:     "IDLE",
 		}, nil
 	}
 	return &DownloadStatus{
+		Url:        task.URL,
+		MediaType:  task.MediaType,
+		Track:      task.Track,
 		Downloaded: task.Downloaded,
 		Total:      task.Total,
 		Status:     task.Status,
@@ -50,9 +56,13 @@ func (d *DownloadManager) StartDownload(url string, mediaType string, index int)
 		if err != nil {
 			return nil, err
 		}
+		status := "IDLE"
+		if downloaded == total {
+			status = "COMPLETED"
+		}
 		d.Downloads[key] = &DownloadTask{
 			URL:        url,
-			Status:     "IDLE",
+			Status:     status,
 			MediaType:  mediaType,
 			Downloaded: downloaded,
 			Total:      total,
@@ -76,6 +86,9 @@ func (d *DownloadManager) Stop(url string, mediaType string, track int) (*Downlo
 	task.Cancel()
 	task.Status = "STOPPED"
 	return &DownloadStatus{
+		Url:        task.URL,
+		MediaType:  task.MediaType,
+		Track:      task.Track,
 		Downloaded: task.Downloaded,
 		Total:      task.Total,
 		Status:     task.Status,
@@ -134,12 +147,15 @@ func (d *DownloadManager) startDownload(task *DownloadTask) (*DownloadStatus, er
 			task.mu.Unlock()
 		}
 		task.mu.Lock()
-		task.Status = "COMPLETED"
+		task.Status = "JUST-COMPLETED"
 		task.Emit()
 		task.mu.Unlock()
 	}()
 
 	return &DownloadStatus{
+		Url:        task.URL,
+		MediaType:  task.MediaType,
+		Track:      task.Track,
 		Downloaded: task.Downloaded,
 		Total:      task.Total,
 		Status:     task.Status,
@@ -158,6 +174,9 @@ func (task *DownloadTask) Emit() {
 }
 
 type DownloadStatus struct {
+	Url        string
+	MediaType  string
+	Track      int
 	Downloaded int
 	Total      int
 	Status     string
