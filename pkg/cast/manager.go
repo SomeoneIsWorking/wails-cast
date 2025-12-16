@@ -2,8 +2,6 @@ package cast
 
 import (
 	"context"
-	"crypto/md5"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -19,37 +17,23 @@ import (
 	"wails-cast/pkg/stream"
 )
 
-// CastManager handles the casting workflow including caching and proxying
-type CastManager struct {
-	LocalIP   string
-	ProxyPort int
-	CacheRoot string
-}
-
-// NewCastManager creates a new CastManager
-func NewCastManager(localIP string, proxyPort int) *CastManager {
-	cacheRoot := folders.GetCache()
-	os.MkdirAll(cacheRoot, 0755)
-	return &CastManager{
-		LocalIP:   localIP,
-		ProxyPort: proxyPort,
-		CacheRoot: cacheRoot,
-	}
-}
-
-func (m *CastManager) CreateRemoteHandler(videoURL string, options *options.StreamOptions) (*stream.RemoteHandler, error) {
+func CreateRemoteHandler(videoURL string, options *options.StreamOptions) (*stream.RemoteHandler, error) {
 	// 1. Calculate hash of video URL for cache key
-	cacheDir := m.cacheDir(videoURL)
+	cacheDir := folders.GetCacheForVideo(videoURL)
 
 	// 2. Check cache or extract
-	result, err := getExtractionJson(videoURL, cacheDir)
+	result, err := getExtractionJson(videoURL)
 	if err != nil {
 		return nil, err
 	}
 
 	// Create and configure handler
-	handler := stream.NewRemoteHandler(m.LocalIP, cacheDir, options)
-	handler.SetExtractor(result)
+	handler, err := stream.NewRemoteHandler(cacheDir, options, result)
+	if err != nil {
+		return nil, err
+	}
+
+	// Calculate total duration
 	trackPlaylist, err := handler.GetTrackPlaylist(context.Background(), "video", 0)
 	if err != nil {
 		return nil, err
@@ -59,13 +43,6 @@ func (m *CastManager) CreateRemoteHandler(videoURL string, options *options.Stre
 		handler.Duration += segment.Duration
 	}
 	return handler, nil
-}
-
-func (m *CastManager) cacheDir(videoURL string) string {
-	hash := md5.Sum([]byte(videoURL))
-	cacheKey := hex.EncodeToString(hash[:])
-	cacheDir := filepath.Join(m.CacheRoot, cacheKey)
-	return cacheDir
 }
 
 func loadCachedExtraction(cacheDir string) (*extractor.ExtractResult, error) {
@@ -95,8 +72,9 @@ func loadCachedExtraction(cacheDir string) (*extractor.ExtractResult, error) {
 	return result, nil
 }
 
-func getExtractionJson(videoURL string, cacheDir string) (*extractor.ExtractResult, error) {
+func getExtractionJson(videoURL string) (*extractor.ExtractResult, error) {
 	// Try loading from cache first
+	cacheDir := folders.GetCacheForVideo(videoURL)
 	if result, err := loadCachedExtraction(cacheDir); err == nil {
 		return result, nil
 	}
@@ -133,11 +111,10 @@ func getExtractionJson(videoURL string, cacheDir string) (*extractor.ExtractResu
 }
 
 // GetRemoteTrackInfo extracts track information from a remote HLS stream
-func (m *CastManager) GetRemoteTrackInfo(videoURL string) (*mediainfo.MediaTrackInfo, string, error) {
-	cacheDir := m.cacheDir(videoURL)
-	result, err := getExtractionJson(videoURL, cacheDir)
+func GetRemoteTrackInfo(videoURL string) (*mediainfo.MediaTrackInfo, error) {
+	result, err := getExtractionJson(videoURL)
 	if err != nil {
-		return nil, "", fmt.Errorf("failed to extract video: %w", err)
+		return nil, fmt.Errorf("failed to extract video: %w", err)
 	}
 
 	manifestRaw, _ := hls.ParseManifestPlaylist(result.ManifestRaw)
@@ -154,7 +131,45 @@ func (m *CastManager) GetRemoteTrackInfo(videoURL string) (*mediainfo.MediaTrack
 		mediaTrackInfo.SubtitleTracks = append(mediaTrackInfo.SubtitleTracks, track)
 	}
 	if err != nil {
-		return nil, "", fmt.Errorf("failed to extract tracks from manifest playlist: %w", err)
+		return nil, fmt.Errorf("failed to extract tracks from manifest playlist: %w", err)
 	}
-	return mediaTrackInfo, cacheDir, nil
+	return mediaTrackInfo, nil
+}
+
+// GetTrackProgress returns the current download progress for a specific track
+func GetTrackProgress(url string, mediaType string, track int) (int, int, error) {
+	// Get track info to create handler
+	_, err := GetRemoteTrackInfo(url)
+	if err != nil {
+		return 0, 0, err
+	}
+
+	handler, err := CreateRemoteHandler(url, &options.StreamOptions{
+		VideoTrack: 0, // We don't need specific tracks for progress calculation
+		AudioTrack: -1,
+	})
+	if err != nil {
+		return 0, 0, err
+	}
+
+	playlist, err := handler.GetTrackPlaylist(context.Background(), mediaType, track)
+	if err != nil {
+		return 0, 0, err
+	}
+
+	totalSegments := len(playlist.Segments)
+	if totalSegments == 0 {
+		return 0, 0, nil
+	}
+
+	downloadedSegments := 0
+	for i := range playlist.Segments {
+		trackDir := filepath.Join(handler.CacheDir, fmt.Sprintf("%s_%d", mediaType, track))
+		rawPath := filepath.Join(trackDir, fmt.Sprintf("segment_%d_raw.ts", i))
+		if _, err := os.Stat(rawPath); err == nil {
+			downloadedSegments++
+		}
+	}
+
+	return downloadedSegments, totalSegments, nil
 }

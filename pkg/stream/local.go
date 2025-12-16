@@ -23,11 +23,10 @@ type LocalHandler struct {
 	OutputDir   string
 	Duration    float64
 	SegmentSize int
-	LocalIP     string
 }
 
 // NewLocalHandler creates a new local HLS handler
-func NewLocalHandler(videoPath string, options *options.StreamOptions, localIP string) *LocalHandler {
+func NewLocalHandler(videoPath string, options *options.StreamOptions) *LocalHandler {
 	duration, err := hls.GetVideoDuration(videoPath)
 	if err != nil {
 		duration = 0
@@ -45,7 +44,6 @@ func NewLocalHandler(videoPath string, options *options.StreamOptions, localIP s
 		OutputDir:   outputDir,
 		Duration:    duration,
 		SegmentSize: 8,
-		LocalIP:     localIP,
 	}
 }
 

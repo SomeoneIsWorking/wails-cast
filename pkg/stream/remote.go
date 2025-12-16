@@ -24,18 +24,14 @@ import (
 // RemoteHandler is a handler that serves HLS manifests and segments
 // with captured cookies and headers
 type RemoteHandler struct {
-	BaseURL             string
-	Manifest            *hls.ManifestPlaylist
-	ManifestRaw         *hls.ManifestPlaylist
-	Cookies             map[string]string
-	Headers             map[string]string
-	LocalIP             string
-	CacheDir            string // Directory for caching transcoded segments
-	AudioPlaylistURL    string // For demuxed HLS: URL of audio playlist
-	VideoPlaylistURL    string // For demuxed HLS: URL of video playlist
-	IsManifestRewritten bool
-	Options             *options.StreamOptions
-	Duration            float64 // Total duration of the stream in seconds
+	BaseURL     string
+	Manifest    *hls.ManifestPlaylist
+	ManifestRaw *hls.ManifestPlaylist
+	Cookies     map[string]string
+	Headers     map[string]string
+	CacheDir    string // Directory for caching transcoded segments
+	Options     *options.StreamOptions
+	Duration    float64 // Total duration of the stream in seconds
 }
 
 type MainMap struct {
@@ -44,23 +40,27 @@ type MainMap struct {
 }
 
 // NewRemoteHandler creates a new HLS handler
-func NewRemoteHandler(localIP string, cacheDir string, options *options.StreamOptions) *RemoteHandler {
+func NewRemoteHandler(cacheDir string, options *options.StreamOptions, result *extractor.ExtractResult) (*RemoteHandler, error) {
 	os.MkdirAll(cacheDir, 0755)
 
-	return &RemoteHandler{
-		LocalIP:  localIP,
-		CacheDir: cacheDir,
-		Options:  options,
+	manifest, err := hls.ParseManifestPlaylist(result.ManifestRaw)
+	if err != nil {
+		return nil, err
 	}
-}
+	manifestRaw, err := hls.ParseManifestPlaylist(result.ManifestRaw)
+	if err != nil {
+		return nil, err
+	}
 
-// SetExtractor sets the extractor result for the proxy
-func (p *RemoteHandler) SetExtractor(result *extractor.ExtractResult) {
-	p.BaseURL = result.BaseURL
-	p.ManifestRaw, _ = hls.ParseManifestPlaylist(result.ManifestRaw)
-	p.Cookies = result.Cookies
-	p.Headers = result.Headers
-	p.Manifest, _ = p.rewriteMainPlaylist(p.ManifestRaw)
+	return &RemoteHandler{
+		CacheDir:    cacheDir,
+		Options:     options,
+		BaseURL:     result.BaseURL,
+		Cookies:     result.Cookies,
+		Headers:     result.Headers,
+		Manifest:    manifest,
+		ManifestRaw: manifestRaw,
+	}, nil
 }
 
 func (p *RemoteHandler) GetTrackPlaylist(ctx context.Context, trackType string, index int) (hls.TrackPlaylist, error) {
@@ -369,6 +369,10 @@ func (p *RemoteHandler) ServeSegment(ctx context.Context, trackType string, trac
 	return os.ReadFile(transcodedPath)
 }
 
+func (p *RemoteHandler) EnsureSegmentDownloaded(ctx context.Context, trackType string, trackIndex int, segmentIndex int) (string, error) {
+	return p.ensureSegmentExistsRaw(ctx, trackType, trackIndex, segmentIndex)
+}
+
 func (p *RemoteHandler) ensureSegmentExistsTranscoded(ctx context.Context, trackType string, trackIndex int, segmentIndex int) (string, error) {
 	transcodedPath, err := p.getSegmentPath(trackType, trackIndex, segmentIndex)
 	if err != nil {
@@ -517,9 +521,9 @@ func (p *RemoteHandler) transcodeSegment(ctx context.Context, rawPath string, tr
 		return nil, err
 	}
 	logger.Logger.Info("Transcoded segment", "input", rawPath, "output", transcodedPath, "duration", time.Since(startTime).Seconds())
-if transcodedPath != "pipe:1" {
-	err = opts.Save(transcodedPath + ".json")
-}
+	if transcodedPath != "pipe:1" {
+		err = opts.Save(transcodedPath + ".json")
+	}
 	return buffer, err
 }
 

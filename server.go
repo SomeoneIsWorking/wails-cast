@@ -1,15 +1,13 @@
 package main
 
 import (
-	"context"
 	"fmt"
 	"net/http"
 	"sync"
 	"time"
+	"wails-cast/pkg/events"
 	"wails-cast/pkg/inhibitor"
 	"wails-cast/pkg/stream"
-
-	wails_runtime "github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
 // Server is an HTTP server for serving media
@@ -20,7 +18,6 @@ type Server struct {
 	streamHandler stream.StreamHandler
 	httpServer    *http.Server
 	seekTime      int
-	ctx           context.Context
 	mu            sync.RWMutex
 }
 
@@ -54,13 +51,6 @@ func (s *Server) SetHandler(handler stream.StreamHandler) {
 
 	s.streamHandler = handler
 	logger.Info("Server handler set")
-}
-
-// SetContext sets the Wails context for event emission
-func (s *Server) SetContext(ctx context.Context) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.ctx = ctx
 }
 
 // SetSubtitlePath sets the subtitle file
@@ -249,13 +239,9 @@ func (s *Server) handleError(w http.ResponseWriter, r *http.Request, message str
 	// Write HTTP error response
 	http.Error(w, fmt.Sprintf("%s: %v", message, err), http.StatusInternalServerError)
 
-	// Emit Wails event
-	s.mu.RLock()
-	ctx := s.ctx
-	s.mu.RUnlock()
-
+	// Emit backend event - App will forward to frontend
 	errorMessage := fmt.Sprintf("%s: %v", message, err)
-	wails_runtime.EventsEmit(ctx, "stream:error", map[string]string{
+	events.Emit("stream:error", map[string]string{
 		"message": message,
 		"error":   err.Error(),
 		"full":    errorMessage,
