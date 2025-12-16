@@ -49,8 +49,7 @@ export namespace main {
 	export interface HistoryItem {
 	    path: string;
 	    name: string;
-	    // Go type: time
-	    timestamp: any;
+	    timestamp: string;
 	    deviceName: string;
 	    castOptions?: options.CastOptions;
 	}
