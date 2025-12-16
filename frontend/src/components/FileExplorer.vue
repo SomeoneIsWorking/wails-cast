@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref } from "vue";
 import { useCastStore } from "../stores/cast";
-import { Play } from "lucide-vue-next";
+import { ArrowRightCircle } from "lucide-vue-next";
 import FileSelector from "./FileSelector.vue";
 import History from "./History.vue";
 import { GetTrackDisplayInfo } from "../../wailsjs/go/main/App";
@@ -28,8 +28,8 @@ const handleCast = async (mediaPath: string) => {
   }
 };
 
-const handleHistorySelect = (path: string) => {
-  selectedFile.value = path;
+const handleHistorySelect = async (path: string) => {
+  await handleCast(path);
 };
 
 const acceptedExtensions = [
@@ -61,9 +61,9 @@ const acceptedExtensions = [
           "
           class="btn-primary"
         >
-          <Play v-if="!isLoading" class="h-4 w-4 mr-2" />
+          <ArrowRightCircle v-if="!isLoading" class="h-4 w-4 mr-2" />
           <LoadingIcon v-else class="h-4 w-4 mr-2" />
-          {{ isLoading ? "Loading..." : "Cast File" }}
+          {{ isLoading ? "Loading..." : "Next" }}
         </button>
       </FileSelector>
     </div>

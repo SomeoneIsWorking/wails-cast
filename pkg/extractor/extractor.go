@@ -28,6 +28,7 @@ type ExtractedSubtitleTrack struct {
 // ExtractResult contains the extracted video information
 type ExtractResult struct {
 	URL         string                   // Original HLS URL
+	Title       string                   // Optional title
 	BaseURL     string                   // Base URL (scheme + host) for resolving relative paths
 	ManifestRaw string                   `json:"-"` // Raw m3u8 content
 	Cookies     map[string]string        // Captured cookies
@@ -274,16 +275,13 @@ func ExtractManifestPlaylist(pageURL string) (*ExtractResult, error) {
 	// Wait for completion or timeout
 	select {
 	case <-done:
-		if manifestFound {
-			fmt.Printf("Extraction complete: found manifest with %d subtitle(s)\n", len(result.Subtitles))
-			return result, nil
-		}
-		return nil, fmt.Errorf("manifest found but result is nil")
 	case <-time.After(5 * time.Minute):
-		if manifestFound {
-			fmt.Printf("Timeout reached, returning partial result with %d subtitle(s)\n", len(result.Subtitles))
-			return result, nil
-		}
+	}
+
+	if !manifestFound {
 		return nil, fmt.Errorf("timeout waiting for video URL")
 	}
+
+	result.Title = page.MustInfo().Title
+	return result, nil
 }

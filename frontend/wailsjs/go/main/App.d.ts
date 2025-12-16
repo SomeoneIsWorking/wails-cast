@@ -3,6 +3,7 @@
 import {options} from '../models';
 import {main} from '../models';
 import {folders} from '../models';
+import {download} from '../models';
 import {hls} from '../models';
 
 export function CastToDevice(arg1:string,arg2:string,arg3:options.CastOptions):Promise<main.PlaybackState>;
@@ -20,6 +21,8 @@ export function DiscoverDevices():Promise<Array<main.Device>>;
 export function ExportEmbeddedSubtitles(arg1:string):Promise<void>;
 
 export function GetCacheStats():Promise<folders.CacheStats>;
+
+export function GetDownloadStatus(arg1:string,arg2:string,arg3:number):Promise<download.DownloadStatus>;
 
 export function GetFFmpegInfo(arg1:boolean):Promise<hls.FFmpegInfo>;
 
@@ -43,6 +46,8 @@ export function LogWarn(arg1:string,arg2:Array<any>):Promise<void>;
 
 export function OpenFileDialog(arg1:string,arg2:Array<string>):Promise<string>;
 
+export function OpenMediaFolder(arg1:string):Promise<void>;
+
 export function Pause():Promise<void>;
 
 export function RemoveFromHistory(arg1:string):Promise<void>;
@@ -50,6 +55,10 @@ export function RemoveFromHistory(arg1:string):Promise<void>;
 export function ResetSettings():Promise<main.Settings>;
 
 export function SeekTo(arg1:number):Promise<void>;
+
+export function StartDownload(arg1:string,arg2:string,arg3:number):Promise<download.DownloadStatus>;
+
+export function StopDownload(arg1:string,arg2:string,arg3:number):Promise<download.DownloadStatus>;
 
 export function StopPlayback():Promise<void>;
 

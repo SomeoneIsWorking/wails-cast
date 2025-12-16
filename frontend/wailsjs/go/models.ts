@@ -1,3 +1,13 @@
+export namespace download {
+	
+	export interface DownloadStatus {
+	    Downloaded: number;
+	    Total: number;
+	    Status: string;
+	}
+
+}
+
 export namespace folders {
 	
 	export interface CacheStats {

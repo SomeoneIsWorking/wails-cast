@@ -1,17 +1,15 @@
 package main
 
 import (
-	"context"
 	"encoding/json"
 	"os"
 	"path/filepath"
 	"sync"
 	"time"
 
+	"wails-cast/pkg/events"
 	"wails-cast/pkg/folders"
 	"wails-cast/pkg/options"
-
-	wails_runtime "github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
 const (
@@ -30,7 +28,6 @@ type HistoryItem struct {
 type HistoryStore struct {
 	items    []HistoryItem
 	filePath string
-	ctx      context.Context
 	mu       sync.RWMutex
 }
 
@@ -47,10 +44,6 @@ func NewHistoryStore() *HistoryStore {
 
 	store.load()
 	return store
-}
-
-func (h *HistoryStore) SetContext(ctx context.Context) {
-	h.ctx = ctx
 }
 
 func (h *HistoryStore) load() error {
@@ -107,8 +100,8 @@ func (h *HistoryStore) Add(path, deviceName string, castOptions *options.CastOpt
 	}
 
 	err := h.save()
-	if err == nil && h.ctx != nil {
-		wails_runtime.EventsEmit(h.ctx, "history:updated", item)
+	if err == nil {
+		events.Emit("history:updated", item)
 	}
 	return err
 }

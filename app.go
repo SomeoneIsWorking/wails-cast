@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -16,6 +17,8 @@ import (
 
 	"wails-cast/pkg/ai"
 	localcast "wails-cast/pkg/cast"
+	"wails-cast/pkg/download"
+	"wails-cast/pkg/events"
 	"wails-cast/pkg/folders"
 	"wails-cast/pkg/hls"
 	_logger "wails-cast/pkg/logger"
@@ -47,16 +50,16 @@ type QualityOption struct {
 }
 
 type App struct {
-	ctx           context.Context
-	App           *application.Application
-	discovery     *DeviceDiscovery
-	mediaServer   *Server
-	localIp       string
-	castManager   *localcast.CastManager
-	playbackState PlaybackState
-	historyStore  *HistoryStore
-	settingsStore *SettingsStore
-	mu            sync.RWMutex
+	ctx             context.Context
+	App             *application.Application
+	discovery       *DeviceDiscovery
+	mediaServer     *Server
+	localIp         string
+	playbackState   PlaybackState
+	historyStore    *HistoryStore
+	settingsStore   *SettingsStore
+	mu              sync.RWMutex
+	downloadManager *download.DownloadManager
 }
 
 type PlaybackState struct {
@@ -80,32 +83,26 @@ func (a *App) createApplication() {
 func NewApp() *App {
 	discovery := NewDeviceDiscovery()
 	localIP := discovery.GetLocalIP()
-	server := NewServer(localIP, 8888)
-	castManager := localcast.NewCastManager(localIP, 8888)
-	historyStore := NewHistoryStore()
-	settingsStore := NewSettingsStore()
 
 	return &App{
-		discovery:     discovery,
-		mediaServer:   server,
-		localIp:       localIP,
-		castManager:   castManager,
-		playbackState: PlaybackState{},
-		historyStore:  historyStore,
-		settingsStore: settingsStore,
+		discovery:       NewDeviceDiscovery(),
+		mediaServer:     NewServer(localIP, 8888),
+		localIp:         localIP,
+		playbackState:   PlaybackState{},
+		historyStore:    NewHistoryStore(),
+		settingsStore:   NewSettingsStore(),
+		downloadManager: download.NewDownloadManager(),
 	}
 }
 
 func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
-
-	// Set context for settings store
-	a.settingsStore.SetContext(ctx)
-	// Set context for history store to enable events
-	a.historyStore.SetContext(ctx)
-	// Set context for media server to enable error events
-	a.mediaServer.SetContext(ctx)
-
+	channel, _ := events.Subscribe()
+	go func() {
+		for event := range channel {
+			wails_runtime.EventsEmit(a.ctx, event.Topic, event.Payload)
+		}
+	}()
 	// Start media server
 	go a.mediaServer.Start()
 
@@ -119,11 +116,7 @@ func (a *App) shutdown(ctx context.Context) {
 // DiscoverDevices discovers Chromecast devices on the network
 func (a *App) DiscoverDevices() []Device {
 	// Start streaming discovery and emit events for each device found
-	err := a.discovery.DiscoverStream(func(d Device) {
-		wails_runtime.EventsEmit(a.ctx, "device:found", d)
-	}, func() {
-		wails_runtime.EventsEmit(a.ctx, "discovery:complete")
-	})
+	err := a.discovery.DiscoverStream()
 	if err != nil {
 		logger.Error("Device discovery failed to start", "error", err)
 	}
@@ -149,7 +142,7 @@ func (a *App) GetTrackDisplayInfo(fileNameOrUrl string) (*TrackDisplayInfo, erro
 	var err error
 	remote := strings.HasPrefix(fileNameOrUrl, "http://") || strings.HasPrefix(fileNameOrUrl, "https://")
 	if remote {
-		trackInfo, _, err = a.castManager.GetRemoteTrackInfo(fileNameOrUrl)
+		trackInfo, err = localcast.GetRemoteTrackInfo(fileNameOrUrl)
 	} else {
 		trackInfo, err = hls.GetMediaTrackInfo(fileNameOrUrl)
 	}
@@ -216,7 +209,7 @@ func (a *App) CastToDevice(deviceIp string, fileNameOrUrl string, castOptions *o
 		mediaPath = fileNameOrUrl
 		// Use CastManager to prepare remote stream
 		logger.Info("Preparing remote stream", "url", mediaPath)
-		handler, err := a.castManager.CreateRemoteHandler(mediaPath, options)
+		handler, err := localcast.CreateRemoteHandler(mediaPath, options)
 		if err != nil {
 			return nil, fmt.Errorf("failed to prepare remote stream: %w", err)
 		}
@@ -235,7 +228,7 @@ func (a *App) CastToDevice(deviceIp string, fileNameOrUrl string, castOptions *o
 		}
 
 		// Create local handler
-		handler := stream.NewLocalHandler(mediaPath, options, a.localIp)
+		handler := stream.NewLocalHandler(mediaPath, options)
 		a.mediaServer.SetHandler(handler)
 
 		// Set subtitle path (for legacy/compatibility, though options has it)
@@ -390,6 +383,27 @@ func (a *App) DeleteAllVideoCache() error {
 	return folders.DeleteAllVideoCache()
 }
 
+// OpenMediaFolder opens the folder containing the media file
+func (a *App) OpenMediaFolder(fileNameOrUrl string) error {
+	dir := folders.GetCacheForVideo(fileNameOrUrl)
+	os.MkdirAll(dir, 0755)
+	cmd := exec.Command("open", dir)
+	return cmd.Start()
+}
+
+func (a *App) StartDownload(url string, mediaType string, index int) (*download.DownloadStatus, error) {
+	return a.downloadManager.StartDownload(url, mediaType, index)
+}
+
+func (a *App) StopDownload(url string, mediaType string, index int) (*download.DownloadStatus, error) {
+	return a.downloadManager.Stop(url, mediaType, index)
+}
+
+// GetDownloadStatus returns the current download progress for a specific track
+func (a *App) GetDownloadStatus(filenameOrUrl string, mediaType string, track int) (*download.DownloadStatus, error) {
+	return a.downloadManager.GetStatus(filenameOrUrl, mediaType, track)
+}
+
 // Pause pauses current playback
 func (a *App) Pause() error {
 	err := a.App.Pause()
@@ -476,7 +490,7 @@ func (a *App) ExportEmbeddedSubtitles(videoPath string) error {
 }
 
 // TranslateExportedSubtitles exports embedded subtitles and translates them in the background
-func (a *App) TranslateExportedSubtitles(videoPath string, targetLanguage string) error {
+func (a *App) TranslateExportedSubtitles(fileNameOrUrl string, targetLanguage string) error {
 	// Get settings for API key and model
 	settings := a.settingsStore.Get()
 
@@ -497,25 +511,25 @@ func (a *App) TranslateExportedSubtitles(videoPath string, targetLanguage string
 
 	// Determine subtitle directory based on whether it's remote or local
 	var subtitleDir string
-	isRemote := strings.HasPrefix(videoPath, "http://") || strings.HasPrefix(videoPath, "https://")
+	isRemote := strings.HasPrefix(fileNameOrUrl, "http://") || strings.HasPrefix(fileNameOrUrl, "https://")
 
 	if isRemote {
-		_, cacheDir, err := a.castManager.GetRemoteTrackInfo(videoPath)
+		_, err := localcast.GetRemoteTrackInfo(fileNameOrUrl)
 		if err != nil {
 			return fmt.Errorf("failed to extract track info: %w", err)
 		}
-		subtitleDir = cacheDir
+		subtitleDir = folders.GetCacheForVideo(fileNameOrUrl)
 		logger.Info("Using remote subtitle cache directory", "dir", subtitleDir)
 	} else {
 		// For local files, use the standard subtitle directory
-		baseDir := filepath.Dir(videoPath)
-		baseName := strings.TrimSuffix(filepath.Base(videoPath), filepath.Ext(videoPath))
+		baseDir := filepath.Dir(fileNameOrUrl)
+		baseName := strings.TrimSuffix(filepath.Base(fileNameOrUrl), filepath.Ext(fileNameOrUrl))
 		subtitleDir = filepath.Join(baseDir, baseName)
 
 		// Check if subtitle directory exists, if not export the subtitles
 		if _, err := os.Stat(subtitleDir); os.IsNotExist(err) {
 			logger.Info("Subtitle directory doesn't exist, exporting subtitles", "dir", subtitleDir)
-			if err := hls.ExportEmbeddedSubtitles(videoPath); err != nil {
+			if err := hls.ExportEmbeddedSubtitles(fileNameOrUrl); err != nil {
 				return fmt.Errorf("failed to export subtitles: %w", err)
 			}
 		} else {

@@ -34,6 +34,10 @@ export function GetCacheStats() {
   return window['go']['main']['App']['GetCacheStats']();
 }
 
+export function GetDownloadStatus(arg1, arg2, arg3) {
+  return window['go']['main']['App']['GetDownloadStatus'](arg1, arg2, arg3);
+}
+
 export function GetFFmpegInfo(arg1) {
   return window['go']['main']['App']['GetFFmpegInfo'](arg1);
 }
@@ -78,6 +82,10 @@ export function OpenFileDialog(arg1, arg2) {
   return window['go']['main']['App']['OpenFileDialog'](arg1, arg2);
 }
 
+export function OpenMediaFolder(arg1) {
+  return window['go']['main']['App']['OpenMediaFolder'](arg1);
+}
+
 export function Pause() {
   return window['go']['main']['App']['Pause']();
 }
@@ -92,6 +100,14 @@ export function ResetSettings() {
 
 export function SeekTo(arg1) {
   return window['go']['main']['App']['SeekTo'](arg1);
+}
+
+export function StartDownload(arg1, arg2, arg3) {
+  return window['go']['main']['App']['StartDownload'](arg1, arg2, arg3);
+}
+
+export function StopDownload(arg1, arg2, arg3) {
+  return window['go']['main']['App']['StopDownload'](arg1, arg2, arg3);
 }
 
 export function StopPlayback() {

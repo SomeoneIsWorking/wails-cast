@@ -1,6 +1,8 @@
 package folders
 
 import (
+	"crypto/md5"
+	"encoding/hex"
 	"os"
 	"path/filepath"
 )
@@ -21,4 +23,10 @@ func GetConfig() string {
 // GetCache returns the application cache directory path
 func GetCache() string {
 	return filepath.Join(os.TempDir(), appName+"-cache")
+}
+
+func GetCacheForVideo(fileNameOrUrl string) string {
+	hash := md5.Sum([]byte(fileNameOrUrl))
+	cacheKey := hex.EncodeToString(hash[:])
+	return filepath.Join(GetCache(), cacheKey)
 }

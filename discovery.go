@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net"
 	"time"
+	"wails-cast/pkg/events"
 
 	castdns "github.com/vishen/go-chromecast/dns"
 )
@@ -26,7 +27,7 @@ func NewDeviceDiscovery() *DeviceDiscovery {
 	return &DeviceDiscovery{}
 }
 
-func (dd *DeviceDiscovery) DiscoverStream(onDevice func(Device), onDone func()) error {
+func (dd *DeviceDiscovery) DiscoverStream() error {
 	go func() {
 		logger.Info("Starting device discovery (streaming) using go-chromecast")
 
@@ -52,15 +53,13 @@ func (dd *DeviceDiscovery) DiscoverStream(onDevice func(Device), onDone func()) 
 			}
 			devices = append(devices, device)
 			logger.Info("Found device", "name", device.Name, "host", device.Host, "port", device.Port, "uuid", device.UUID)
-			if onDevice != nil {
-				onDevice(device)
-			}
+			// Emit device found event via backend event bus
+			events.Emit("device:found", device)
 		}
 
 		logger.Info("Discovery complete", "count", len(devices))
-		if onDone != nil {
-			onDone()
-		}
+		// Emit discovery complete
+		events.Emit("discovery:complete", nil)
 	}()
 	return nil
 }
