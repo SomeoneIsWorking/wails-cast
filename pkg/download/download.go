@@ -67,6 +67,7 @@ func (d *DownloadManager) StartDownload(url string, mediaType string, index int)
 			Downloaded: downloaded,
 			Total:      total,
 			Track:      index,
+			Channel:    make(chan string),
 		}
 	}
 	if d.Downloads[key].Status == "INPROGRESS" {
@@ -84,6 +85,7 @@ func (d *DownloadManager) Stop(url string, mediaType string, track int) (*Downlo
 	task.mu.Lock()
 	defer task.mu.Unlock()
 	task.Cancel()
+	<-task.Channel
 	task.Status = "STOPPED"
 	return &DownloadStatus{
 		Url:        task.URL,
@@ -124,33 +126,12 @@ func (d *DownloadManager) startDownload(task *DownloadTask) (*DownloadStatus, er
 		}
 	}
 	task.mu.Lock()
-	task.Context, task.Cancel = context.WithCancel(context.Background())
+	context, cancel := context.WithCancel(context.Background())
+	task.Cancel = cancel
 	task.Status = "INPROGRESS"
 	task.mu.Unlock()
 
-	go func() {
-		for task.Downloaded < task.Total {
-			if task.Context.Err() != nil {
-				return
-			}
-			_, err := task.Handler.EnsureSegmentDownloaded(task.Context, task.MediaType, task.Track, task.Downloaded)
-			if err != nil && task.Context.Err() == nil {
-				task.mu.Lock()
-				task.Status = "ERROR"
-				task.Emit()
-				task.mu.Unlock()
-				return
-			}
-			task.mu.Lock()
-			task.Downloaded++
-			task.Emit()
-			task.mu.Unlock()
-		}
-		task.mu.Lock()
-		task.Status = "JUST-COMPLETED"
-		task.Emit()
-		task.mu.Unlock()
-	}()
+	go startDownloadTask(context, task)
 
 	return &DownloadStatus{
 		Url:        task.URL,
@@ -162,14 +143,65 @@ func (d *DownloadManager) startDownload(task *DownloadTask) (*DownloadStatus, er
 	}, nil
 }
 
+func startDownloadTask(context context.Context, task *DownloadTask) {
+	// Signal completion if this ends in any way (error, cancellation, or full download)
+	defer func() {
+		select {
+		case task.Channel <- "DONE":
+		default:
+		}
+	}()
+
+	for task.Downloaded < task.Total {
+		if context.Err() != nil {
+			return
+		}
+		_, err := task.Handler.EnsureSegmentDownloaded(context, task.MediaType, task.Track, task.Downloaded)
+		if context.Err() != nil {
+			return
+		}
+		if err != nil {
+			task.mu.Lock()
+			task.Status = "ERROR"
+			task.Emit()
+			task.mu.Unlock()
+			return
+		}
+		task.mu.Lock()
+		task.Downloaded++
+		task.Emit()
+		task.mu.Unlock()
+	}
+	task.mu.Lock()
+	task.Status = "JUST-COMPLETED"
+	task.Emit()
+	task.mu.Unlock()
+}
+
+// StopAllAndClear stops all active downloads, emits final states, and clears the manager map
+func (d *DownloadManager) StopAllAndClear() error {
+	for _, task := range d.Downloads {
+		if task.Status == "INPROGRESS" {
+			task.Cancel()
+			<-task.Channel
+		}
+		task.mu.Lock()
+		task.Status = "IDLE"
+		task.Downloaded = 0
+		task.Emit()
+		task.mu.Unlock()
+	}
+	return nil
+}
+
 func (task *DownloadTask) Emit() {
-	events.Emit("download:progress", map[string]any{
-		"Url":        task.URL,
-		"Downloaded": task.Downloaded,
-		"Total":      task.Total,
-		"Status":     task.Status,
-		"MediaType":  task.MediaType,
-		"Track":      task.Track,
+	events.Emit("download:progress", DownloadStatus{
+		Url:        task.URL,
+		MediaType:  task.MediaType,
+		Track:      task.Track,
+		Downloaded: task.Downloaded,
+		Total:      task.Total,
+		Status:     task.Status,
 	})
 }
 
@@ -190,8 +222,8 @@ type DownloadTask struct {
 	MediaType  string // "video" or "audio"
 	Track      int    // track index
 	Handler    *stream.RemoteHandler
-	Context    context.Context
 	Cancel     context.CancelFunc
 	TrackInfo  *mediainfo.MediaTrackInfo
 	mu         sync.RWMutex
+	Channel    chan string
 }
