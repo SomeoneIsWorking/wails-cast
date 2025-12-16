@@ -98,7 +98,7 @@ const handleClearAll = async () => {
         :key="item.path"
         class="group border-b border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors cursor-pointer"
       >
-        <div class="p-4 flex items-center gap-3">
+        <div class="p-2 flex items-center gap-3">
           <button
             @click="handleSelect(item.path)"
             class="flex-1 min-w-0 text-left"
@@ -109,14 +109,9 @@ const handleClearAll = async () => {
                 {{ item.name }}
               </h3>
             </div>
-            <div
-              class="flex items-center gap-3 text-sm text-gray-500 dark:text-gray-400"
-            >
-              <span>{{ item.deviceName }}</span>
-              <span>•</span>
-              <span>{{ formatDate(item.timestamp) }}</span>
-            </div>
+          
             <p class="text-xs text-gray-400 dark:text-gray-500 truncate mt-1">
+              {{ formatDate(item.timestamp) }} •
               {{ item.path }}
             </p>
           </button>

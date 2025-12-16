@@ -20,7 +20,7 @@ const (
 type HistoryItem struct {
 	Path        string               `json:"path"`
 	Name        string               `json:"name"`
-	Timestamp   time.Time            `json:"timestamp"`
+	Timestamp   string               `json:"timestamp"`
 	DeviceName  string               `json:"deviceName"`
 	CastOptions *options.CastOptions `json:"castOptions"`
 }
@@ -78,7 +78,7 @@ func (h *HistoryStore) Add(path, deviceName string, castOptions *options.CastOpt
 	item := HistoryItem{
 		Path:        path,
 		Name:        name,
-		Timestamp:   time.Now(),
+		Timestamp:   time.Now().Format(time.RFC3339),
 		DeviceName:  deviceName,
 		CastOptions: castOptions,
 	}
