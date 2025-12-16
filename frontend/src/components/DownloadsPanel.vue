@@ -41,6 +41,7 @@
               :total="item.Total"
               class="flex-1"
             />
+            
             <div class="flex gap-2">
               <button
                 v-if="item.Status === 'STOPPED'"

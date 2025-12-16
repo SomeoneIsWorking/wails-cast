@@ -91,7 +91,7 @@ onUnmounted(() => {
         <!-- Video Track Selection -->
         <label>Video Track:</label>
         <div>
-          <TrackDownloader :path="trackInfo.path" type="video">
+          <TrackDownloader :path="trackInfo.path" type="video" :track="castStore.castOptions!.VideoTrack">
             <select
               v-model="castStore.castOptions!.VideoTrack"
               class="flex-1 bg-gray-700 text-white rounded-md p-2"
@@ -111,7 +111,7 @@ onUnmounted(() => {
         <!-- Audio Track Selection -->
         <template v-if="trackInfo.audioTracks.length > 0">
           <label>Audio Track:</label>
-          <TrackDownloader :path="trackInfo.path" type="audio">
+          <TrackDownloader :path="trackInfo.path" type="audio" :track="castStore.castOptions!.AudioTrack">
             <select
               v-model="castStore.castOptions!.AudioTrack"
               class="flex-1 bg-gray-700 text-white rounded-md p-2"
