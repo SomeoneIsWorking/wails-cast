@@ -6,7 +6,10 @@
         <button
           @click="start"
           :disabled="loading"
-          v-if="downloadState?.Status === 'IDLE' || downloadState?.Status === 'STOPPED'"
+          v-if="
+            downloadState?.Status === 'IDLE' ||
+            downloadState?.Status === 'STOPPED'
+          "
           class="btn-secondary px-3"
         >
           <Download class="w-4 h-4" />
@@ -19,7 +22,7 @@
         >
           <Square class="w-4 h-4" />
         </button>
-        <div v-else class="btn-idle" >
+        <div v-else class="btn-idle">
           <Check class="w-4 h-4" />
         </div>
       </div>
@@ -37,17 +40,19 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from "vue";
+import { ref, computed, onMounted, watch } from "vue";
 import { useCastStore } from "../stores/cast";
 import { useDownloadsStore } from "../stores/downloads";
 import { Check, Download, Square } from "lucide-vue-next";
 import ProgressBar from "./ProgressBar.vue";
+
 const castStore = useCastStore();
 const downloadsStore = useDownloadsStore();
 
 const props = defineProps<{
   path: string;
   type: "video" | "audio";
+  track: number;
 }>();
 
 const loading = ref(false);
@@ -55,13 +60,7 @@ const loading = ref(false);
 const start = () => {
   loading.value = true;
   try {
-    downloadsStore.startDownload(
-      props.path,
-      props.type,
-      props.type === "video"
-        ? castStore.castOptions!.VideoTrack
-        : castStore.castOptions!.AudioTrack
-    );
+    downloadsStore.startDownload(props.path, props.type, props.track);
   } finally {
     loading.value = false;
   }
@@ -70,13 +69,7 @@ const start = () => {
 const stop = () => {
   loading.value = true;
   try {
-    downloadsStore.stopDownload(
-      props.path,
-      props.type,
-      props.type === "video"
-        ? castStore.castOptions!.VideoTrack
-        : castStore.castOptions!.AudioTrack
-    );
+    downloadsStore.stopDownload(props.path, props.type, props.track);
   } finally {
     loading.value = false;
   }
@@ -97,16 +90,30 @@ const isRemote = computed(() => {
 });
 
 const loadTrackProgress = async () => {
-  const trackIndex =
-    props.type === "video"
-      ? castStore.castOptions!.VideoTrack
-      : castStore.castOptions!.AudioTrack;
-  await downloadsStore.loadTrackProgress(props.path, props.type, trackIndex);
+  if (!isRemote.value) return;
+  await downloadsStore.loadTrackProgress(props.path, props.type, props.track);
 };
 
 onMounted(() => {
-  if (isRemote.value) {
+  loadTrackProgress();
+});
+
+watch(
+  () => props.path,
+  () => {
     loadTrackProgress();
   }
-});
+);
+watch(
+  () => props.type,
+  () => {
+    loadTrackProgress();
+  }
+);
+watch(
+  () => props.track,
+  () => {
+    loadTrackProgress();
+  }
+);
 </script>

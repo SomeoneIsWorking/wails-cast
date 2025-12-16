@@ -57,7 +57,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from "vue";
+import { onMounted, ref } from "vue";
 import { useConfirm } from "../composables/useConfirm";
 import { Trash2 } from "lucide-vue-next";
 import {
@@ -94,12 +94,8 @@ const handleDeleteAllCache = async () => {
     cancelText: "Cancel",
     variant: "danger",
     onConfirm: async () => {
-      try {
-        await ClearCache();
-        await loadCacheStats();
-      } catch (error) {
-        console.error("Failed to delete cache:", error);
-      }
+      await ClearCache();
+      await loadCacheStats();
     },
   });
 };
@@ -113,12 +109,8 @@ const handleDeleteTranscodedCache = async () => {
     cancelText: "Cancel",
     variant: "danger",
     onConfirm: async () => {
-      try {
-        await DeleteTranscodedCache();
-        await loadCacheStats();
-      } catch (error) {
-        console.error("Failed to delete transcoded cache:", error);
-      }
+      await DeleteTranscodedCache();
+      await loadCacheStats();
     },
   });
 };
@@ -132,15 +124,13 @@ const handleDeleteAllVideoCache = async () => {
     cancelText: "Cancel",
     variant: "danger",
     onConfirm: async () => {
-      try {
-        await DeleteAllVideoCache();
-        await loadCacheStats();
-      } catch (error) {
-        console.error("Failed to delete video cache:", error);
-      }
+      await DeleteAllVideoCache();
+      await loadCacheStats();
     },
   });
 };
 
-loadCacheStats();
+onMounted(async () => {
+  await loadCacheStats();
+});
 </script>
