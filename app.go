@@ -499,9 +499,6 @@ func (a *App) TranslateExportedSubtitles(fileNameOrUrl string, targetLanguage st
 	}
 
 	if targetLanguage == "" {
-		targetLanguage = settings.DefaultTranslationLanguage
-	}
-	if targetLanguage == "" {
 		return nil, fmt.Errorf("target language is required")
 	}
 
@@ -519,9 +516,6 @@ func (a *App) TranslateExportedSubtitles(fileNameOrUrl string, targetLanguage st
 func (a *App) GenerateTranslationPrompt(fileNameOrUrl string, targetLanguage string) (string, error) {
 	settings := a.settingsStore.Get()
 	if targetLanguage == "" {
-		targetLanguage = settings.DefaultTranslationLanguage
-	}
-	if targetLanguage == "" {
 		return "", fmt.Errorf("target language is required")
 	}
 	req := ai.Request{
@@ -535,9 +529,6 @@ func (a *App) GenerateTranslationPrompt(fileNameOrUrl string, targetLanguage str
 
 // ProcessPastedTranslation accepts pasted LLM output, parses and writes translated VTT(s)
 func (a *App) ProcessPastedTranslation(fileNameOrUrl string, targetLanguage string, pastedAnswer string) ([]string, error) {
-	if targetLanguage == "" {
-		targetLanguage = a.settingsStore.Get().DefaultTranslationLanguage
-	}
 	if targetLanguage == "" {
 		return nil, fmt.Errorf("target language is required")
 	}
