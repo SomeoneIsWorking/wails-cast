@@ -4,7 +4,7 @@ export namespace download {
 	    Url: string;
 	    MediaType: string;
 	    Track: number;
-	    Downloaded: number;
+	    Progress: boolean[];
 	    Total: number;
 	    Status: string;
 	}

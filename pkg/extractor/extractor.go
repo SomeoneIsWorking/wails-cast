@@ -27,6 +27,7 @@ type ExtractedSubtitleTrack struct {
 
 // ExtractResult contains the extracted video information
 type ExtractResult struct {
+	SiteURL     string                   // Original page URL
 	URL         string                   // Original HLS URL
 	Title       string                   // Optional title
 	BaseURL     string                   // Base URL (scheme + host) for resolving relative paths
@@ -36,8 +37,16 @@ type ExtractResult struct {
 	Subtitles   []ExtractedSubtitleTrack // Captured subtitle tracks
 }
 
+type PlaylistExtractionResult struct {
+	URL         string            // Original HLS URL
+	BaseURL     string            // Base URL (scheme + host) for resolving relative paths
+	Cookies     map[string]string // Captured cookies
+	Headers     map[string]string // Captured headers
+	ManifestRaw string            // Raw m3u8 content
+}
+
 // handlePlaylist processes an HLS manifest request
-func handlePlaylist(ctx *rod.Hijack) *ExtractResult {
+func handlePlaylist(ctx *rod.Hijack) *PlaylistExtractionResult {
 	reqURL := ctx.Request.URL().String()
 	contentType := ctx.Response.Headers().Get("Content-Type")
 
@@ -82,13 +91,12 @@ func handlePlaylist(ctx *rod.Hijack) *ExtractResult {
 
 	fmt.Printf("Manifest found, waiting %v for subtitles...\n", WaitAfterManifestFound)
 
-	return &ExtractResult{
+	return &PlaylistExtractionResult{
 		URL:         reqURL,
 		BaseURL:     baseURL,
 		ManifestRaw: manifestContent,
 		Cookies:     cookies,
 		Headers:     headers,
-		Subtitles:   []ExtractedSubtitleTrack{},
 	}
 }
 
@@ -151,7 +159,9 @@ func ExtractManifestPlaylist(pageURL string) (*ExtractResult, error) {
 	page := browser.MustPage("")
 
 	// Shared result that will accumulate data
-	var result = &ExtractResult{}
+	var result = &ExtractResult{
+		SiteURL: pageURL,
+	}
 	var manifestFound bool
 	var manifestFoundTime time.Time
 	subtitleURLs := make(map[string]bool) // Track processed subtitle URLs

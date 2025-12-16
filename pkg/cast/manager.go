@@ -135,32 +135,3 @@ func GetRemoteTrackInfo(videoURL string) (*mediainfo.MediaTrackInfo, error) {
 	}
 	return mediaTrackInfo, nil
 }
-
-// GetTrackProgress returns the current download progress for a specific track
-func GetTrackProgress(url string, mediaType string, track int) (int, int, error) {
-	handler, err := CreateRemoteHandler(url, nil)
-	if err != nil {
-		return 0, 0, err
-	}
-
-	playlist, err := handler.GetTrackPlaylist(context.Background(), mediaType, track)
-	if err != nil {
-		return 0, 0, err
-	}
-
-	totalSegments := len(playlist.Segments)
-	if totalSegments == 0 {
-		return 0, 0, nil
-	}
-
-	downloadedSegments := 0
-	for i := range playlist.Segments {
-		trackDir := filepath.Join(handler.CacheDir, fmt.Sprintf("%s_%d", mediaType, track))
-		rawPath := filepath.Join(trackDir, fmt.Sprintf("segment_%d_raw.ts", i))
-		if _, err := os.Stat(rawPath); err == nil {
-			downloadedSegments++
-		}
-	}
-
-	return downloadedSegments, totalSegments, nil
-}

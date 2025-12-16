@@ -29,8 +29,8 @@
       <ProgressBar
         class="mt-2"
         v-if="isRemote"
-        :proress="downloadState?.Downloaded || 0"
-        :total="downloadState?.Total || 0"
+        :progress="downloadState?.Progress.filter(p => p).length || 0"
+        :total="downloadState?.Progress.length || 0"
       />
     </div>
   </template>
