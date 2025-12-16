@@ -2,12 +2,12 @@
 import { computed } from "vue";
 
 const props = defineProps<{
-  proress: number;
+  progress: number;
   total: number;
 }>();
 const value = computed(() => {
   if (props.total === 0) return 0;
-  return (props.proress / props.total) * 100;
+  return (props.progress / props.total) * 100;
 });
 </script>
 
@@ -21,6 +21,6 @@ const value = computed(() => {
         }"
       ></div>
     </div>
-    <div class="absolute inset-0 text-center text-sm">{{ proress }} / {{ total }}</div>
+    <div class="absolute inset-0 text-center text-sm">{{ progress }} / {{ total }}</div>
   </div>
 </template>

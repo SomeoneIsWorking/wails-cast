@@ -1,0 +1,23 @@
+- {hash}/
+  - (R) extraction.json
+    - SiteURL
+    - URL: hls URL
+    - Title
+    - BaseURL: hls Base URL
+    - Subtitles
+      - Language
+      - URL
+      - Type
+    - Cookies
+    - Headers
+  - (R) map.json: Holds original track URLs (by index)
+  - playlist.m3u8: Local Manifest HLS
+  - (R) playlist_raw.m3u8: Original Manifest HLS
+  - video|audio\_{index}/
+    - (R) download.json: Holds segment download states as true, false array
+    - (R) map.json: Holds original segment URLs (by index)
+    - (R) segment\_{index}\_raw.ts (original)
+    - segment\_{index}.ts (transcoded)
+    - segment\_{index}.ts.json (transcode metadata)
+    - playlist.m3u8: Local Track HLS
+    - (R) playlist_raw.m3u8: Original Track HLS

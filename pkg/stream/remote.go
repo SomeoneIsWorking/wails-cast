@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"wails-cast/pkg/events"
 	"wails-cast/pkg/extractor"
 	"wails-cast/pkg/hls"
 	"wails-cast/pkg/logger"
@@ -21,9 +22,17 @@ import (
 	"github.com/pkg/errors"
 )
 
+type DownloadReport struct {
+	URL       string
+	MediaType string
+	Track     int
+	Segment   int
+}
+
 // RemoteHandler is a handler that serves HLS manifests and segments
 // with captured cookies and headers
 type RemoteHandler struct {
+	SiteURL     string
 	BaseURL     string
 	Manifest    *hls.ManifestPlaylist
 	ManifestRaw *hls.ManifestPlaylist
@@ -43,22 +52,19 @@ type MainMap struct {
 func NewRemoteHandler(cacheDir string, options *options.StreamOptions, result *extractor.ExtractResult) (*RemoteHandler, error) {
 	os.MkdirAll(cacheDir, 0755)
 
-	manifest, err := hls.ParseManifestPlaylist(result.ManifestRaw)
-	if err != nil {
-		return nil, err
-	}
 	manifestRaw, err := hls.ParseManifestPlaylist(result.ManifestRaw)
 	if err != nil {
 		return nil, err
 	}
 
 	return &RemoteHandler{
+		SiteURL:     result.SiteURL,
 		CacheDir:    cacheDir,
 		Options:     options,
 		BaseURL:     result.BaseURL,
 		Cookies:     result.Cookies,
 		Headers:     result.Headers,
-		Manifest:    manifest,
+		Manifest:    rewriteManifestPlaylist(manifestRaw),
 		ManifestRaw: manifestRaw,
 	}, nil
 }
@@ -263,8 +269,8 @@ func (p *RemoteHandler) downloadTrackPlaylist(ctx context.Context, trackType str
 	return rewritten, nil
 }
 
-// rewriteMainPlaylist rewrites the manifest playlist to point to local endpoints
-func (p *RemoteHandler) rewriteMainPlaylist(playlist *hls.ManifestPlaylist) (*hls.ManifestPlaylist, error) {
+// rewriteManifestPlaylist rewrites the manifest playlist to point to local endpoints
+func rewriteManifestPlaylist(playlist *hls.ManifestPlaylist) *hls.ManifestPlaylist {
 	playlist = playlist.Clone()
 	// Rewrite video variant URIs
 	for i := range playlist.VideoVariants {
@@ -284,7 +290,7 @@ func (p *RemoteHandler) rewriteMainPlaylist(playlist *hls.ManifestPlaylist) (*hl
 		}
 	}
 
-	return playlist, nil
+	return playlist
 }
 
 // cacheTrackPlaylist saves raw/rewritten playlists and a segment map
@@ -490,6 +496,14 @@ func (p *RemoteHandler) downloadSegment(ctx context.Context, trackType string, t
 	if err != nil {
 		return errors.Wrapf(err, "failed to write to raw segment file: %s", rawPath)
 	}
+
+	events.Download.Emit("download:progress", DownloadReport{
+		URL:       p.SiteURL,
+		MediaType: trackType,
+		Track:     trackIndex,
+		Segment:   segmentIndex,
+	})
+
 	return nil
 }
 

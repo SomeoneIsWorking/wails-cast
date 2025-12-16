@@ -37,8 +37,8 @@
             </div>
 
             <ProgressBar
-              :proress="item.Downloaded"
-              :total="item.Total"
+              :progress="item.Progress.filter((v) => v).length"
+              :total="item.Progress.length"
               class="flex-1"
             />
             
