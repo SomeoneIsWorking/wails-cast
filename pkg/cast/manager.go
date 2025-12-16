@@ -138,16 +138,7 @@ func GetRemoteTrackInfo(videoURL string) (*mediainfo.MediaTrackInfo, error) {
 
 // GetTrackProgress returns the current download progress for a specific track
 func GetTrackProgress(url string, mediaType string, track int) (int, int, error) {
-	// Get track info to create handler
-	_, err := GetRemoteTrackInfo(url)
-	if err != nil {
-		return 0, 0, err
-	}
-
-	handler, err := CreateRemoteHandler(url, &options.StreamOptions{
-		VideoTrack: 0, // We don't need specific tracks for progress calculation
-		AudioTrack: -1,
-	})
+	handler, err := CreateRemoteHandler(url, nil)
 	if err != nil {
 		return 0, 0, err
 	}
