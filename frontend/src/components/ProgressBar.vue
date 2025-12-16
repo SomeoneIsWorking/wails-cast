@@ -15,7 +15,7 @@ const value = computed(() => {
   <div class="relative justify-stretch [&>div]:col-0 [&>div]:row-0">
     <div class="w-full bg-gray-600 rounded-full">
       <div
-        class="bg-green-500 h-5 rounded-full transition-all duration-300"
+        class="bg-blue-500 h-5 rounded-full transition-all duration-300"
         :style="{
           width: value + '%',
         }"

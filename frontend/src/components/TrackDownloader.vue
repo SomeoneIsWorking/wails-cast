@@ -6,19 +6,22 @@
         <button
           @click="start"
           :disabled="loading"
-          v-if="downloadState?.Status !== 'INPROGRESS'"
+          v-if="downloadState?.Status === 'IDLE' || downloadState?.Status === 'STOPPED'"
           class="btn-secondary px-3"
         >
           <Download class="w-4 h-4" />
         </button>
         <button
-          v-else
+          v-else-if="downloadState?.Status === 'INPROGRESS'"
           @click="stop"
           :disabled="loading"
           class="btn-secondary px-3"
         >
-          <StopCircle class="w-4 h-4" />
+          <Square class="w-4 h-4" />
         </button>
+        <div v-else class="btn-idle" >
+          <Check class="w-4 h-4" />
+        </div>
       </div>
       <ProgressBar
         class="mt-2"
@@ -37,7 +40,7 @@
 import { ref, computed, onMounted } from "vue";
 import { useCastStore } from "../stores/cast";
 import { useDownloadsStore } from "../stores/downloads";
-import { Download, StopCircle } from "lucide-vue-next";
+import { Check, Download, Square } from "lucide-vue-next";
 import ProgressBar from "./ProgressBar.vue";
 const castStore = useCastStore();
 const downloadsStore = useDownloadsStore();

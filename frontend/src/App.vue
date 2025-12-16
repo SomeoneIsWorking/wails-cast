@@ -9,11 +9,13 @@ import Settings from "./components/Settings.vue";
 import ConfirmModal from "./components/ConfirmModal.vue";
 import Footer from "./components/Footer.vue";
 import { useConfirm } from "./composables/useConfirm";
-import { Tv, Video, Play, Settings as SettingsIcon } from "lucide-vue-next";
+import { Tv, Video, Play, Settings as SettingsIcon, DownloadIcon } from "lucide-vue-next";
+import DownloadsPanel from "./components/DownloadsPanel.vue";
 
 const store = useCastStore();
 const activeTab = ref<"devices" | "files" | "options">("devices");
 const showSettings = ref(false);
+const showDownloads = ref(false);
 const { showConfirmModal, confirmOptions, isConfirmLoading } = useConfirm();
 
 onMounted(() => {
@@ -42,18 +44,27 @@ const selectDevice = (device: any) => {
               Wails Cast
             </h1>
           </div>
-          <button
-            @click="showSettings = true"
-            class="btn-icon text-gray-400 hover:text-white"
-            title="Settings"
-          >
-            <SettingsIcon :size="24" />
-          </button>
+          <div class="flex gap-2">
+            <button
+              @click="showDownloads = true"
+              class="btn-icon text-gray-400 hover:text-white"
+              title="Downloads"
+            >
+              <DownloadIcon :size="24" />
+            </button>
+            <button
+              @click="showSettings = true"
+              class="btn-icon text-gray-400 hover:text-white"
+              title="Settings"
+            >
+              <SettingsIcon :size="24" />
+            </button>
+          </div>
         </div>
       </header>
 
       <!-- Playback Control (shown when something is playing) -->
-      <PlaybackControl v-if="store.isCasting" class="mt-6"/>
+      <PlaybackControl v-if="store.isCasting" class="mt-6" />
 
       <main class="mt-6">
         <!-- Tab Navigation -->
@@ -125,6 +136,8 @@ const selectDevice = (device: any) => {
 
     <!-- Settings Modal -->
     <Settings v-model="showSettings" />
+
+    <DownloadsPanel v-model="showDownloads" />
 
     <!-- Global Confirm Modal -->
     <ConfirmModal

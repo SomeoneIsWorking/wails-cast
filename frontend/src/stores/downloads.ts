@@ -13,23 +13,10 @@ export const useDownloadsStore = defineStore("downloads", () => {
   const downloads = ref<Record<string, download.DownloadStatus>>({});
 
   // Listen to download progress events
-  EventsOn(
-    "download:progress",
-    (
-      data: download.DownloadStatus & {
-        Url: string;
-        MediaType: string;
-        Track: number;
-      }
-    ) => {
-      const key = `${data.Url}|${data.MediaType}|${data.Track}`;
-      downloads.value[key] = {
-        Downloaded: data.Downloaded,
-        Total: data.Total,
-        Status: data.Status,
-      };
-    }
-  );
+  EventsOn("download:progress", (data: download.DownloadStatus) => {
+    const key = `${data.Url}|${data.MediaType}|${data.Track}`;
+    downloads.value[key] = data;
+  });
 
   const startDownload = async (
     url: string,
@@ -58,11 +45,6 @@ export const useDownloadsStore = defineStore("downloads", () => {
     return downloads.value[key];
   };
 
-  const clearDownload = (url: string, mediaType: string, track: number) => {
-    const key = `${url}|${mediaType}|${track}`;
-    delete downloads.value[key];
-  };
-
   const loadTrackProgress = async (
     url: string,
     mediaType: string,
@@ -75,7 +57,6 @@ export const useDownloadsStore = defineStore("downloads", () => {
   return {
     downloads,
     getDownloadState,
-    clearDownload,
     loadTrackProgress,
     startDownload,
     stopDownload,
