@@ -5,7 +5,7 @@ import "sync"
 // Event is a simple topic + payload envelope
 type Event struct {
 	Topic   string
-	Payload interface{}
+	Payload any
 }
 
 // EventBus provides a simple pub/sub for backend components
@@ -23,24 +23,28 @@ func NewEventBus() *EventBus {
 }
 
 // Subscribe returns a channel receiving all events and an unsubscribe function
-func (eb *EventBus) Subscribe() (<-chan Event, func()) {
+func (eb *EventBus) Subscribe(callback func(string, any)) func() {
 	eb.mu.Lock()
 	id := eb.nextID
 	eb.nextID++
-	ch := make(chan Event, 32)
+	ch := make(chan Event)
 	eb.subs[id] = ch
 	eb.mu.Unlock()
 
 	unsubscribe := func() {
 		eb.mu.Lock()
-		c, ok := eb.subs[id]
-		if ok {
-			close(c)
-			delete(eb.subs, id)
-		}
+		close(ch)
+		delete(eb.subs, id)
 		eb.mu.Unlock()
 	}
-	return ch, unsubscribe
+
+	go func() {
+		for value := range ch {
+			callback(value.Topic, value.Payload)
+		}
+	}()
+
+	return unsubscribe
 }
 
 // Emit publishes an event to all subscribers
@@ -51,7 +55,6 @@ func (eb *EventBus) Emit(topic string, payload any) {
 		select {
 		case ch <- e:
 		default:
-			// If buffer is full, drop to avoid blocking
 		}
 	}
 	eb.mu.RUnlock()
@@ -64,6 +67,6 @@ func Emit(topic string, payload any) {
 	eventBus.Emit(topic, payload)
 }
 
-func Subscribe() (<-chan Event, func()) {
-	return eventBus.Subscribe()
+func Subscribe(callback func(string, any)) func() {
+	return eventBus.Subscribe(callback)
 }
