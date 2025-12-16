@@ -430,7 +430,7 @@ func (a *App) StopPlayback() error {
 	if err == nil {
 		a.mu.Lock()
 		a.playbackState.Status = "STOPPED"
-		wails_runtime.EventsEmit(a.ctx, "playback:state", a.playbackState)
+		events.Emit("playback:state", a.playbackState)
 		a.mu.Unlock()
 	}
 	return err
@@ -490,87 +490,63 @@ func (a *App) ExportEmbeddedSubtitles(videoPath string) error {
 }
 
 // TranslateExportedSubtitles exports embedded subtitles and translates them in the background
-func (a *App) TranslateExportedSubtitles(fileNameOrUrl string, targetLanguage string) error {
-	// Get settings for API key and model
+func (a *App) TranslateExportedSubtitles(fileNameOrUrl string, targetLanguage string) ([]string, error) {
 	settings := a.settingsStore.Get()
 
-	// Use settings API key, fallback to environment variable
 	apiKey := settings.GeminiApiKey
-
 	if apiKey == "" {
-		return fmt.Errorf("Gemini API key is required. Please set it in Settings or GEMINI_API_KEY environment variable")
+		return nil, fmt.Errorf("Gemini API key is required. Please set it in Settings or GEMINI_API_KEY environment variable")
 	}
 
-	// Use target language from settings if not provided
 	if targetLanguage == "" {
 		targetLanguage = settings.DefaultTranslationLanguage
 	}
 	if targetLanguage == "" {
-		return fmt.Errorf("target language is required")
+		return nil, fmt.Errorf("target language is required")
 	}
 
-	// Determine subtitle directory based on whether it's remote or local
-	var subtitleDir string
-	isRemote := strings.HasPrefix(fileNameOrUrl, "http://") || strings.HasPrefix(fileNameOrUrl, "https://")
+	return ai.TranslateForFile(a.ctx, ai.Request{
+		FileNameOrURL:  fileNameOrUrl,
+		TargetLanguage: targetLanguage,
+		APIKey:         apiKey,
+		Model:          settings.GeminiModel,
+		PromptTemplate: settings.TranslatePromptTemplate,
+		MaxSamples:     settings.MaxSubtitleSamples,
+	})
+}
 
-	if isRemote {
-		_, err := localcast.GetRemoteTrackInfo(fileNameOrUrl)
-		if err != nil {
-			return fmt.Errorf("failed to extract track info: %w", err)
-		}
-		subtitleDir = folders.GetCacheForVideo(fileNameOrUrl)
-		logger.Info("Using remote subtitle cache directory", "dir", subtitleDir)
-	} else {
-		// For local files, use the standard subtitle directory
-		baseDir := filepath.Dir(fileNameOrUrl)
-		baseName := strings.TrimSuffix(filepath.Base(fileNameOrUrl), filepath.Ext(fileNameOrUrl))
-		subtitleDir = filepath.Join(baseDir, baseName)
+// GenerateTranslationPrompt builds and returns the LLM prompt for subtitles without invoking the model
+func (a *App) GenerateTranslationPrompt(fileNameOrUrl string, targetLanguage string) (string, error) {
+	settings := a.settingsStore.Get()
+	if targetLanguage == "" {
+		targetLanguage = settings.DefaultTranslationLanguage
+	}
+	if targetLanguage == "" {
+		return "", fmt.Errorf("target language is required")
+	}
+	req := ai.Request{
+		FileNameOrURL:  fileNameOrUrl,
+		TargetLanguage: targetLanguage,
+		PromptTemplate: settings.TranslatePromptTemplate,
+		MaxSamples:     settings.MaxSubtitleSamples,
+	}
+	return ai.GeneratePromptForFile(req)
+}
 
-		// Check if subtitle directory exists, if not export the subtitles
-		if _, err := os.Stat(subtitleDir); os.IsNotExist(err) {
-			logger.Info("Subtitle directory doesn't exist, exporting subtitles", "dir", subtitleDir)
-			if err := hls.ExportEmbeddedSubtitles(fileNameOrUrl); err != nil {
-				return fmt.Errorf("failed to export subtitles: %w", err)
-			}
-		} else {
-			logger.Info("Using existing exported subtitles", "dir", subtitleDir)
-		}
+// ProcessPastedTranslation accepts pasted LLM output, parses and writes translated VTT(s)
+func (a *App) ProcessPastedTranslation(fileNameOrUrl string, targetLanguage string, pastedAnswer string) ([]string, error) {
+	if targetLanguage == "" {
+		targetLanguage = a.settingsStore.Get().DefaultTranslationLanguage
+	}
+	if targetLanguage == "" {
+		return nil, fmt.Errorf("target language is required")
 	}
 
-	// Run translation in background
-	go func() {
-		// Create translator with model from settings
-		translator, err := ai.NewTranslator(apiKey, settings.GeminiModel)
-		if err != nil {
-			wails_runtime.EventsEmit(a.ctx, "translation:error", fmt.Sprintf("Failed to create translator: %v", err))
-			return
-		}
-		defer translator.Close()
-
-		// Translate all exported subtitles
-		logger.Info("Translating exported subtitles", "directory", subtitleDir, "target", targetLanguage, "model", settings.GeminiModel)
-		translatedFiles, err := translator.TranslateEmbeddedSubtitles(a.ctx, ai.TranslateOptions{
-			ExportedSubtitlesDir: subtitleDir,
-			TargetLanguage:       targetLanguage,
-			PromptTemplate:       settings.TranslatePromptTemplate,
-			MaxSubtitleSamples:   settings.MaxSubtitleSamples,
-			StreamCallback: func(chunk string) {
-				// Stream translation progress to frontend
-				wails_runtime.EventsEmit(a.ctx, "translation:stream", chunk)
-			},
-		})
-		if err != nil {
-			wails_runtime.EventsEmit(a.ctx, "translation:error", fmt.Sprintf("Translation failed: %v", err))
-			return
-		}
-
-		logger.Info("Translation completed", "files", len(translatedFiles))
-		// Emit completion event with translated file paths
-		wails_runtime.EventsEmit(a.ctx, "translation:complete", translatedFiles)
-	}()
-
-	// Return immediately - translation started
-	return nil
+	req := ai.Request{
+		FileNameOrURL:  fileNameOrUrl,
+		TargetLanguage: targetLanguage,
+	}
+	return ai.ProcessPastedForFile(a.ctx, req, pastedAnswer)
 }
 
 // GetHistory returns all history items
@@ -664,7 +640,7 @@ func (a *App) handleChromecastMessage(msg *cast_proto.CastMessage) {
 		a.playbackState.Status = "STOPPED"
 		a.mu.Unlock()
 	}
-	wails_runtime.EventsEmit(a.ctx, "playback:state", a.playbackState)
+	events.Emit("playback:state", a.playbackState)
 }
 
 // Helper functions

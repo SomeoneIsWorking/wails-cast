@@ -5,6 +5,8 @@ import { EventsOn, EventsOff } from "../../wailsjs/runtime/runtime";
 import {
   ExportEmbeddedSubtitles,
   TranslateExportedSubtitles,
+  GenerateTranslationPrompt,
+  ProcessPastedTranslation,
 } from "../../wailsjs/go/main/App";
 import { useToast } from "vue-toastification";
 import { useCastStore } from "@/stores/cast";
@@ -20,6 +22,8 @@ const streamContent = ref("");
 const isExporting = ref(false);
 const isTranslating = ref(false);
 const targetLanguage = ref(settingsStore.settings.defaultTranslationLanguage);
+const generatedPrompt = ref("");
+const pastedAnswer = ref("");
 
 const trackInfo = computed(() => castStore.trackInfo);
 
@@ -51,7 +55,39 @@ const handleTranslateSubtitles = async () => {
     toast.info(`Translation started for ${targetLanguage.value}`);
   } catch (error: any) {
     isTranslating.value = false;
-    toast.error(`Translation failed: ${error.message || error}`);
+    throw error;
+  }
+};
+
+const handleGeneratePrompt = async () => {
+  if (!trackInfo.value) return;
+  try {
+    const prompt = await GenerateTranslationPrompt(
+      trackInfo.value.path,
+      targetLanguage.value
+    );
+    generatedPrompt.value = prompt || "";
+    toast.info("Prompt generated");
+  } catch (err: any) {
+    toast.error(`Failed to generate prompt: ${err?.message || err}`);
+  }
+};
+
+const handleProcessPasted = async () => {
+  if (!trackInfo.value) return;
+  if (!pastedAnswer.value.trim()) {
+    toast.error("Paste the LLM output into the answer area first");
+    return;
+  }
+  try {
+    await ProcessPastedTranslation(
+      trackInfo.value.path,
+      targetLanguage.value,
+      pastedAnswer.value
+    );
+    toast.success("Pasted answer processed");
+  } catch (err: any) {
+    toast.error(`Processing failed: ${err?.message || err}`);
   }
 };
 
@@ -120,11 +156,46 @@ const handleClose = () => {
           </button>
         </template>
         <template v-else>
-          <div class="bg-gray-700 text-white rounded-md p-2 flex px-4 text-sm items-center">
+          <div
+            class="bg-gray-700 text-white rounded-md p-2 flex px-4 text-sm items-center"
+          >
             <LoadingIcon class="w-4 h-4 mr-2" />
             Translating to {{ targetLanguage }}...
           </div>
         </template>
+      </div>
+      <!-- Prompt / Pasted Answer Section -->
+      <div class="mb-4 grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div>
+          <div class="mb-2 text-sm text-white">Generated Prompt</div>
+          <textarea
+            v-model="generatedPrompt"
+            rows="8"
+            class="w-full bg-gray-700 text-white rounded-md p-2 text-sm font-mono"
+          ></textarea>
+          <div class="flex gap-2 mt-2">
+            <button @click="handleGeneratePrompt" class="btn-secondary text-sm">
+              Generate Prompt
+            </button>
+            <div class="flex-1"></div>
+          </div>
+        </div>
+
+        <div>
+          <div class="mb-2 text-sm text-white">Paste LLM Answer</div>
+          <textarea
+            v-model="pastedAnswer"
+            rows="8"
+            class="w-full bg-gray-700 text-white rounded-md p-2 text-sm font-mono"
+            placeholder="Paste the model output here (including optional <llm_output> tags)"
+          ></textarea>
+          <div class="flex gap-2 mt-2">
+            <button @click="handleProcessPasted" class="btn-primary text-sm">
+              Process Pasted Answer
+            </button>
+            <div class="flex-1"></div>
+          </div>
+        </div>
       </div>
       <!-- Stream Output -->
       <div

@@ -9,6 +9,7 @@ import (
 	"strings"
 	"text/template"
 
+	"wails-cast/pkg/events"
 	"wails-cast/pkg/subtitles"
 
 	"google.golang.org/genai"
@@ -20,7 +21,6 @@ type TranslateOptions struct {
 	TargetLanguage       string
 	PromptTemplate       string
 	MaxSubtitleSamples   int
-	StreamCallback       func(chunk string)
 }
 
 // Priority languages for translation reference
@@ -178,9 +178,7 @@ func (t *Translator) TranslateEmbeddedSubtitles(ctx context.Context, opts Transl
 			if part.Text != "" {
 				fmt.Print(part.Text) // Print to console for logging
 				fullResponse.WriteString(part.Text)
-				if opts.StreamCallback != nil {
-					opts.StreamCallback(part.Text)
-				}
+				events.Emit("translation:stream", part.Text)
 			}
 		}
 	}
