@@ -97,12 +97,9 @@ func NewApp() *App {
 
 func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
-	channel, _ := events.Subscribe()
-	go func() {
-		for event := range channel {
-			wails_runtime.EventsEmit(a.ctx, event.Topic, event.Payload)
-		}
-	}()
+	events.Subscribe(func(topic string, payload any) {
+			wails_runtime.EventsEmit(a.ctx, topic, payload)
+		})
 	// Start media server
 	go a.mediaServer.Start()
 
