@@ -2,14 +2,13 @@ package stream
 
 import (
 	"context"
-	"crypto/md5"
-	"encoding/hex"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"time"
 
+	"wails-cast/pkg/filehelper"
 	"wails-cast/pkg/folders"
 	"wails-cast/pkg/hls"
 	"wails-cast/pkg/options"
@@ -32,11 +31,7 @@ func NewLocalHandler(videoPath string, options options.StreamOptions) *LocalHand
 		duration = 0
 	}
 
-	hash := md5.Sum([]byte(videoPath))
-	cacheKey := hex.EncodeToString(hash[:])
-	baseDir := folders.GetCache()
-	outputDir := filepath.Join(baseDir, cacheKey)
-	hls.EnsureCacheDir(outputDir)
+	outputDir := folders.Video(videoPath)
 
 	return &LocalHandler{
 		VideoPath:   videoPath,
@@ -125,10 +120,7 @@ func (s *LocalHandler) ServeTrackPlaylist(ctx context.Context, trackType string,
 // ServeSegment transcodes and returns the segment file path
 func (s *LocalHandler) ServeSegment(ctx context.Context, trackType string, trackIndex int, segmentIndex int) ([]byte, error) {
 	segmentName := fmt.Sprintf("segment_%d.ts", segmentIndex)
-
-	hls.EnsureCacheDir(s.OutputDir)
-
-	segmentPath := hls.GetCachePath(s.OutputDir, segmentName)
+	segmentPath := filepath.Join(s.OutputDir, segmentName)
 	segmentDuration := float64(s.SegmentSize)
 	startTime := float64(segmentIndex * s.SegmentSize)
 	if startTime+segmentDuration > s.Duration {
@@ -143,7 +135,7 @@ func (s *LocalHandler) ServeSegment(ctx context.Context, trackType string, track
 
 	needsRegeneration := err != nil ||
 		!hls.ManifestMatches(manifest, s.Options, s.SegmentSize) ||
-		!hls.CacheExists(s.OutputDir, segmentName)
+		!filehelper.Exists(filepath.Join(s.OutputDir, segmentName))
 
 	if needsRegeneration {
 		buffer, err := s.transcodeSegment(ctx, segmentPath, startTime)
@@ -158,24 +150,22 @@ func (s *LocalHandler) ServeSegment(ctx context.Context, trackType string, track
 
 func (s *LocalHandler) transcodeSegment(ctx context.Context, segmentPath string, startTime float64) ([]byte, error) {
 	ensureSymlink(s.VideoPath, s.OutputDir)
-	subtitle := ""
+	var subtitle *hls.SubtitleTranscodeOptions = nil
 
 	if s.Options.Subtitle.BurnIn {
-		subtitle = s.Options.Subtitle.Path
+		subtitle = &hls.SubtitleTranscodeOptions{}
 	}
 
 	opts := &hls.TranscodeOptions{
 		InputPath:      filepath.Join(s.OutputDir, "input_video"),
-		OutputPath:     segmentPath,
 		StartTime:      startTime,
 		Duration:       s.SegmentSize,
 		Subtitle:       subtitle,
 		MaxOutputWidth: s.Options.MaxOutputWidth,
 		Bitrate:        s.Options.Bitrate,
-		FontSize:       s.Options.Subtitle.FontSize,
 	}
 
-	output, err := hls.TranscodeSegment(ctx, opts)
+	output, err := hls.TranscodeSegment(ctx, opts, segmentPath)
 	if err != nil {
 		return nil, err
 	}
@@ -204,29 +194,11 @@ func (s *LocalHandler) ServeSubtitles(ctx context.Context) (string, error) {
 	// Handle external subtitle format
 	if path, found := strings.CutPrefix(subtitlePath, "external:"); found {
 		subtitlePath = path
-	} else if index, found := strings.CutPrefix(subtitlePath, "embedded:"); found {
-		// Extract embedded subtitle to cache
-		cachedPath := filepath.Join(s.OutputDir, fmt.Sprintf("subtitle_%s.vtt", index))
-
-		// Check if already cached
-		if _, err := os.Stat(cachedPath); os.IsNotExist(err) {
-			// Extract using ffmpeg
-			args := []string{
-				"-i", s.VideoPath,
-				"-map", fmt.Sprintf("0:s:%s", index),
-				"-f", "webvtt",
-				"-y",
-				cachedPath,
-			}
-
-			if err := hls.RunFFmpeg(args...); err != nil {
-				return "", fmt.Errorf("failed to extract embedded subtitle: %w", err)
-			}
-		}
-
+	} else if embeddedIndex, err := hls.GetEmbeddedIndex(subtitlePath); err == nil {
+		cachedPath := filepath.Join(s.OutputDir, fmt.Sprintf("subtitle_%d.vtt", embeddedIndex))
+		hls.ExtractSubtitles(s.VideoPath, embeddedIndex, cachedPath)
 		subtitlePath = cachedPath
 	}
-	// Otherwise it's a direct path, use as-is
 
 	// Read subtitle file
 	data, err := os.ReadFile(subtitlePath)

@@ -510,27 +510,30 @@ func (p *RemoteHandler) downloadSegment(ctx context.Context, trackType string, t
 func (p *RemoteHandler) transcodeSegment(ctx context.Context, rawPath string, transcodedPath string) ([]byte, error) {
 	startTime := time.Now()
 
-	subtitle := ""
+	var subtitle *hls.SubtitleTranscodeOptions = nil
 
 	if p.Options.Subtitle.BurnIn {
-		subtitle = p.Options.Subtitle.Path
-		if index, found := strings.CutPrefix(subtitle, "embedded:"); found {
+		subtitle = &hls.SubtitleTranscodeOptions{
+			Path:                 p.Options.Subtitle.Path,
+			FontSize:             p.Options.Subtitle.FontSize,
+			IgnoreClosedCaptions: p.Options.Subtitle.IgnoreClosedCaptions,
+		}
+
+		if index, found := strings.CutPrefix(subtitle.Path, "embedded:"); found {
 			// For remote streams, embedded just means found on website, in this case, we use the cached file
-			subtitle = fmt.Sprintf("external:%s", filepath.Join(p.CacheDir, fmt.Sprintf("subtitle_%s.vtt", index)))
+			subtitle.Path = fmt.Sprintf("external:%s", filepath.Join(p.CacheDir, fmt.Sprintf("subtitle_%s.vtt", index)))
 		}
 	}
 
 	opts := &hls.TranscodeOptions{
 		InputPath:      rawPath,
-		OutputPath:     transcodedPath,
 		StartTime:      0,
 		Duration:       0,
 		Subtitle:       subtitle,
 		Bitrate:        p.Options.Bitrate,
-		FontSize:       p.Options.Subtitle.FontSize,
 		MaxOutputWidth: p.Options.MaxOutputWidth,
 	}
-	buffer, err := hls.TranscodeSegment(ctx, opts)
+	buffer, err := hls.TranscodeSegment(ctx, opts, transcodedPath)
 	if err != nil {
 		return nil, err
 	}

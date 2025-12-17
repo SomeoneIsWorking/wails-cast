@@ -28,6 +28,12 @@ func LoadSegmentManifest(manifestPath string) (*TranscodeOptions, error) {
 	return &manifest, nil
 }
 
+func (manifest *SubtitleTranscodeOptions) Matches(options options.SubtitleCastOptions) bool {
+	return manifest.Path == options.Path &&
+		manifest.FontSize == options.FontSize &&
+		manifest.IgnoreClosedCaptions == options.IgnoreClosedCaptions
+}
+
 // ManifestMatches checks if current parameters match manifest (used by local file HLS)
 func ManifestMatches(manifest *TranscodeOptions, options options.StreamOptions, duration int) bool {
 	if manifest == nil {
@@ -35,16 +41,12 @@ func ManifestMatches(manifest *TranscodeOptions, options options.StreamOptions, 
 	}
 
 	if options.Subtitle.BurnIn {
-		if manifest.Subtitle != options.Subtitle.Path {
-			return false
-		}
-
-		if manifest.FontSize != options.Subtitle.FontSize {
+		if !manifest.Subtitle.Matches(options.Subtitle) {
 			return false
 		}
 	}
 
-	if !options.Subtitle.BurnIn && manifest.Subtitle != "" {
+	if !options.Subtitle.BurnIn && manifest.Subtitle != nil {
 		return false
 	}
 

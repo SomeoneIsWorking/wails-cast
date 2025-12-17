@@ -70,7 +70,7 @@ func (d *DownloadManager) GetItem(url string, mediaType string, track int) (*Dow
 
 // getTrackProgress returns the current download progress for a specific track
 func getTrackProgress(url string, mediaType string, track int) ([]bool, error) {
-	trackDir := filepath.Join(folders.GetCacheForVideo(url), fmt.Sprintf("%s_%d", mediaType, track))
+	trackDir := filepath.Join(folders.Video(url), fmt.Sprintf("%s_%d", mediaType, track))
 	manifestFile := filepath.Join(trackDir, "download.json")
 	manifest, err := readManifestFile(manifestFile)
 	if err == nil {
@@ -154,7 +154,7 @@ func (d *DownloadManager) setupListener() {
 		item.Progress[status.Segment] = true
 		item.Emit()
 		item.mu.Unlock()
-		trackDir := filepath.Join(folders.GetCacheForVideo(status.URL), fmt.Sprintf("%s_%d", status.MediaType, status.Track))
+		trackDir := filepath.Join(folders.Video(status.URL), fmt.Sprintf("%s_%d", status.MediaType, status.Track))
 		manifestFile := filepath.Join(trackDir, "download.json")
 		writeManifestFile(manifestFile, item.Progress)
 	})

@@ -389,7 +389,7 @@ func (a *App) DeleteAllVideoCache() error {
 
 // OpenMediaFolder opens the folder containing the media file
 func (a *App) OpenMediaFolder(fileNameOrUrl string) error {
-	dir := folders.GetCacheForVideo(fileNameOrUrl)
+	dir := folders.Video(fileNameOrUrl)
 	os.MkdirAll(dir, 0755)
 	cmd := exec.Command("open", dir)
 	return cmd.Start()

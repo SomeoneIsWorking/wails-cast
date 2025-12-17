@@ -19,7 +19,7 @@ import (
 
 func CreateRemoteHandler(videoURL string, options options.StreamOptions) (*stream.RemoteHandler, error) {
 	// 1. Calculate hash of video URL for cache key
-	cacheDir := folders.GetCacheForVideo(videoURL)
+	cacheDir := folders.Video(videoURL)
 
 	// 2. Check cache or extract
 	result, err := getExtractionJson(videoURL)
@@ -74,7 +74,7 @@ func loadCachedExtraction(cacheDir string) (*extractor.ExtractResult, error) {
 
 func getExtractionJson(videoURL string) (*extractor.ExtractResult, error) {
 	// Try loading from cache first
-	cacheDir := folders.GetCacheForVideo(videoURL)
+	cacheDir := folders.Video(videoURL)
 	if result, err := loadCachedExtraction(cacheDir); err == nil {
 		return result, nil
 	}
