@@ -17,7 +17,7 @@ import (
 	"wails-cast/pkg/stream"
 )
 
-func CreateRemoteHandler(videoURL string, options *options.StreamOptions) (*stream.RemoteHandler, error) {
+func CreateRemoteHandler(videoURL string, options options.StreamOptions) (*stream.RemoteHandler, error) {
 	// 1. Calculate hash of video URL for cache key
 	cacheDir := folders.GetCacheForVideo(videoURL)
 

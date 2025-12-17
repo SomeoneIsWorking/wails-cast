@@ -272,6 +272,72 @@ func (w *WebVTTJson) ToWebVTTString() string {
 	return vtt.String()
 }
 
+// RemoveClosedCaptions returns a stripped clone where closed captions are removed
+func (w *WebVTTJson) RemoveClosedCaptions() *WebVTTJson {
+	if w == nil {
+		return nil
+	}
+
+	// First compute absolute start times for original entries so we can
+	// preserve timing when removing entries.
+	starts := make([]float64, len(w.Entries))
+	current := 0.0
+	for i, e := range w.Entries {
+		start := current + e.Delay
+		starts[i] = start
+		current = start + e.Duration
+	}
+
+	// Build cloned entries, dropping entries that are only CC after stripping.
+	var out []SubtitleEntry
+	var prevEnd float64
+	for i, e := range w.Entries {
+		t := e.Text
+
+		// Remove bracketed sequences like [text]
+		for {
+			startIdx := strings.Index(t, "[")
+			endIdx := strings.Index(t, "]")
+			if startIdx == -1 || endIdx == -1 || endIdx < startIdx {
+				break
+			}
+			t = t[:startIdx] + t[endIdx+1:]
+		}
+
+		// Collapse whitespace and trim
+		t = strings.TrimSpace(strings.Join(strings.Fields(t), " "))
+
+		// If text is empty after stripping, or if it only contains dashes
+		// and whitespace (e.g. "-" or "--"), skip this entry entirely.
+		if t == "" {
+			continue
+		}
+		tmp := strings.ReplaceAll(t, "-", "")
+		tmp = strings.TrimSpace(tmp)
+		if tmp == "" {
+			continue
+		}
+
+		// Compute delay relative to previous kept entry
+		start := starts[i]
+		delay := start - prevEnd
+		if len(out) == 0 {
+			// For the first kept entry, delay should be its absolute start
+			delay = start
+		}
+
+		out = append(out, SubtitleEntry{
+			Text:     t,
+			Duration: e.Duration,
+			Delay:    delay,
+		})
+
+		prevEnd = start + e.Duration
+	}
+
+	return &WebVTTJson{Entries: out}
+}
+
 // parseTimestamp converts HH:MM:SS.mmm or MM:SS.mmm to seconds
 func parseTimestamp(timestamp string) (float64, error) {
 	parts := strings.Split(timestamp, ":")

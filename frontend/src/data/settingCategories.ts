@@ -15,6 +15,12 @@ export const settingCategories: SettingCategory[] = [
         type: "boolean",
       },
       {
+        key: "ignoreClosedCaptions",
+        label: "Ignore Closed Captions",
+        description: "Remove closed captions from subtitles",
+        type: "boolean",
+      },
+      {
         key: "subtitleFontSize",
         label: "Font Size",
         description: "Default font size for burned-in subtitles",

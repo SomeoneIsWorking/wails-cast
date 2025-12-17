@@ -39,7 +39,7 @@ type RemoteHandler struct {
 	Cookies     map[string]string
 	Headers     map[string]string
 	CacheDir    string // Directory for caching transcoded segments
-	Options     *options.StreamOptions
+	Options     options.StreamOptions
 	Duration    float64 // Total duration of the stream in seconds
 }
 
@@ -49,7 +49,7 @@ type MainMap struct {
 }
 
 // NewRemoteHandler creates a new HLS handler
-func NewRemoteHandler(cacheDir string, options *options.StreamOptions, result *extractor.ExtractResult) (*RemoteHandler, error) {
+func NewRemoteHandler(cacheDir string, options options.StreamOptions, result *extractor.ExtractResult) (*RemoteHandler, error) {
 	os.MkdirAll(cacheDir, 0755)
 
 	manifestRaw, err := hls.ParseManifestPlaylist(result.ManifestRaw)
@@ -611,14 +611,16 @@ func (p *RemoteHandler) ServeSubtitles(ctx context.Context) (string, error) {
 
 	// Check if it's already WebVTT
 	content := string(data)
-	if strings.HasPrefix(content, "WEBVTT") {
-		return content, nil
-	}
 
 	// Otherwise parse and convert to WebVTT
 	subtitles, err := subtitles.Parse(content)
 	if err != nil {
 		return "", fmt.Errorf("failed to parse subtitle file: %w", err)
+	}
+
+	// Apply IgnoreClosedCaptions option if requested
+	if p.Options.Subtitle.IgnoreClosedCaptions {
+		subtitles = subtitles.RemoveClosedCaptions()
 	}
 
 	return subtitles.ToWebVTTString(), nil

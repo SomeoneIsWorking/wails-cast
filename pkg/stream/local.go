@@ -19,14 +19,14 @@ import (
 // LocalHandler represents a local file HLS streaming server
 type LocalHandler struct {
 	VideoPath   string
-	Options     *options.StreamOptions
+	Options     options.StreamOptions
 	OutputDir   string
 	Duration    float64
 	SegmentSize int
 }
 
 // NewLocalHandler creates a new local HLS handler
-func NewLocalHandler(videoPath string, options *options.StreamOptions) *LocalHandler {
+func NewLocalHandler(videoPath string, options options.StreamOptions) *LocalHandler {
 	duration, err := hls.GetVideoDuration(videoPath)
 	if err != nil {
 		duration = 0
@@ -236,14 +236,16 @@ func (s *LocalHandler) ServeSubtitles(ctx context.Context) (string, error) {
 
 	// Check if it's already WebVTT
 	content := string(data)
-	if strings.HasPrefix(content, "WEBVTT") {
-		return content, nil
-	}
 
 	// Otherwise parse and convert to WebVTT
 	subtitles, err := subtitles.Parse(content)
 	if err != nil {
 		return "", fmt.Errorf("failed to parse subtitle file: %w", err)
+	}
+
+	// Apply IgnoreClosedCaptions option if requested
+	if s.Options.Subtitle.IgnoreClosedCaptions {
+		subtitles = subtitles.RemoveClosedCaptions()
 	}
 
 	return subtitles.ToWebVTTString(), nil
