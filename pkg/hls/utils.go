@@ -44,20 +44,11 @@ func ExportEmbeddedSubtitles(videoPath string) error {
 		outputFile := filepath.Join(subtitleDir, fmt.Sprintf("%s.vtt", name))
 
 		// Use ffmpeg to extract subtitle
-		args := []string{
-			"-i", videoPath,
-			"-map", fmt.Sprintf("0:s:%d", sub.Index),
-			"-f", "webvtt",
-			"-y", // Overwrite output file
-			outputFile,
-		}
-
-		if err := RunFFmpeg(args...); err != nil {
+		_, err := ExtractSubtitles(videoPath, sub.Index, outputFile)
+		if err != nil {
 			logger.Logger.Warn("Failed to export subtitle", "index", sub.Index, "language", name, "error", err)
 			continue
 		}
-
-		logger.Logger.Info("Exported subtitle", "file", outputFile)
 	}
 
 	return nil

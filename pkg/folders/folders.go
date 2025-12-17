@@ -21,19 +21,19 @@ func GetConfig() string {
 	return filepath.Join(configDir, appName)
 }
 
-// GetCache returns the application cache directory path
-func GetCache() string {
+// Cache returns the application cache directory path
+func Cache() string {
 	return filepath.Join(os.TempDir(), appName+"-cache")
 }
 
-func GetCacheForVideo(fileNameOrUrl string) string {
+func Video(fileNameOrUrl string) string {
 	hash := md5.Sum([]byte(fileNameOrUrl))
 	cacheKey := hex.EncodeToString(hash[:])
-	return filepath.Join(GetCache(), cacheKey)
+	return filepath.Join(Cache(), cacheKey)
 }
 
-func GetTrackDir(fileNameOrUrl string, mediaType string, track int) string {
-	cacheDir := GetCacheForVideo(fileNameOrUrl)
+func Track(fileNameOrUrl string, mediaType string, track int) string {
+	cacheDir := Video(fileNameOrUrl)
 	trackDir := filepath.Join(cacheDir, fmt.Sprintf("%s_%d", mediaType, track))
 	return trackDir
 }

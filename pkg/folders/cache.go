@@ -17,7 +17,7 @@ type CacheStats struct {
 
 // GetCacheStats calculates cache statistics
 func GetCacheStats() (*CacheStats, error) {
-	cachePath := GetCache()
+	cachePath := Cache()
 	stats := &CacheStats{}
 
 	if _, err := os.Stat(cachePath); os.IsNotExist(err) {
@@ -66,7 +66,7 @@ func GetCacheStats() (*CacheStats, error) {
 
 // DeleteAllCache removes all cache files
 func DeleteAllCache() error {
-	cachePath := GetCache()
+	cachePath := Cache()
 	if _, err := os.Stat(cachePath); os.IsNotExist(err) {
 		return nil
 	}
@@ -75,7 +75,7 @@ func DeleteAllCache() error {
 
 // DeleteTranscodedCache removes only transcoded video segments
 func DeleteTranscodedCache() error {
-	cachePath := GetCache()
+	cachePath := Cache()
 	if _, err := os.Stat(cachePath); os.IsNotExist(err) {
 		return nil
 	}
@@ -102,7 +102,7 @@ func DeleteTranscodedCache() error {
 
 // DeleteAllVideoCache removes all video files (.ts) but keeps metadata
 func DeleteAllVideoCache() error {
-	cachePath := GetCache()
+	cachePath := Cache()
 	if _, err := os.Stat(cachePath); os.IsNotExist(err) {
 		return nil
 	}

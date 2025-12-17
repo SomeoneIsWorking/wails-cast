@@ -29,7 +29,7 @@ func resolveSubtitleDir(fileNameOrUrl string, exportIfMissing bool) (string, err
 		if _, err := localcast.GetRemoteTrackInfo(fileNameOrUrl); err != nil {
 			return "", fmt.Errorf("failed to extract track info: %w", err)
 		}
-		return folders.GetCacheForVideo(fileNameOrUrl), nil
+		return folders.Video(fileNameOrUrl), nil
 	}
 
 	baseDir := filepath.Dir(fileNameOrUrl)

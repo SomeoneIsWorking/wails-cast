@@ -2,8 +2,10 @@ package subtitles
 
 import (
 	"fmt"
+	"os"
 	"strconv"
 	"strings"
+	"wails-cast/pkg/filehelper"
 )
 
 // SubtitleEntry represents a single subtitle entry with timing information
@@ -398,4 +400,18 @@ func formatTimestamp(seconds float64) string {
 	secs := int(seconds) % 60
 	millis := int((seconds - float64(int(seconds))) * 1000)
 	return fmt.Sprintf("%02d:%02d:%02d.%03d", hours, minutes, secs, millis)
+}
+
+func LoadFromFile(path string) (*WebVTTJson, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+
+	return Parse(string(data))
+}
+
+func (w *WebVTTJson) Save(path string) error {
+	content := w.ToWebVTTString()
+	return filehelper.WriteFile(path, []byte(content))
 }
