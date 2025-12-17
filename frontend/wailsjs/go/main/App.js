@@ -54,8 +54,8 @@ export function GetMediaFiles(arg1) {
   return window['go']['main']['App']['GetMediaFiles'](arg1);
 }
 
-export function GetMediaURL(arg1) {
-  return window['go']['main']['App']['GetMediaURL'](arg1);
+export function GetMediaURL() {
+  return window['go']['main']['App']['GetMediaURL']();
 }
 
 export function GetSettings() {

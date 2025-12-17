@@ -70,5 +70,3 @@ func Emit(topic string, payload any) {
 func Subscribe(callback func(string, any)) func() {
 	return eventBus.Subscribe(callback)
 }
-
-var Download = NewEventBus()

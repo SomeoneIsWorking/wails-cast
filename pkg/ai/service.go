@@ -7,9 +7,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	localcast "wails-cast/pkg/cast"
+	"wails-cast/pkg/ffmpeg"
 	"wails-cast/pkg/folders"
-	"wails-cast/pkg/hls"
 )
 
 // Request bundles parameters for prompt generation, pasted processing and translation
@@ -23,12 +22,9 @@ type Request struct {
 }
 
 // resolveSubtitleDir determines the directory where exported subtitles live; it can export embedded subtitles if needed
-func resolveSubtitleDir(fileNameOrUrl string, exportIfMissing bool) (string, error) {
+func resolveSubtitleDir(fileNameOrUrl string) (string, error) {
 	isRemote := strings.HasPrefix(fileNameOrUrl, "http://") || strings.HasPrefix(fileNameOrUrl, "https://")
 	if isRemote {
-		if _, err := localcast.GetRemoteTrackInfo(fileNameOrUrl); err != nil {
-			return "", fmt.Errorf("failed to extract track info: %w", err)
-		}
 		return folders.Video(fileNameOrUrl), nil
 	}
 
@@ -37,12 +33,8 @@ func resolveSubtitleDir(fileNameOrUrl string, exportIfMissing bool) (string, err
 	subtitleDir := filepath.Join(baseDir, baseName)
 
 	if _, err := os.Stat(subtitleDir); os.IsNotExist(err) {
-		if exportIfMissing {
-			if err := hls.ExportEmbeddedSubtitles(fileNameOrUrl); err != nil {
-				return "", fmt.Errorf("failed to export subtitles: %w", err)
-			}
-		} else {
-			return "", fmt.Errorf("subtitle directory does not exist")
+		if err := ffmpeg.ExportEmbeddedSubtitles(fileNameOrUrl); err != nil {
+			return "", fmt.Errorf("failed to export subtitles: %w", err)
 		}
 	}
 
@@ -51,7 +43,7 @@ func resolveSubtitleDir(fileNameOrUrl string, exportIfMissing bool) (string, err
 
 // GeneratePromptForFile resolves subtitle directory and generates the prompt
 func GeneratePromptForFile(req Request) (string, error) {
-	subtitleDir, err := resolveSubtitleDir(req.FileNameOrURL, true)
+	subtitleDir, err := resolveSubtitleDir(req.FileNameOrURL)
 	if err != nil {
 		return "", err
 	}
@@ -60,7 +52,7 @@ func GeneratePromptForFile(req Request) (string, error) {
 
 // ProcessPastedForFile resolves subtitle directory and processes pasted LLM output
 func ProcessPastedForFile(ctx context.Context, req Request, pastedAnswer string) ([]string, error) {
-	subtitleDir, err := resolveSubtitleDir(req.FileNameOrURL, true)
+	subtitleDir, err := resolveSubtitleDir(req.FileNameOrURL)
 	if err != nil {
 		return nil, err
 	}
@@ -69,7 +61,7 @@ func ProcessPastedForFile(ctx context.Context, req Request, pastedAnswer string)
 
 // TranslateForFile runs the full translation synchronously and returns the output paths
 func TranslateForFile(ctx context.Context, req Request) ([]string, error) {
-	subtitleDir, err := resolveSubtitleDir(req.FileNameOrURL, true)
+	subtitleDir, err := resolveSubtitleDir(req.FileNameOrURL)
 	if err != nil {
 		return nil, err
 	}

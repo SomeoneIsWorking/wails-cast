@@ -2,7 +2,7 @@ import { defineStore } from "pinia";
 import { ref, computed } from "vue";
 import { Device, deviceService } from "../services/device";
 import { EventsOn } from "../../wailsjs/runtime/runtime";
-import { hls, main, options } from "../../wailsjs/go/models";
+import { ffmpeg, main, options } from "../../wailsjs/go/models";
 import { mediaService } from "@/services/media";
 import { useSettingsStore } from "./settings";
 import { parseSubtitlePath, buildSubtitlePath } from "@/utils/subtitle";
@@ -26,7 +26,7 @@ export const useCastStore = defineStore("cast", () => {
   const isLoading = ref(false);
   const isCasting = computed(() => playbackState.value.status !== "STOPPED");
   const error = ref<string | null>(null);
-  const ffmpegInfo = ref<hls.FFmpegInfo | null>(null);
+  const ffmpegInfo = ref<ffmpeg.FFmpegInfo | null>(null);
   const trackInfo = ref<main.TrackDisplayInfo | null>(null);
   const historyStore = useHistoryStore();
 

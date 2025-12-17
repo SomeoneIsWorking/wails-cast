@@ -27,39 +27,27 @@ type ExtractedSubtitleTrack struct {
 
 // ExtractResult contains the extracted video information
 type ExtractResult struct {
-	SiteURL     string                   // Original page URL
-	URL         string                   // Original HLS URL
-	Title       string                   // Optional title
-	BaseURL     string                   // Base URL (scheme + host) for resolving relative paths
-	ManifestRaw string                   `json:"-"` // Raw m3u8 content
-	Cookies     map[string]string        // Captured cookies
-	Headers     map[string]string        // Captured headers
-	Subtitles   []ExtractedSubtitleTrack // Captured subtitle tracks
+	URL       *url.URL                 // HLS URL
+	Title     string                   // Title
+	Manifest  string                   `json:"-"` // m3u8 content
+	Cookies   map[string]string        // Captured cookies
+	Headers   map[string]string        // Captured headers
+	Subtitles []ExtractedSubtitleTrack // Captured subtitle tracks
 }
 
 type PlaylistExtractionResult struct {
-	URL         string            // Original HLS URL
-	BaseURL     string            // Base URL (scheme + host) for resolving relative paths
-	Cookies     map[string]string // Captured cookies
-	Headers     map[string]string // Captured headers
-	ManifestRaw string            // Raw m3u8 content
+	URL      *url.URL          // Original HLS URL
+	Cookies  map[string]string // Captured cookies
+	Headers  map[string]string // Captured headers
+	Manifest string            // m3u8 content
 }
 
 // handlePlaylist processes an HLS manifest request
 func handlePlaylist(ctx *rod.Hijack) *PlaylistExtractionResult {
-	reqURL := ctx.Request.URL().String()
+	reqURL := ctx.Request.URL()
 	contentType := ctx.Response.Headers().Get("Content-Type")
 
 	fmt.Printf("Found HLS stream: %s (Content-Type: %s)\n", reqURL, contentType)
-
-	// Parse base URL
-	parsedURL, err := url.Parse(reqURL)
-	if err != nil {
-		fmt.Printf("Failed to parse URL: %v\n", err)
-		return nil
-	}
-	baseURL := fmt.Sprintf("%s://%s", parsedURL.Scheme, parsedURL.Host)
-	fmt.Printf("Base URL: %s\n", baseURL)
 
 	// Get the response body (m3u8 manifest)
 	manifestContent := ctx.Response.Body()
@@ -92,11 +80,10 @@ func handlePlaylist(ctx *rod.Hijack) *PlaylistExtractionResult {
 	fmt.Printf("Manifest found, waiting %v for subtitles...\n", WaitAfterManifestFound)
 
 	return &PlaylistExtractionResult{
-		URL:         reqURL,
-		BaseURL:     baseURL,
-		ManifestRaw: manifestContent,
-		Cookies:     cookies,
-		Headers:     headers,
+		URL:      reqURL,
+		Manifest: manifestContent,
+		Cookies:  cookies,
+		Headers:  headers,
 	}
 }
 
@@ -159,9 +146,7 @@ func ExtractManifestPlaylist(pageURL string) (*ExtractResult, error) {
 	page := browser.MustPage("")
 
 	// Shared result that will accumulate data
-	var result = &ExtractResult{
-		SiteURL: pageURL,
-	}
+	var result = &ExtractResult{}
 	var manifestFound bool
 	var manifestFoundTime time.Time
 	subtitleURLs := make(map[string]bool) // Track processed subtitle URLs
@@ -188,11 +173,10 @@ func ExtractManifestPlaylist(pageURL string) (*ExtractResult, error) {
 			if strings.Contains(contentType, "application/vnd.apple.mpegurl") ||
 				strings.Contains(contentType, "application/x-mpegURL") {
 				if r := handlePlaylist(ctx); r != nil {
-					result.BaseURL = r.BaseURL
 					result.Cookies = r.Cookies
 					result.Headers = r.Headers
 					result.URL = r.URL
-					result.ManifestRaw = r.ManifestRaw
+					result.Manifest = r.Manifest
 					manifestFound = true
 					manifestFoundTime = time.Now()
 				}

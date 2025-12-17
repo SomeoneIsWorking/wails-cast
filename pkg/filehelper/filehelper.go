@@ -11,14 +11,14 @@ func WriteFile(path string, data []byte) error {
 	return os.WriteFile(path, data, 0644)
 }
 
-func WriteJson[T any](result *T, path string) error {
+func WriteJson[T any](path string, data *T) error {
 	EnsureDir(filepath.Dir(path))
-	data, err := json.MarshalIndent(result, "", "  ")
+	bytes, err := json.MarshalIndent(data, "", "  ")
 	if err != nil {
 		return err
 	}
 	os.MkdirAll(filepath.Dir(path), 0755)
-	os.WriteFile(path, data, 0644)
+	os.WriteFile(path, bytes, 0644)
 	return nil
 }
 

@@ -16,14 +16,13 @@ import (
 	wails_runtime "github.com/wailsapp/wails/v2/pkg/runtime"
 
 	"wails-cast/pkg/ai"
-	localcast "wails-cast/pkg/cast"
-	"wails-cast/pkg/download"
 	"wails-cast/pkg/events"
+	"wails-cast/pkg/ffmpeg"
 	"wails-cast/pkg/folders"
 	"wails-cast/pkg/hls"
 	_logger "wails-cast/pkg/logger"
-	"wails-cast/pkg/mediainfo"
 	"wails-cast/pkg/options"
+	"wails-cast/pkg/remote"
 	"wails-cast/pkg/stream"
 )
 
@@ -36,11 +35,11 @@ type SubtitleDisplayItem struct {
 }
 
 type TrackDisplayInfo struct {
-	VideoTracks    []mediainfo.VideoTrack `json:"videoTracks"`
-	AudioTracks    []mediainfo.AudioTrack `json:"audioTracks"`
-	SubtitleTracks []SubtitleDisplayItem  `json:"subtitleTracks"`
-	Path           string                 `json:"path"`
-	NearSubtitle   string                 `json:"nearSubtitle"`
+	VideoTracks    []hls.VideoTrack      `json:"videoTracks"`
+	AudioTracks    []hls.AudioTrack      `json:"audioTracks"`
+	SubtitleTracks []SubtitleDisplayItem `json:"subtitleTracks"`
+	Path           string                `json:"path"`
+	NearSubtitle   string                `json:"nearSubtitle"`
 }
 
 type QualityOption struct {
@@ -50,16 +49,16 @@ type QualityOption struct {
 }
 
 type App struct {
-	ctx             context.Context
-	App             *application.Application
-	discovery       *DeviceDiscovery
-	mediaServer     *Server
-	localIp         string
-	playbackState   PlaybackState
-	historyStore    *HistoryStore
-	settingsStore   *SettingsStore
-	mu              sync.RWMutex
-	downloadManager *download.DownloadManager
+	ctx           context.Context
+	App           *application.Application
+	discovery     *DeviceDiscovery
+	mediaServer   *Server
+	localIp       string
+	playbackState PlaybackState
+	historyStore  *HistoryStore
+	settingsStore *SettingsStore
+	mu            sync.RWMutex
+	RemoteManager *remote.RemoteManager
 }
 
 type PlaybackState struct {
@@ -85,13 +84,13 @@ func NewApp() *App {
 	localIP := discovery.GetLocalIP()
 
 	return &App{
-		discovery:       NewDeviceDiscovery(),
-		mediaServer:     NewServer(localIP, 8888),
-		localIp:         localIP,
-		playbackState:   PlaybackState{},
-		historyStore:    NewHistoryStore(),
-		settingsStore:   NewSettingsStore(),
-		downloadManager: download.NewDownloadManager(),
+		discovery:     NewDeviceDiscovery(),
+		mediaServer:   NewServer(localIP, 8888),
+		localIp:       localIP,
+		playbackState: PlaybackState{},
+		historyStore:  NewHistoryStore(),
+		settingsStore: NewSettingsStore(),
+		RemoteManager: remote.NewManager(true),
 	}
 }
 
@@ -122,7 +121,7 @@ func (a *App) DiscoverDevices() []Device {
 }
 
 // GetMediaURL returns the URL for a media file to be cast
-func (a *App) GetMediaURL(filePath string) string {
+func (a *App) GetMediaURL() string {
 	return fmt.Sprintf("http://%s:%d/playlist.m3u8", a.localIp, 8888)
 }
 
@@ -135,13 +134,17 @@ func (a *App) GetSubtitleURL(subtitlePath string) string {
 }
 
 func (a *App) GetTrackDisplayInfo(fileNameOrUrl string) (*TrackDisplayInfo, error) {
-	trackInfo := &mediainfo.MediaTrackInfo{}
+	trackInfo := &hls.ManifestPlaylist{}
 	var err error
 	remote := strings.HasPrefix(fileNameOrUrl, "http://") || strings.HasPrefix(fileNameOrUrl, "https://")
 	if remote {
-		trackInfo, err = localcast.GetRemoteTrackInfo(fileNameOrUrl)
+		mediaManager, err := a.RemoteManager.GetMedia(fileNameOrUrl)
+		if err != nil {
+			return nil, err
+		}
+		trackInfo = mediaManager.Manifest
 	} else {
-		trackInfo, err = hls.GetMediaTrackInfo(fileNameOrUrl)
+		trackInfo, err = ffmpeg.GetMediaTrackInfo(fileNameOrUrl)
 	}
 	if err != nil {
 		return nil, err
@@ -160,7 +163,7 @@ func (a *App) GetTrackDisplayInfo(fileNameOrUrl string) (*TrackDisplayInfo, erro
 	for _, sub := range trackInfo.SubtitleTracks {
 		subtitleItems = append(subtitleItems, SubtitleDisplayItem{
 			Path:  fmt.Sprintf("embedded:%d", sub.Index),
-			Label: fmt.Sprintf("Embedded: %s", sub.Title),
+			Label: fmt.Sprintf("Embedded: %s", sub.Name),
 		})
 	}
 
@@ -196,30 +199,36 @@ func (a *App) CastToDevice(deviceIp string, fileNameOrUrl string, castOptions *o
 		MaxOutputWidth:   settings.MaxOutputWidth,
 		NoTranscodeCache: settings.NoTranscodeCache,
 	}
-	var mediaPath string
 	var duration float64
 	var err error
+	var name string
 
 	host := deviceIp
 	port := 8009
 
 	if isRemote {
-		mediaPath = fileNameOrUrl
 		// Use CastManager to prepare remote stream
-		logger.Info("Preparing remote stream", "url", mediaPath)
-		handler, err := localcast.CreateRemoteHandler(mediaPath, options)
+		logger.Info("Preparing remote stream", "url", fileNameOrUrl)
+		manager, err := a.RemoteManager.GetMedia(fileNameOrUrl)
 		if err != nil {
 			return nil, fmt.Errorf("failed to prepare remote stream: %w", err)
 		}
-		duration = handler.Duration
+
+		duration = manager.GetDuration()
+		name = manager.Title
+		// Create remote handler
+		handler, err := stream.NewRemoteHandler(a.ctx, manager, options, folders.Video(fileNameOrUrl))
+		if err != nil {
+			return nil, fmt.Errorf("failed to create remote handler: %w", err)
+		}
 
 		// Set handler on server
 		a.mediaServer.SetHandler(handler)
-
 	} else {
-		mediaPath = fileNameOrUrl
+		mediaPath := fileNameOrUrl
+		name = filepath.Base(mediaPath)
 		// Get duration for local files
-		duration, err = hls.GetVideoDuration(mediaPath)
+		duration, err = ffmpeg.GetVideoDuration(mediaPath)
 		if err != nil {
 			logger.Warn("Failed to get duration", "error", err)
 			duration = 0
@@ -235,8 +244,8 @@ func (a *App) CastToDevice(deviceIp string, fileNameOrUrl string, castOptions *o
 
 	// Update playback state
 	a.mu.Lock()
-	a.playbackState.MediaPath = mediaPath
-	a.playbackState.MediaName = filepath.Base(mediaPath)
+	a.playbackState.MediaPath = fileNameOrUrl
+	a.playbackState.MediaName = name
 	a.playbackState.DeviceURL = deviceIp
 	a.playbackState.DeviceName = extractDeviceName(deviceIp)
 	a.playbackState.Duration = duration
@@ -244,16 +253,15 @@ func (a *App) CastToDevice(deviceIp string, fileNameOrUrl string, castOptions *o
 
 	if deviceIp == "local" {
 		// Just host the stream without casting
-		logger.Info("Hosting stream without casting", "url", a.GetMediaURL(mediaPath))
+		logger.Info("Hosting stream without casting", "url", a.GetMediaURL())
 		a.mu.Lock()
 		a.playbackState.Status = "PLAYING"
 		a.mu.Unlock()
-		a.addToCastHistory(mediaPath, deviceIp, castOptions)
+		a.historyStore.Add(fileNameOrUrl, name, castOptions)
 		return &a.playbackState, nil
 	}
 
-	mediaURL := a.GetMediaURL(mediaPath)
-
+	mediaURL := a.GetMediaURL()
 	a.createApplication()
 
 	err = a.App.Start(host, port)
@@ -281,22 +289,16 @@ func (a *App) CastToDevice(deviceIp string, fileNameOrUrl string, castOptions *o
 	}
 
 	logger.Info("Cast successful",
-		"message", fmt.Sprintf("Casting %s to %s via %s", filepath.Base(mediaPath), deviceIp, mediaURL),
+		"message", fmt.Sprintf("Casting %s to %s via %s", name, deviceIp, mediaURL),
 		"device", deviceIp,
-		"media", mediaPath,
+		"media", fileNameOrUrl,
 		"subtitle", options.Subtitle.Path,
 	)
 
 	// Add to history
-	a.addToCastHistory(mediaPath, deviceIp, castOptions)
+	a.historyStore.Add(fileNameOrUrl, name, castOptions)
 
 	return &a.playbackState, nil
-}
-
-func (a *App) addToCastHistory(mediaPath string, deviceIp string, castOptions *options.CastOptions) {
-	if err := a.historyStore.Add(mediaPath, extractDeviceName(deviceIp), castOptions); err != nil {
-		logger.Warn("Failed to add to history", "error", err)
-	}
 }
 
 // GetMediaFiles returns media files from a directory
@@ -373,7 +375,7 @@ func (a *App) GetCacheStats() (*folders.CacheStats, error) {
 
 // DeleteTranscodedCache removes only transcoded video segments
 func (a *App) DeleteTranscodedCache() error {
-	if err := a.downloadManager.StopAllAndClear(); err != nil {
+	if err := a.RemoteManager.StopAllAndClear(); err != nil {
 		return err
 	}
 	return folders.DeleteTranscodedCache()
@@ -381,7 +383,7 @@ func (a *App) DeleteTranscodedCache() error {
 
 // DeleteAllVideoCache removes all video files but keeps metadata
 func (a *App) DeleteAllVideoCache() error {
-	if err := a.downloadManager.StopAllAndClear(); err != nil {
+	if err := a.RemoteManager.StopAllAndClear(); err != nil {
 		return err
 	}
 	return folders.DeleteAllVideoCache()
@@ -395,17 +397,17 @@ func (a *App) OpenMediaFolder(fileNameOrUrl string) error {
 	return cmd.Start()
 }
 
-func (a *App) StartDownload(url string, mediaType string, index int) (*download.DownloadStatus, error) {
-	return a.downloadManager.StartDownload(url, mediaType, index)
+func (a *App) StartDownload(url string, mediaType string, index int) (*remote.DownloadStatus, error) {
+	return a.RemoteManager.StartDownload(url, mediaType, index)
 }
 
-func (a *App) StopDownload(url string, mediaType string, index int) (*download.DownloadStatus, error) {
-	return a.downloadManager.Stop(url, mediaType, index)
+func (a *App) StopDownload(url string, mediaType string, index int) (*remote.DownloadStatus, error) {
+	return a.RemoteManager.StopDownload(url, mediaType, index)
 }
 
 // GetDownloadStatus returns the current download progress for a specific track
-func (a *App) GetDownloadStatus(filenameOrUrl string, mediaType string, track int) (*download.DownloadStatus, error) {
-	return a.downloadManager.GetStatus(filenameOrUrl, mediaType, track)
+func (a *App) GetDownloadStatus(filenameOrUrl string, mediaType string, track int) (*remote.DownloadStatus, error) {
+	return a.RemoteManager.GetDownloadStatus(filenameOrUrl, mediaType, track)
 }
 
 // Pause pauses current playback
@@ -490,7 +492,7 @@ func (a *App) LogError(message string, args ...any) {
 
 // ExportEmbeddedSubtitles exports all embedded subtitle tracks to WebVTT files
 func (a *App) ExportEmbeddedSubtitles(videoPath string) error {
-	return hls.ExportEmbeddedSubtitles(videoPath)
+	return ffmpeg.ExportEmbeddedSubtitles(videoPath)
 }
 
 // TranslateExportedSubtitles exports embedded subtitles and translates them in the background
@@ -573,8 +575,8 @@ func (a *App) ResetSettings() (*Settings, error) {
 }
 
 // GetFFmpegInfo returns ffmpeg and ffprobe version information
-func (a *App) GetFFmpegInfo(searchAgain bool) (*hls.FFmpegInfo, error) {
-	return hls.GetFFmpegInfo(searchAgain)
+func (a *App) GetFFmpegInfo(searchAgain bool) (*ffmpeg.FFmpegInfo, error) {
+	return ffmpeg.GetFFmpegInfo(searchAgain)
 }
 
 // ClearHistory clears all history

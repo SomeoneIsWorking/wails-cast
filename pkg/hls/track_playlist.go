@@ -2,6 +2,7 @@ package hls
 
 import (
 	"fmt"
+	"net/url"
 	"strconv"
 	"strings"
 )
@@ -12,7 +13,7 @@ type TrackPlaylist struct {
 	TargetDuration      int
 	MediaSequence       int
 	PlaylistType        string // VOD or EVENT
-	Segments            []Segment
+	Segments            []*Segment
 	Map                 *Map
 	EndList             bool `default:"true"`
 	IndependentSegments bool
@@ -22,7 +23,7 @@ type TrackPlaylist struct {
 type Segment struct {
 	Duration        float64
 	Title           string
-	URI             string
+	URI             *url.URL
 	ByteRange       *ByteRange
 	Discontinuity   bool
 	Key             *Key // Encryption key (if different from playlist-level)
@@ -33,7 +34,7 @@ type Segment struct {
 // parseTrackPlaylist parses a media playlist
 func parseTrackPlaylist(lines []string) (*TrackPlaylist, error) {
 	media := &TrackPlaylist{
-		Segments: make([]Segment, 0),
+		Segments: make([]*Segment, 0),
 	}
 
 	var currentKey *Key
@@ -91,8 +92,12 @@ func parseTrackPlaylist(lines []string) (*TrackPlaylist, error) {
 		} else if !strings.HasPrefix(line, "#") {
 			// This is a URI line
 			if nextSegment != nil {
-				nextSegment.URI = line
-				media.Segments = append(media.Segments, *nextSegment)
+				var err error
+				nextSegment.URI, err = url.Parse(line)
+				if err != nil {
+					return nil, fmt.Errorf("failed to parse segment URI: %v", err)
+				}
+				media.Segments = append(media.Segments, nextSegment)
 				nextSegment = nil
 			}
 		}
@@ -167,7 +172,7 @@ func (m *TrackPlaylist) Generate() string {
 			lines = append(lines, fmt.Sprintf("#EXT-X-BYTERANGE:%d@%d", segment.ByteRange.Length, segment.ByteRange.Offset))
 		}
 
-		lines = append(lines, segment.URI)
+		lines = append(lines, segment.URI.String())
 	}
 
 	if m.EndList {
