@@ -91,18 +91,23 @@ onUnmounted(() => {
         <!-- Video Track Selection -->
         <label>Video Track:</label>
         <div>
-          <TrackDownloader :path="trackInfo.path" type="video" :track="castStore.castOptions!.VideoTrack">
+          <TrackDownloader
+            :path="trackInfo.path"
+            type="video"
+            :track="castStore.castOptions!.VideoTrack"
+          >
             <select
               v-model="castStore.castOptions!.VideoTrack"
               class="flex-1 bg-gray-700 text-white rounded-md p-2"
             >
               <option
                 v-for="track in trackInfo.videoTracks"
-                :key="track.index"
-                :value="track.index"
+                :key="track.Index"
+                :value="track.Index"
               >
-                Track {{ track.index }} - {{ track.codec }}
-                {{ track.resolution || "" }}
+                Track
+                {{ track.Index }} - {{ track.Codecs || "Unknown" }} -
+                {{ track.Resolution || "" }}
               </option>
             </select>
           </TrackDownloader>
@@ -111,17 +116,21 @@ onUnmounted(() => {
         <!-- Audio Track Selection -->
         <template v-if="trackInfo.audioTracks.length > 0">
           <label>Audio Track:</label>
-          <TrackDownloader :path="trackInfo.path" type="audio" :track="castStore.castOptions!.AudioTrack">
+          <TrackDownloader
+            :path="trackInfo.path"
+            type="audio"
+            :track="castStore.castOptions!.AudioTrack"
+          >
             <select
               v-model="castStore.castOptions!.AudioTrack"
               class="flex-1 bg-gray-700 text-white rounded-md p-2"
             >
               <option
                 v-for="track in trackInfo.audioTracks"
-                :key="track.index"
-                :value="track.index"
+                :key="track.Index"
+                :value="track.Index"
               >
-                Track {{ track.index }} - {{ track.language || "Unknown" }}
+                Track {{ track.Index }} - {{ track.Language || "Unknown" }}
               </option>
             </select>
           </TrackDownloader>

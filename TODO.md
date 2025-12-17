@@ -5,7 +5,7 @@
 - [ ] Make extraction full-auto with custom manifest
 - [x] Remove FE try-catch code in favor of global error handling (try-finally can remain for loading states)
 - [x] Replace PlaybackState.(isPlaying|isPaused) with PlaybackState.State ("IDLE", "PLAYING", "PAUSED", "STOPPED")
-- [ ] Do a proper seperation on 
+- [x] Do a proper seperation on 
     - Remote Media State: 
         - Holds information about URL/TrackType/TrackIndex + Which segments downloaded
         - Listens to Remote Media Downloader

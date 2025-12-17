@@ -8,35 +8,35 @@ import (
 	"strings"
 	"time"
 
+	"wails-cast/pkg/ffmpeg"
 	"wails-cast/pkg/filehelper"
 	"wails-cast/pkg/folders"
 	"wails-cast/pkg/hls"
+	"wails-cast/pkg/mix"
 	"wails-cast/pkg/options"
 	"wails-cast/pkg/subtitles"
+	"wails-cast/pkg/urlhelper"
 )
 
 // LocalHandler represents a local file HLS streaming server
 type LocalHandler struct {
-	VideoPath   string
-	Options     options.StreamOptions
-	OutputDir   string
-	Duration    float64
-	SegmentSize int
+	VideoPath        string
+	Options          options.StreamOptions
+	Duration         float64
+	SegmentSize      int
+	StorageDirectory string
 }
 
 // NewLocalHandler creates a new local HLS handler
 func NewLocalHandler(videoPath string, options options.StreamOptions) *LocalHandler {
-	duration, err := hls.GetVideoDuration(videoPath)
+	duration, err := ffmpeg.GetVideoDuration(videoPath)
 	if err != nil {
 		duration = 0
 	}
 
-	outputDir := folders.Video(videoPath)
-
 	return &LocalHandler{
 		VideoPath:   videoPath,
 		Options:     options,
-		OutputDir:   outputDir,
 		Duration:    duration,
 		SegmentSize: 8,
 	}
@@ -45,23 +45,21 @@ func NewLocalHandler(videoPath string, options options.StreamOptions) *LocalHand
 // ServeManifestPlaylist generates the manifest HLS playlist
 func (s *LocalHandler) ServeManifestPlaylist(ctx context.Context) (string, error) {
 	manifestPlaylist := &hls.ManifestPlaylist{
-		Version:        3,
-		AudioGroups:    make(map[string][]hls.AudioMedia),
-		SubtitleGroups: make(map[string][]hls.SubtitleMedia),
-		VideoVariants: []hls.VideoVariant{
+		Version: 3,
+		VideoTracks: []hls.VideoTrack{
 			{
 				Index:  0,
 				Codecs: "avc1.4d401f,mp4a.40.2",
-				URI:    "video_0.m3u8",
+				URI:    urlhelper.Parse("video.m3u8"),
 			},
 		},
 	}
 
 	// Add subtitle track if available and not burned in
 	if s.Options.Subtitle.Path != "none" && !s.Options.Subtitle.BurnIn {
-		manifestPlaylist.SubtitleGroups["subs"] = []hls.SubtitleMedia{
+		manifestPlaylist.SubtitleTracks = []hls.SubtitleTrack{
 			{
-				URI:        "subtitles.vtt",
+				URI:        urlhelper.Parse("subtitles.vtt"),
 				GroupID:    "subs",
 				Name:       "Subtitles",
 				Language:   "en",
@@ -71,19 +69,19 @@ func (s *LocalHandler) ServeManifestPlaylist(ctx context.Context) (string, error
 				Index:      0,
 			},
 		}
-		manifestPlaylist.VideoVariants[0].Subtitles = "subs"
+		manifestPlaylist.VideoTracks[0].Subtitles = "subs"
 	}
 
 	return manifestPlaylist.Generate(), nil
 }
 
 // ServeTrackPlaylist generates video or audio track playlists
-func (s *LocalHandler) ServeTrackPlaylist(ctx context.Context, trackType string, trackIndex int) (string, error) {
+func (s *LocalHandler) ServeTrackPlaylist(ctx context.Context, trackType string) (string, error) {
 	trackPlaylist := &hls.TrackPlaylist{
 		Version:        3,
 		TargetDuration: s.SegmentSize,
 		MediaSequence:  0,
-		Segments:       make([]hls.Segment, 0),
+		Segments:       make([]*hls.Segment, 0),
 		EndList:        true,
 	}
 
@@ -105,10 +103,10 @@ func (s *LocalHandler) ServeTrackPlaylist(ctx context.Context, trackType string,
 		// Calculate program date time for this segment
 		segmentTime := baseTime.Add(time.Duration(cumulativeTime * float64(time.Second)))
 
-		segment := hls.Segment{
+		segment := &hls.Segment{
 			Duration:        segmentDuration,
 			Title:           "",
-			URI:             fmt.Sprintf("/%s_0/segment_%d.ts", trackType, i),
+			URI:             urlhelper.UPrintf("/%s/segment_%d.ts", trackType, i),
 			ProgramDateTime: segmentTime.Format(time.RFC3339Nano),
 		}
 		trackPlaylist.Segments = append(trackPlaylist.Segments, segment)
@@ -118,9 +116,9 @@ func (s *LocalHandler) ServeTrackPlaylist(ctx context.Context, trackType string,
 }
 
 // ServeSegment transcodes and returns the segment file path
-func (s *LocalHandler) ServeSegment(ctx context.Context, trackType string, trackIndex int, segmentIndex int) ([]byte, error) {
+func (s *LocalHandler) ServeSegment(ctx context.Context, trackType string, segmentIndex int) (*mix.FileOrBuffer, error) {
 	segmentName := fmt.Sprintf("segment_%d.ts", segmentIndex)
-	segmentPath := filepath.Join(s.OutputDir, segmentName)
+	segmentPath := s.cacheFile(segmentName)
 	segmentDuration := float64(s.SegmentSize)
 	startTime := float64(segmentIndex * s.SegmentSize)
 	if startTime+segmentDuration > s.Duration {
@@ -128,36 +126,35 @@ func (s *LocalHandler) ServeSegment(ctx context.Context, trackType string, track
 	}
 
 	if s.Options.NoTranscodeCache {
-		return s.transcodeSegment(ctx, "pipe:1", startTime)
+		return s.transcodeSegment(ctx, mix.BufferTarget(), startTime)
 	}
 
-	manifest, err := hls.LoadSegmentManifest(segmentPath + ".json")
+	manifest, err := ffmpeg.LoadSegmentManifest(segmentPath + ".json")
 
 	needsRegeneration := err != nil ||
-		!hls.ManifestMatches(manifest, s.Options, s.SegmentSize) ||
-		!filehelper.Exists(filepath.Join(s.OutputDir, segmentName))
+		!ffmpeg.ManifestMatches(manifest, s.Options, s.SegmentSize) ||
+		!filehelper.Exists(segmentPath)
 
 	if needsRegeneration {
-		buffer, err := s.transcodeSegment(ctx, segmentPath, startTime)
+		buffer, err := s.transcodeSegment(ctx, mix.FileTarget(segmentPath), startTime)
 		if err != nil {
 			return nil, fmt.Errorf("transcode failed: %w", err)
 		}
 		return buffer, nil
 	}
 
-	return os.ReadFile(segmentPath)
+	return mix.File(segmentPath), nil
 }
 
-func (s *LocalHandler) transcodeSegment(ctx context.Context, segmentPath string, startTime float64) ([]byte, error) {
-	ensureSymlink(s.VideoPath, s.OutputDir)
-	var subtitle *hls.SubtitleTranscodeOptions = nil
+func (s *LocalHandler) transcodeSegment(ctx context.Context, target *mix.TargetFileOrBuffer, startTime float64) (*mix.FileOrBuffer, error) {
+	ensureSymlink(s.VideoPath, folders.Video(s.VideoPath))
+	var subtitle *ffmpeg.SubtitleTranscodeOptions = nil
 
 	if s.Options.Subtitle.BurnIn {
-		subtitle = &hls.SubtitleTranscodeOptions{}
+		subtitle = &ffmpeg.SubtitleTranscodeOptions{}
 	}
 
-	opts := &hls.TranscodeOptions{
-		InputPath:      filepath.Join(s.OutputDir, "input_video"),
+	opts := &ffmpeg.TranscodeOptions{
 		StartTime:      startTime,
 		Duration:       s.SegmentSize,
 		Subtitle:       subtitle,
@@ -165,14 +162,13 @@ func (s *LocalHandler) transcodeSegment(ctx context.Context, segmentPath string,
 		Bitrate:        s.Options.Bitrate,
 	}
 
-	output, err := hls.TranscodeSegment(ctx, opts, segmentPath)
+	input := mix.File(filepath.Join(folders.Video(s.VideoPath), "input_video"))
+	output, err := ffmpeg.TranscodeSegment(ctx, input, target, opts)
+
 	if err != nil {
 		return nil, err
 	}
 
-	if segmentPath != "pipe:1" {
-		err = opts.Save(segmentPath + ".json")
-	}
 	return output, err
 }
 
@@ -183,20 +179,24 @@ func ensureSymlink(filePath string, folder string) {
 	}
 }
 
+func (s *LocalHandler) cacheFile(segmentName string) string {
+	return filepath.Join(folders.Video(s.VideoPath), segmentName)
+}
+
 // ServeSubtitles returns the subtitle file in WebVTT format
-func (s *LocalHandler) ServeSubtitles(ctx context.Context) (string, error) {
-	if s.Options.Subtitle.Path == "none" || s.Options.Subtitle.BurnIn {
+func (this *LocalHandler) ServeSubtitles(ctx context.Context) (string, error) {
+	if this.Options.Subtitle.Path == "none" || this.Options.Subtitle.BurnIn {
 		return "", fmt.Errorf("no external subtitles available")
 	}
 
-	subtitlePath := s.Options.Subtitle.Path
+	subtitlePath := this.Options.Subtitle.Path
 
 	// Handle external subtitle format
 	if path, found := strings.CutPrefix(subtitlePath, "external:"); found {
 		subtitlePath = path
-	} else if embeddedIndex, err := hls.GetEmbeddedIndex(subtitlePath); err == nil {
-		cachedPath := filepath.Join(s.OutputDir, fmt.Sprintf("subtitle_%d.vtt", embeddedIndex))
-		hls.ExtractSubtitles(s.VideoPath, embeddedIndex, cachedPath)
+	} else if embeddedIndex, err := ffmpeg.GetEmbeddedIndex(subtitlePath); err == nil {
+		cachedPath := filepath.Join(this.StorageDirectory, fmt.Sprintf("subtitle_%d.vtt", embeddedIndex))
+		ffmpeg.ExtractSubtitle(this.VideoPath, embeddedIndex, cachedPath)
 		subtitlePath = cachedPath
 	}
 
@@ -216,16 +216,9 @@ func (s *LocalHandler) ServeSubtitles(ctx context.Context) (string, error) {
 	}
 
 	// Apply IgnoreClosedCaptions option if requested
-	if s.Options.Subtitle.IgnoreClosedCaptions {
+	if this.Options.Subtitle.IgnoreClosedCaptions {
 		subtitles = subtitles.RemoveClosedCaptions()
 	}
 
 	return subtitles.ToWebVTTString(), nil
-}
-
-// Cleanup removes session files
-func (s *LocalHandler) Cleanup() {
-	if s.OutputDir != "" {
-		os.RemoveAll(s.OutputDir)
-	}
 }

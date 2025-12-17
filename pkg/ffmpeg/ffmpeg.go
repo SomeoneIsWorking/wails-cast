@@ -1,4 +1,4 @@
-package hls
+package ffmpeg
 
 import (
 	"bytes"
@@ -10,7 +10,10 @@ import (
 	"path/filepath"
 	"strings"
 	"wails-cast/pkg/filehelper"
-	"wails-cast/pkg/mediainfo"
+	"wails-cast/pkg/hls"
+	"wails-cast/pkg/logger"
+	"wails-cast/pkg/mix"
+
 	"wails-cast/pkg/subtitles"
 
 	"github.com/pkg/errors"
@@ -18,7 +21,6 @@ import (
 
 // TranscodeOptions contains options for transcoding
 type TranscodeOptions struct {
-	InputPath      string
 	StartTime      float64
 	Duration       int
 	Bitrate        string
@@ -33,9 +35,9 @@ type SubtitleTranscodeOptions struct {
 }
 
 // TranscodeSegment transcodes a segment with optional 100ms wait to avoid wasted work during rapid seeking
-func TranscodeSegment(ctx context.Context, opts *TranscodeOptions, outputPath string) ([]byte, error) {
+func TranscodeSegment(ctx context.Context, input *mix.FileOrBuffer, target *mix.TargetFileOrBuffer, opts *TranscodeOptions) (*mix.FileOrBuffer, error) {
 	// Build ffmpeg arguments
-	args, err := buildTranscodeArgs(opts, outputPath)
+	args, err := buildTranscodeArgs(input.ToPipe(), target.ToPipe(), opts)
 	if err != nil {
 		return nil, err
 	}
@@ -43,17 +45,21 @@ func TranscodeSegment(ctx context.Context, opts *TranscodeOptions, outputPath st
 	// log the call
 	fmt.Printf(">>>> ffmpeg %s\n\n", strings.Join(args, " "))
 	initPaths(false)
-	return ffmpeg(ctx, args, outputPath)
+	return ffmpeg(ctx, input, target, args)
 }
 
-func ffmpeg(ctx context.Context, args []string, outputPath string) ([]byte, error) {
-	cmd := exec.CommandContext(ctx, ffmpegPath, append(args, outputPath)...)
+func ffmpeg(ctx context.Context, input *mix.FileOrBuffer, output *mix.TargetFileOrBuffer, args []string) (*mix.FileOrBuffer, error) {
+	cmd := exec.CommandContext(ctx, ffmpegPath, args...)
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
-	output, err := cmd.Output()
+	if input.IsBuffer {
+		cmd.Stdin = bytes.NewReader(input.Buffer)
+	}
+
+	outputData, err := cmd.Output()
 	if err != nil {
-		if outputPath != "pipe:1" {
-			os.Remove(outputPath)
+		if !output.IsBuffer {
+			os.Remove(output.FilePath)
 		}
 		if ctx.Err() != nil {
 			return nil, ctx.Err()
@@ -62,11 +68,15 @@ func ffmpeg(ctx context.Context, args []string, outputPath string) ([]byte, erro
 		return nil, errors.Wrapf(err, "%s", stderr.String())
 	}
 
-	return output, nil
+	if output.IsBuffer {
+		return mix.Buffer(outputData), nil
+	} else {
+		return output.ToOutput(), nil
+	}
 }
 
 // buildTranscodeArgs builds ffmpeg arguments based on options
-func buildTranscodeArgs(opts *TranscodeOptions, outputPath string) ([]string, error) {
+func buildTranscodeArgs(inputPath string, outputPath string, opts *TranscodeOptions) ([]string, error) {
 	args := []string{"-y"}
 
 	if opts.StartTime > 0 {
@@ -77,7 +87,7 @@ func buildTranscodeArgs(opts *TranscodeOptions, outputPath string) ([]string, er
 	}
 
 	// Input file
-	args = append(args, "-i", opts.InputPath)
+	args = append(args, "-i", inputPath)
 
 	args = append(args,
 		"-c:v", "h264_videotoolbox",
@@ -99,7 +109,7 @@ func buildTranscodeArgs(opts *TranscodeOptions, outputPath string) ([]string, er
 		filterStr = append(filterStr, fmt.Sprintf("scale='min(%d,iw)':'-2':'force_original_aspect_ratio=decrease'", opts.MaxOutputWidth))
 	}
 
-	subtitleFilter, err := buildSubtitleFilter(filepath.Dir(outputPath), opts.Subtitle, opts.InputPath)
+	subtitleFilter, err := buildSubtitleFilter(filepath.Dir(outputPath), opts.Subtitle, inputPath)
 	if err != nil {
 		return nil, err
 	}
@@ -112,8 +122,9 @@ func buildTranscodeArgs(opts *TranscodeOptions, outputPath string) ([]string, er
 	if len(filterStr) > 0 {
 		args = append(args, "-vf", strings.Join(filterStr, ","))
 	}
+
 	// Output file
-	return args, nil
+	return append(args, outputPath), nil
 }
 
 // buildSubtitleFilter builds the subtitle filter string for ffmpeg
@@ -131,7 +142,7 @@ func buildSubtitleFilter(outputDir string, subtitle *SubtitleTranscodeOptions, v
 	embeddedIndex, err := GetEmbeddedIndex(subtitle.Path)
 	if err == nil {
 		// Extract embedded subtitle to temp file
-		_, err := ExtractSubtitles(videoPath, embeddedIndex, extractPath)
+		err := ExtractSubtitle(videoPath, embeddedIndex, extractPath)
 		if err != nil {
 			return "", err
 		}
@@ -197,22 +208,65 @@ func GetVideoDuration(videoPath string) (float64, error) {
 	return duration, nil
 }
 
-func ExtractSubtitles(videoPath string, subIndex int, outputFile string) (string, error) {
+func ExportEmbeddedSubtitles(videoPath string) error {
+	if strings.HasPrefix(videoPath, "http://") || strings.HasPrefix(videoPath, "https://") {
+		return fmt.Errorf("cannot export subtitles from remote URLs")
+	}
+
+	trackInfo, err := GetMediaTrackInfo(videoPath)
+	if err != nil {
+		return fmt.Errorf("failed to get track info: %w", err)
+	}
+
+	if len(trackInfo.SubtitleTracks) == 0 {
+		return fmt.Errorf("no embedded subtitles found")
+	}
+
+	baseDir := filepath.Dir(videoPath)
+	baseName := strings.TrimSuffix(filepath.Base(videoPath), filepath.Ext(videoPath))
+	subtitleDir := filepath.Join(baseDir, baseName)
+
+	// Create subtitle directory
+	if err := os.MkdirAll(subtitleDir, 0755); err != nil {
+		return fmt.Errorf("failed to create subtitle directory: %w", err)
+	}
+
+	for _, sub := range trackInfo.SubtitleTracks {
+		name := sub.Name
+		if name == "" {
+			name = sub.Language
+		}
+		if name == "" {
+			name = fmt.Sprintf("track%d", sub.Index)
+		}
+
+		outputFile := filepath.Join(subtitleDir, fmt.Sprintf("%s.vtt", name))
+
+		// Use ffmpeg to extract subtitle
+		err := ExtractSubtitle(videoPath, sub.Index, outputFile)
+		if err != nil {
+			logger.Logger.Warn("Failed to export subtitle", "index", sub.Index, "language", name, "error", err)
+			continue
+		}
+	}
+
+	return nil
+}
+
+func ExtractSubtitle(videoPath string, subIndex int, outputFile string) error {
 	args := []string{
 		"-i", videoPath,
 		"-map", fmt.Sprintf("0:s:%d", subIndex),
 		"-f", "webvtt",
 		"-y",
+		outputFile,
 	}
-	bytes, err := ffmpeg(context.Background(), args, outputFile)
-	if err != nil {
-		return "", err
-	}
-	return string(bytes), nil
+	_, err := ffmpeg(context.Background(), mix.File(videoPath), mix.FileTarget(outputFile), args)
+	return err
 }
 
 // GetMediaTrackInfo gets all track information for a media file using ffprobe
-func GetMediaTrackInfo(mediaPath string) (*mediainfo.MediaTrackInfo, error) {
+func GetMediaTrackInfo(mediaPath string) (*hls.ManifestPlaylist, error) {
 	initPaths(false)
 	cmd := exec.Command(ffprobePath,
 		"-v", "error",
@@ -244,10 +298,10 @@ func GetMediaTrackInfo(mediaPath string) (*mediainfo.MediaTrackInfo, error) {
 		return nil, err
 	}
 
-	info := &mediainfo.MediaTrackInfo{
-		VideoTracks:    make([]mediainfo.VideoTrack, 0),
-		AudioTracks:    make([]mediainfo.AudioTrack, 0),
-		SubtitleTracks: make([]mediainfo.SubtitleTrack, 0),
+	info := &hls.ManifestPlaylist{
+		VideoTracks:    make([]hls.VideoTrack, 0),
+		AudioTracks:    make([]hls.AudioTrack, 0),
+		SubtitleTracks: make([]hls.SubtitleTrack, 0),
 	}
 
 	videoIdx := 0
@@ -261,23 +315,23 @@ func GetMediaTrackInfo(mediaPath string) (*mediainfo.MediaTrackInfo, error) {
 			if stream.Width > 0 && stream.Height > 0 {
 				resolution = fmt.Sprintf("%dx%d", stream.Width, stream.Height)
 			}
-			info.VideoTracks = append(info.VideoTracks, mediainfo.VideoTrack{
+			info.VideoTracks = append(info.VideoTracks, hls.VideoTrack{
 				Index:      videoIdx,
-				Codec:      stream.CodecName,
+				Codecs:     stream.CodecName,
 				Resolution: resolution,
 			})
 			videoIdx++
 		case "audio":
-			info.AudioTracks = append(info.AudioTracks, mediainfo.AudioTrack{
+			info.AudioTracks = append(info.AudioTracks, hls.AudioTrack{
 				Index:    audioIdx,
 				Language: stream.Tags.Language,
 			})
 			audioIdx++
 		case "subtitle":
-			info.SubtitleTracks = append(info.SubtitleTracks, mediainfo.SubtitleTrack{
+			info.SubtitleTracks = append(info.SubtitleTracks, hls.SubtitleTrack{
 				Index:    subtitleIdx,
 				Language: stream.Tags.Language,
-				Title:    stream.Tags.Title,
+				Name:     stream.Tags.Title,
 			})
 			subtitleIdx++
 		}

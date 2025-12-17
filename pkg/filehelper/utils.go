@@ -1,58 +1,9 @@
-package hls
+package filehelper
 
 import (
-	"fmt"
-	"os"
-	"path/filepath"
 	"regexp"
 	"strings"
-	"wails-cast/pkg/logger"
 )
-
-func ExportEmbeddedSubtitles(videoPath string) error {
-	if strings.HasPrefix(videoPath, "http://") || strings.HasPrefix(videoPath, "https://") {
-		return fmt.Errorf("cannot export subtitles from remote URLs")
-	}
-
-	trackInfo, err := GetMediaTrackInfo(videoPath)
-	if err != nil {
-		return fmt.Errorf("failed to get track info: %w", err)
-	}
-
-	if len(trackInfo.SubtitleTracks) == 0 {
-		return fmt.Errorf("no embedded subtitles found")
-	}
-
-	baseDir := filepath.Dir(videoPath)
-	baseName := strings.TrimSuffix(filepath.Base(videoPath), filepath.Ext(videoPath))
-	subtitleDir := filepath.Join(baseDir, baseName)
-
-	// Create subtitle directory
-	if err := os.MkdirAll(subtitleDir, 0755); err != nil {
-		return fmt.Errorf("failed to create subtitle directory: %w", err)
-	}
-
-	for _, sub := range trackInfo.SubtitleTracks {
-		name := sub.Title
-		if name == "" {
-			name = sub.Language
-		}
-		if name == "" {
-			name = fmt.Sprintf("track%d", sub.Index)
-		}
-
-		outputFile := filepath.Join(subtitleDir, fmt.Sprintf("%s.vtt", name))
-
-		// Use ffmpeg to extract subtitle
-		_, err := ExtractSubtitles(videoPath, sub.Index, outputFile)
-		if err != nil {
-			logger.Logger.Warn("Failed to export subtitle", "index", sub.Index, "language", name, "error", err)
-			continue
-		}
-	}
-
-	return nil
-}
 
 // Define characters that are illegal or problematic on most major operating systems (Windows, Unix).
 // This includes control characters and filesystem-specific separators/wildcards.

@@ -18,11 +18,10 @@ const (
 )
 
 type HistoryItem struct {
-	Path        string               `json:"path"`
-	Name        string               `json:"name"`
-	Timestamp   string               `json:"timestamp"`
-	DeviceName  string               `json:"deviceName"`
-	CastOptions *options.CastOptions `json:"castOptions"`
+	FileNameOrUrl string               `json:"path"`
+	Name          string               `json:"name"`
+	Timestamp     string               `json:"timestamp"`
+	CastOptions   *options.CastOptions `json:"castOptions"`
 }
 
 type HistoryStore struct {
@@ -70,23 +69,21 @@ func (h *HistoryStore) save() error {
 	return os.WriteFile(h.filePath, data, 0644)
 }
 
-func (h *HistoryStore) Add(path, deviceName string, castOptions *options.CastOptions) error {
+func (h *HistoryStore) Add(fileNameOrUrl string, name string, castOptions *options.CastOptions) error {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 
-	name := filepath.Base(path)
 	item := HistoryItem{
-		Path:        path,
-		Name:        name,
-		Timestamp:   time.Now().Format(time.RFC3339),
-		DeviceName:  deviceName,
-		CastOptions: castOptions,
+		FileNameOrUrl: fileNameOrUrl,
+		Name:          name,
+		Timestamp:     time.Now().Format(time.RFC3339),
+		CastOptions:   castOptions,
 	}
 
 	// Remove duplicate if exists
 	filtered := []HistoryItem{}
 	for _, existing := range h.items {
-		if existing.Path != path {
+		if existing.FileNameOrUrl != fileNameOrUrl {
 			filtered = append(filtered, existing)
 		}
 	}
@@ -122,7 +119,7 @@ func (h *HistoryStore) Remove(path string) error {
 
 	filtered := []HistoryItem{}
 	for _, item := range h.items {
-		if item.Path != path {
+		if item.FileNameOrUrl != path {
 			filtered = append(filtered, item)
 		}
 	}

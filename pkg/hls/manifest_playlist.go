@@ -1,174 +1,27 @@
 package hls
 
 import (
-	"encoding/json"
 	"fmt"
 	"regexp"
 	"strconv"
 	"strings"
+	"wails-cast/pkg/urlhelper"
 )
-
-// Playlist represents a parsed HLS playlist (manifest or track)
-type Playlist struct {
-	Type     PlaylistType
-	Manifest *ManifestPlaylist
-	Track    *TrackPlaylist
-	RawLines []string // Original lines for unparsed tags
-}
-
-// PlaylistType represents the type of HLS playlist
-type PlaylistType int
-
-const (
-	PlaylistTypeManifest PlaylistType = iota
-	PlaylistTypeTrack
-)
-
-// ManifestPlaylist represents an HLS manifest playlist
-type ManifestPlaylist struct {
-	Version             int
-	VideoVariants       []VideoVariant
-	AudioGroups         map[string][]AudioMedia    // Group ID -> Audio tracks
-	SubtitleGroups      map[string][]SubtitleMedia // Group ID -> Subtitle tracks
-	IndependentSegments bool
-}
-
-func (m *ManifestPlaylist) Clone() *ManifestPlaylist {
-	_json, _ := json.Marshal(m)
-	clone := &ManifestPlaylist{}
-	json.Unmarshal(_json, clone)
-	return clone
-}
-
-// VideoVariant represents a video stream variant (#EXT-X-STREAM-INF)
-type VideoVariant struct {
-	URI        string
-	Bandwidth  int
-	Codecs     string
-	Resolution string
-	FrameRate  float64
-	Audio      string            // Audio group ID
-	Subtitles  string            // Subtitle group ID
-	Attrs      map[string]string // Other attributes
-	Index      int               // Index in the manifest playlist
-}
-
-// AudioMedia represents an audio track (#EXT-X-MEDIA TYPE=AUDIO)
-type AudioMedia struct {
-	URI        string
-	GroupID    string
-	Name       string
-	Language   string
-	Default    bool
-	Autoselect bool
-	Channels   string
-	Attrs      map[string]string
-	Index      int
-}
-
-// SubtitleMedia represents a subtitle track (#EXT-X-MEDIA TYPE=SUBTITLES)
-type SubtitleMedia struct {
-	URI        string
-	GroupID    string
-	Name       string
-	Language   string
-	Default    bool
-	Autoselect bool
-	Forced     bool
-	Attrs      map[string]string
-	Index      int
-}
-
-// Key represents encryption information (#EXT-X-KEY)
-type Key struct {
-	Method            string
-	URI               string
-	IV                string
-	KeyFormat         string
-	KeyFormatVersions string
-}
-
-// Map represents init segment information (#EXT-X-MAP)
-type Map struct {
-	URI       string
-	ByteRange *ByteRange
-}
-
-// ByteRange represents a byte range
-type ByteRange struct {
-	Length int64
-	Offset int64
-}
-
-// ParsePlaylistType determines if a playlist is manifest or track
-func parsePlaylistType(content string) PlaylistType {
-	if strings.Contains(content, "#EXT-X-STREAM-INF") || strings.Contains(content, "#EXT-X-MEDIA:") {
-		return PlaylistTypeManifest
-	}
-	return PlaylistTypeTrack
-}
-
-// ParsePlaylist parses an HLS playlist string into a structured Playlist
-func parsePlaylist(content string) (*Playlist, error) {
-	lines := strings.Split(content, "\n")
-
-	// Clean lines
-	var cleanLines []string
-	for _, line := range lines {
-		trimmed := strings.TrimSpace(line)
-		if trimmed != "" {
-			cleanLines = append(cleanLines, trimmed)
-		}
-	}
-
-	if len(cleanLines) == 0 || cleanLines[0] != "#EXTM3U" {
-		return nil, fmt.Errorf("invalid playlist: missing #EXTM3U header")
-	}
-
-	playlist := &Playlist{
-		RawLines: cleanLines,
-	}
-
-	// Determine playlist type
-	playlist.Type = parsePlaylistType(content)
-
-	if playlist.Type == PlaylistTypeManifest {
-		manifest, err := parseManifestPlaylist(cleanLines)
-		if err != nil {
-			return nil, err
-		}
-		playlist.Manifest = manifest
-	} else {
-		track, err := parseTrackPlaylist(cleanLines)
-		if err != nil {
-			return nil, err
-		}
-		playlist.Track = track
-	}
-
-	return playlist, nil
-}
 
 // ParseManifestPlaylist parses a manifest playlist
 func ParseManifestPlaylist(content string) (*ManifestPlaylist, error) {
-	playlist, err := parsePlaylist(content)
+	playlist, err := parsePlaylist(content, PlaylistTypeManifest)
 	if err != nil {
 		return nil, err
-	}
-	if playlist.Type != PlaylistTypeManifest {
-		return nil, fmt.Errorf("not a main playlist")
 	}
 	return playlist.Manifest, nil
 }
 
 // ParseTrackPlaylist parses a track (media) playlist
 func ParseTrackPlaylist(content string) (*TrackPlaylist, error) {
-	playlist, err := parsePlaylist(content)
+	playlist, err := parsePlaylist(content, PlaylistTypeTrack)
 	if err != nil {
 		return nil, err
-	}
-	if playlist.Type != PlaylistTypeTrack {
-		return nil, fmt.Errorf("not a track playlist")
 	}
 	return playlist.Track, nil
 }
@@ -176,8 +29,9 @@ func ParseTrackPlaylist(content string) (*TrackPlaylist, error) {
 // parseManifestPlaylist parses a manifest playlist
 func parseManifestPlaylist(lines []string) (*ManifestPlaylist, error) {
 	manifest := &ManifestPlaylist{
-		AudioGroups:    make(map[string][]AudioMedia),
-		SubtitleGroups: make(map[string][]SubtitleMedia),
+		VideoTracks:    []VideoTrack{},
+		AudioTracks:    []AudioTrack{},
+		SubtitleTracks: []SubtitleTrack{},
 	}
 
 	for i := 0; i < len(lines); i++ {
@@ -193,8 +47,8 @@ func parseManifestPlaylist(lines []string) (*ManifestPlaylist, error) {
 			switch mediaType {
 			case "AUDIO":
 				groupId := extractAttribute(line, "GROUP-ID")
-				audio := AudioMedia{
-					URI:        extractAttribute(line, "URI"),
+				audio := AudioTrack{
+					URI:        urlhelper.Parse(extractAttribute(line, "URI")),
 					GroupID:    groupId,
 					Name:       extractAttribute(line, "NAME"),
 					Language:   extractAttribute(line, "LANGUAGE"),
@@ -202,13 +56,13 @@ func parseManifestPlaylist(lines []string) (*ManifestPlaylist, error) {
 					Autoselect: extractAttribute(line, "AUTOSELECT") == "YES",
 					Channels:   extractAttribute(line, "CHANNELS"),
 					Attrs:      parseAttributes(line),
-					Index:      len(manifest.AudioGroups[groupId]),
+					Index:      len(manifest.AudioTracks),
 				}
-				manifest.AudioGroups[audio.GroupID] = append(manifest.AudioGroups[audio.GroupID], audio)
+				manifest.AudioTracks = append(manifest.AudioTracks, audio)
 			case "SUBTITLES":
 				groupId := extractAttribute(line, "GROUP-ID")
-				subtitle := SubtitleMedia{
-					URI:        extractAttribute(line, "URI"),
+				subtitle := SubtitleTrack{
+					URI:        urlhelper.Parse(extractAttribute(line, "URI")),
 					GroupID:    groupId,
 					Name:       extractAttribute(line, "NAME"),
 					Language:   extractAttribute(line, "LANGUAGE"),
@@ -216,19 +70,19 @@ func parseManifestPlaylist(lines []string) (*ManifestPlaylist, error) {
 					Autoselect: extractAttribute(line, "AUTOSELECT") == "YES",
 					Forced:     extractAttribute(line, "FORCED") == "YES",
 					Attrs:      parseAttributes(line),
-					Index:      len(manifest.SubtitleGroups[groupId]),
+					Index:      len(manifest.SubtitleTracks),
 				}
-				manifest.SubtitleGroups[subtitle.GroupID] = append(manifest.SubtitleGroups[subtitle.GroupID], subtitle)
+				manifest.SubtitleTracks = append(manifest.SubtitleTracks, subtitle)
 			}
 		} else if strings.HasPrefix(line, "#EXT-X-STREAM-INF:") {
-			variant := VideoVariant{
+			variant := VideoTrack{
 				Bandwidth:  extractIntAttribute(line, "BANDWIDTH"),
 				Codecs:     extractAttribute(line, "CODECS"),
 				Resolution: extractAttribute(line, "RESOLUTION"),
 				Audio:      extractAttribute(line, "AUDIO"),
 				Subtitles:  extractAttribute(line, "SUBTITLES"),
 				Attrs:      parseAttributes(line),
-				Index:      len(manifest.VideoVariants),
+				Index:      len(manifest.VideoTracks),
 			}
 
 			// Frame rate
@@ -239,10 +93,10 @@ func parseManifestPlaylist(lines []string) (*ManifestPlaylist, error) {
 			// Next line is the URI
 			if i+1 < len(lines) && !strings.HasPrefix(lines[i+1], "#") {
 				i++
-				variant.URI = lines[i]
+				variant.URI = urlhelper.Parse(lines[i])
 			}
 
-			manifest.VideoVariants = append(manifest.VideoVariants, variant)
+			manifest.VideoTracks = append(manifest.VideoTracks, variant)
 		}
 	}
 
@@ -250,7 +104,7 @@ func parseManifestPlaylist(lines []string) (*ManifestPlaylist, error) {
 }
 
 // Generate converts a Playlist struct back to HLS format string
-func (p *Playlist) Generate() string {
+func (p *playlist) Generate() string {
 	if p.Type == PlaylistTypeManifest && p.Manifest != nil {
 		return p.Manifest.Generate()
 	} else if p.Type == PlaylistTypeTrack && p.Track != nil {
@@ -274,65 +128,61 @@ func (m *ManifestPlaylist) Generate() string {
 	}
 
 	// Write audio media
-	for _, audioTracks := range m.AudioGroups {
-		for _, audio := range audioTracks {
-			attrs := []string{
-				`TYPE=AUDIO`,
-				fmt.Sprintf(`GROUP-ID="%s"`, audio.GroupID),
-				fmt.Sprintf(`NAME="%s"`, audio.Name),
-			}
-
-			if audio.Language != "" {
-				attrs = append(attrs, fmt.Sprintf(`LANGUAGE="%s"`, audio.Language))
-			}
-			if audio.Default {
-				attrs = append(attrs, `DEFAULT=YES`)
-			}
-			if audio.Autoselect {
-				attrs = append(attrs, `AUTOSELECT=YES`)
-			}
-			if audio.URI != "" {
-				attrs = append(attrs, fmt.Sprintf(`URI="%s"`, audio.URI))
-			}
-			if audio.Channels != "" {
-				attrs = append(attrs, fmt.Sprintf(`CHANNELS="%s"`, audio.Channels))
-			}
-
-			lines = append(lines, "#EXT-X-MEDIA:"+strings.Join(attrs, ","))
+	for _, audio := range m.AudioTracks {
+		attrs := []string{
+			`TYPE=AUDIO`,
+			fmt.Sprintf(`GROUP-ID="%s"`, audio.GroupID),
+			fmt.Sprintf(`NAME="%s"`, audio.Name),
 		}
+
+		if audio.Language != "" {
+			attrs = append(attrs, fmt.Sprintf(`LANGUAGE="%s"`, audio.Language))
+		}
+		if audio.Default {
+			attrs = append(attrs, `DEFAULT=YES`)
+		}
+		if audio.Autoselect {
+			attrs = append(attrs, `AUTOSELECT=YES`)
+		}
+		if audio.URI != nil {
+			attrs = append(attrs, fmt.Sprintf(`URI="%s"`, audio.URI))
+		}
+		if audio.Channels != "" {
+			attrs = append(attrs, fmt.Sprintf(`CHANNELS="%s"`, audio.Channels))
+		}
+
+		lines = append(lines, "#EXT-X-MEDIA:"+strings.Join(attrs, ","))
 	}
 
 	// Write subtitle media
-	for _, subtitleTracks := range m.SubtitleGroups {
-		for _, subtitle := range subtitleTracks {
-			attrs := []string{
-				`TYPE=SUBTITLES`,
-				fmt.Sprintf(`GROUP-ID="%s"`, subtitle.GroupID),
-				fmt.Sprintf(`NAME="%s"`, subtitle.Name),
-			}
-
-			if subtitle.Language != "" {
-				attrs = append(attrs, fmt.Sprintf(`LANGUAGE="%s"`, subtitle.Language))
-			}
-			if subtitle.Default {
-				attrs = append(attrs, `DEFAULT=YES`)
-			}
-			if subtitle.Autoselect {
-				attrs = append(attrs, `AUTOSELECT=YES`)
-			}
-			if subtitle.Forced {
-				attrs = append(attrs, `FORCED=YES`)
-			}
-			if subtitle.URI != "" {
-				attrs = append(attrs, fmt.Sprintf(`URI="%s"`, subtitle.URI))
-			}
-
-			lines = append(lines, "#EXT-X-MEDIA:"+strings.Join(attrs, ","))
+	for _, subtitle := range m.SubtitleTracks {
+		attrs := []string{
+			`TYPE=SUBTITLES`,
+			fmt.Sprintf(`GROUP-ID="%s"`, subtitle.GroupID),
+			fmt.Sprintf(`NAME="%s"`, subtitle.Name),
 		}
+
+		if subtitle.Language != "" {
+			attrs = append(attrs, fmt.Sprintf(`LANGUAGE="%s"`, subtitle.Language))
+		}
+		if subtitle.Default {
+			attrs = append(attrs, `DEFAULT=YES`)
+		}
+		if subtitle.Autoselect {
+			attrs = append(attrs, `AUTOSELECT=YES`)
+		}
+		if subtitle.Forced {
+			attrs = append(attrs, `FORCED=YES`)
+		}
+		if subtitle.URI != nil {
+			attrs = append(attrs, fmt.Sprintf(`URI="%s"`, subtitle.URI))
+		}
+
+		lines = append(lines, "#EXT-X-MEDIA:"+strings.Join(attrs, ","))
 	}
 
 	// Write video variants
-	for _, variant := range m.VideoVariants {
+	for _, variant := range m.VideoTracks {
 		attrs := []string{
 			fmt.Sprintf(`BANDWIDTH=%d`, variant.Bandwidth),
 		}
@@ -354,7 +204,7 @@ func (m *ManifestPlaylist) Generate() string {
 		}
 
 		lines = append(lines, "#EXT-X-STREAM-INF:"+strings.Join(attrs, ","))
-		lines = append(lines, variant.URI)
+		lines = append(lines, variant.URI.String())
 	}
 
 	return strings.Join(lines, "\n") + "\n"
@@ -414,44 +264,4 @@ func parseAttributes(line string) map[string]string {
 	}
 
 	return attrs
-}
-
-// extractAttribute extracts an attribute value from an HLS tag line
-func extractAttribute(line, attr string) string {
-	// Look for ATTR="value" or ATTR=value
-	pattern := attr + "="
-	idx := strings.Index(line, pattern)
-	if idx == -1 {
-		return ""
-	}
-
-	start := idx + len(pattern)
-	if start >= len(line) {
-		return ""
-	}
-
-	// Check if value is quoted
-	if line[start] == '"' {
-		start++
-		end := strings.Index(line[start:], `"`)
-		if end == -1 {
-			return ""
-		}
-		return line[start : start+end]
-	}
-
-	// Unquoted value - read until comma or end
-	end := strings.IndexAny(line[start:], ",\n")
-	if end == -1 {
-		return line[start:]
-	}
-	return line[start : start+end]
-}
-
-// extractIntAttribute extracts an integer attribute value
-func extractIntAttribute(line, attr string) int {
-	val := extractAttribute(line, attr)
-	var result int
-	fmt.Sscanf(val, "%d", &result)
-	return result
 }

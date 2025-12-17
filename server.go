@@ -115,11 +115,9 @@ func (s *Server) handleRequest(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var trackIndex int
-
-	// Video track playlists: /video_{i}.m3u8
-	if _, err := fmt.Sscanf(path, "/video_%d.m3u8", &trackIndex); err == nil {
-		playlist, err := handler.ServeTrackPlaylist(r.Context(), "video", trackIndex)
+	// Video track playlists: /video.m3u8
+	if path == "/video.m3u8" {
+		playlist, err := handler.ServeTrackPlaylist(r.Context(), "video")
 		if err != nil {
 			s.handleError(w, r, "Failed to generate video track playlist", err)
 			return
@@ -131,9 +129,9 @@ func (s *Server) handleRequest(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Audio track playlists: /audio_{i}.m3u8
-	if _, err := fmt.Sscanf(path, "/audio_%d.m3u8", &trackIndex); err == nil {
-		playlist, err := handler.ServeTrackPlaylist(r.Context(), "audio", trackIndex)
+	// Audio track playlists: /audio.m3u8
+	if path == "/audio.m3u8" {
+		playlist, err := handler.ServeTrackPlaylist(r.Context(), "audio")
 		if err != nil {
 			s.handleError(w, r, "Failed to generate audio track playlist", err)
 			return
@@ -147,14 +145,14 @@ func (s *Server) handleRequest(w http.ResponseWriter, r *http.Request) {
 
 	var segmentIndex int
 
-	// Video segments: /video_{i}/segment_{i}.ts
-	if _, err := fmt.Sscanf(path, "/video_%d/segment_%d.ts", &trackIndex, &segmentIndex); err == nil {
+	// Video segments: /video/segment_{i}.ts
+	if _, err := fmt.Sscanf(path, "/video/segment_%d.ts", &segmentIndex); err == nil {
 		shouldReturn := EnsureRequestDuration(r)
 		if shouldReturn {
 			return
 		}
 
-		buffer, err := handler.ServeSegment(r.Context(), "video", trackIndex, segmentIndex)
+		buffer, err := handler.ServeSegment(r.Context(), "video", segmentIndex)
 		if err != nil {
 			s.handleError(w, r, "Failed to generate video segment", err)
 			return
@@ -165,18 +163,18 @@ func (s *Server) handleRequest(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "video/mp2t")
 		w.Header().Set("Accept-Ranges", "bytes")
 		w.Header().Set("Cache-Control", "public, max-age=31536000")
-		w.Write(buffer)
+		buffer.Serve(w, r)
 		return
 	}
 
-	// Audio segments: /audio_{i}/segment_{i}.ts
-	if _, err := fmt.Sscanf(path, "/audio_%d/segment_%d.ts", &trackIndex, &segmentIndex); err == nil {
+	// Audio segments: /audio/segment_{i}.ts
+	if _, err := fmt.Sscanf(path, "/audio/segment_%d.ts", &segmentIndex); err == nil {
 		shouldReturn := EnsureRequestDuration(r)
 		if shouldReturn {
 			return
 		}
 
-		buffer, err := handler.ServeSegment(r.Context(), "audio", trackIndex, segmentIndex)
+		buffer, err := handler.ServeSegment(r.Context(), "audio", segmentIndex)
 		if err != nil {
 			s.handleError(w, r, "Failed to generate audio segment", err)
 			return
@@ -187,7 +185,7 @@ func (s *Server) handleRequest(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "video/mp2t")
 		w.Header().Set("Accept-Ranges", "bytes")
 		w.Header().Set("Cache-Control", "public, max-age=31536000")
-		w.Write(buffer)
+		buffer.Serve(w, r)
 		return
 	}
 

@@ -6,15 +6,15 @@ import {
   StartDownload,
   StopDownload,
 } from "../../wailsjs/go/main/App";
-import { download } from "../../wailsjs/go/models";
+import { remote } from "wailsjs/go/models";
 
 export const useDownloadsStore = defineStore("downloads", () => {
   // State: Map with key as "url|videoTrack|audioTrack"
-  const downloads = ref<Record<string, download.DownloadStatus>>({});
+  const downloads = ref<Record<string, remote.DownloadStatus>>({});
 
   // Listen to download progress events
-  EventsOn("download:progress", (data: download.DownloadStatus) => {
-    const key = `${data.Url}|${data.MediaType}|${data.Track}`;
+  EventsOn("download:progress", (data: remote.DownloadStatus) => {
+    const key = `${data.URL}|${data.MediaType}|${data.Track}`;
     downloads.value[key] = data;
   });
 
@@ -40,7 +40,7 @@ export const useDownloadsStore = defineStore("downloads", () => {
     url: string,
     mediaType: string,
     track: number
-  ): download.DownloadStatus | undefined => {
+  ): remote.DownloadStatus | undefined => {
     const key = `${url}|${mediaType}|${track}`;
     return downloads.value[key];
   };

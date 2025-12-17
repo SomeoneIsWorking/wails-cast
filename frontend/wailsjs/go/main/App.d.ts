@@ -3,8 +3,8 @@
 import {options} from '../models';
 import {main} from '../models';
 import {folders} from '../models';
-import {download} from '../models';
-import {hls} from '../models';
+import {remote} from '../models';
+import {ffmpeg} from '../models';
 
 export function CastToDevice(arg1:string,arg2:string,arg3:options.CastOptions):Promise<main.PlaybackState>;
 
@@ -24,15 +24,15 @@ export function GenerateTranslationPrompt(arg1:string,arg2:string):Promise<strin
 
 export function GetCacheStats():Promise<folders.CacheStats>;
 
-export function GetDownloadStatus(arg1:string,arg2:string,arg3:number):Promise<download.DownloadStatus>;
+export function GetDownloadStatus(arg1:string,arg2:string,arg3:number):Promise<remote.DownloadStatus>;
 
-export function GetFFmpegInfo(arg1:boolean):Promise<hls.FFmpegInfo>;
+export function GetFFmpegInfo(arg1:boolean):Promise<ffmpeg.FFmpegInfo>;
 
 export function GetHistory():Promise<Array<main.HistoryItem>>;
 
 export function GetMediaFiles(arg1:string):Promise<Array<string>>;
 
-export function GetMediaURL(arg1:string):Promise<string>;
+export function GetMediaURL():Promise<string>;
 
 export function GetSettings():Promise<main.Settings>;
 
@@ -60,9 +60,9 @@ export function ResetSettings():Promise<main.Settings>;
 
 export function SeekTo(arg1:number):Promise<void>;
 
-export function StartDownload(arg1:string,arg2:string,arg3:number):Promise<download.DownloadStatus>;
+export function StartDownload(arg1:string,arg2:string,arg3:number):Promise<remote.DownloadStatus>;
 
-export function StopDownload(arg1:string,arg2:string,arg3:number):Promise<download.DownloadStatus>;
+export function StopDownload(arg1:string,arg2:string,arg3:number):Promise<remote.DownloadStatus>;
 
 export function StopPlayback():Promise<void>;
 

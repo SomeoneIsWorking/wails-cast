@@ -17,7 +17,7 @@ func GetJson[T any](path string, fn func() (*T, error)) (*T, error) {
 		return nil, err
 	}
 
-	filehelper.WriteJson(result, path)
+	filehelper.WriteJson(path, result)
 
 	return result, nil
 }

@@ -1,12 +1,12 @@
-export namespace download {
+export namespace ffmpeg {
 	
-	export interface DownloadStatus {
-	    Url: string;
-	    MediaType: string;
-	    Track: number;
-	    Progress: boolean[];
-	    Total: number;
-	    Status: string;
+	export interface FFmpegInfo {
+	    ffmpegInstalled: boolean;
+	    ffprobeInstalled: boolean;
+	    ffmpegVersion: string;
+	    ffprobeVersion: string;
+	    ffmpegPath: string;
+	    ffprobePath: string;
 	}
 
 }
@@ -24,13 +24,27 @@ export namespace folders {
 
 export namespace hls {
 	
-	export interface FFmpegInfo {
-	    ffmpegInstalled: boolean;
-	    ffprobeInstalled: boolean;
-	    ffmpegVersion: string;
-	    ffprobeVersion: string;
-	    ffmpegPath: string;
-	    ffprobePath: string;
+	export interface AudioTrack {
+	    URI?: url.URL;
+	    GroupID: string;
+	    Name: string;
+	    Language: string;
+	    Default: boolean;
+	    Autoselect: boolean;
+	    Channels: string;
+	    Attrs: Record<string, string>;
+	    Index: number;
+	}
+	export interface VideoTrack {
+	    URI?: url.URL;
+	    Bandwidth: number;
+	    Codecs: string;
+	    Resolution: string;
+	    FrameRate: number;
+	    Audio: string;
+	    Subtitles: string;
+	    Attrs: Record<string, string>;
+	    Index: number;
 	}
 
 }
@@ -50,7 +64,6 @@ export namespace main {
 	    path: string;
 	    name: string;
 	    timestamp: string;
-	    deviceName: string;
 	    castOptions?: options.CastOptions;
 	}
 	export interface PlaybackState {
@@ -80,37 +93,11 @@ export namespace main {
 	    label: string;
 	}
 	export interface TrackDisplayInfo {
-	    videoTracks: mediainfo.VideoTrack[];
-	    audioTracks: mediainfo.AudioTrack[];
+	    videoTracks: hls.VideoTrack[];
+	    audioTracks: hls.AudioTrack[];
 	    subtitleTracks: SubtitleDisplayItem[];
 	    path: string;
 	    nearSubtitle: string;
-	}
-
-}
-
-export namespace mediainfo {
-	
-	export interface AudioTrack {
-	    index: number;
-	    language: string;
-	    URI: string;
-	    GroupID: string;
-	    Name: string;
-	    IsDefault: boolean;
-	    Bandwidth: number;
-	    Codecs: string;
-	}
-	export interface VideoTrack {
-	    index: number;
-	    codec: string;
-	    resolution?: string;
-	    URI: string;
-	    GroupID: string;
-	    Name: string;
-	    IsDefault: boolean;
-	    Bandwidth: number;
-	    Codecs: string;
 	}
 
 }
@@ -128,6 +115,40 @@ export namespace options {
 	    BurnIn: boolean;
 	    FontSize: number;
 	    IgnoreClosedCaptions: boolean;
+	}
+
+}
+
+export namespace remote {
+	
+	export interface DownloadStatus {
+	    Status: string;
+	    Segments: boolean[];
+	    URL: string;
+	    MediaType: string;
+	    Track: number;
+	}
+
+}
+
+export namespace url {
+	
+	export interface Userinfo {
+	
+	}
+	export interface URL {
+	    Scheme: string;
+	    Opaque: string;
+	    // Go type: Userinfo
+	    User?: any;
+	    Host: string;
+	    Path: string;
+	    RawPath: string;
+	    OmitHost: boolean;
+	    ForceQuery: boolean;
+	    RawQuery: string;
+	    Fragment: string;
+	    RawFragment: string;
 	}
 
 }

@@ -1,4 +1,4 @@
-package hls
+package ffmpeg
 
 import (
 	"fmt"

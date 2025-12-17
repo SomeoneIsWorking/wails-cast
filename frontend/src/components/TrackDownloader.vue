@@ -29,8 +29,8 @@
       <ProgressBar
         class="mt-2"
         v-if="isRemote"
-        :progress="downloadState?.Progress.filter(p => p).length || 0"
-        :total="downloadState?.Progress.length || 0"
+        :progress="downloadState?.Segments.filter(p => p).length || 0"
+        :total="downloadState?.Segments.length || 0"
       />
     </div>
   </template>

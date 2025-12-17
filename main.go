@@ -32,8 +32,9 @@ func main() {
 			CSSDropProperty:    "--wails-drop-target",
 			CSSDropValue:       "drop",
 		},
-		HideWindowOnClose: true,
-		Bind: []interface{}{
+		DisablePanicRecovery: true,
+		HideWindowOnClose:    true,
+		Bind: []any{
 			app,
 		},
 	})

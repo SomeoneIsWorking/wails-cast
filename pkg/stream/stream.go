@@ -1,6 +1,9 @@
 package stream
 
-import "context"
+import (
+	"context"
+	"wails-cast/pkg/mix"
+)
 
 // StreamHandler defines the interface for handling media streams
 type StreamHandler interface {
@@ -10,13 +13,12 @@ type StreamHandler interface {
 
 	// ServeTrackPlaylist generates video or audio track playlists
 	// trackType should be "video" or "audio"
-	// trackIndex is the extracted index from the path
 	// Returns the playlist content as string and any error encountered
-	ServeTrackPlaylist(ctx context.Context, trackType string, trackIndex int) (string, error)
+	ServeTrackPlaylist(ctx context.Context, trackType string) (string, error)
 
 	// ServeSegment generates a media segment
 	// Returns the file path to serve and any error encountered
-	ServeSegment(ctx context.Context, trackType string, trackIndex int, segmentIndex int) ([]byte, error)
+	ServeSegment(ctx context.Context, trackType string, segmentIndex int) (*mix.FileOrBuffer, error)
 
 	// ServeSubtitles returns the subtitle file in WebVTT format
 	// Returns the subtitle content as string and any error encountered

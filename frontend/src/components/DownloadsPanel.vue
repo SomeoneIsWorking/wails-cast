@@ -26,19 +26,19 @@
         <ul>
           <li
             v-for="item in entries"
-            :key="item.Url + '|' + item.MediaType + '|' + item.Track"
+            :key="item.URL + '|' + item.MediaType + '|' + item.Track"
             class="mb-4 border-b pb-2 flex flex-col gap-2"
           >
             <div class="flex-1">
-              <div class="text-sm font-medium">{{ item.Url }}</div>
+              <div class="text-sm font-medium">{{ item.URL }}</div>
               <div class="text-xs text-gray-500">
                 {{ item.MediaType }} • Track {{ item.Track }}
               </div>
             </div>
 
             <ProgressBar
-              :progress="item.Progress.filter((v) => v).length"
-              :total="item.Progress.length"
+              :progress="item.Segments.filter((v) => v).length"
+              :total="item.Segments.length"
               class="flex-1"
             />
             
