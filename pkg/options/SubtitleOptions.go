@@ -1,7 +1,8 @@
 package options
 
 type SubtitleCastOptions struct {
-	Path     string
-	BurnIn   bool
-	FontSize int
+	Path                 string
+	BurnIn               bool
+	FontSize             int
+	IgnoreClosedCaptions bool
 }

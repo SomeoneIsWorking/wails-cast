@@ -183,11 +183,12 @@ func (a *App) CastToDevice(deviceIp string, fileNameOrUrl string, castOptions *o
 	// Determine if input is a local file or remote URL
 	isRemote := strings.HasPrefix(fileNameOrUrl, "http://") || strings.HasPrefix(fileNameOrUrl, "https://")
 	settings := a.GetSettings()
-	options := &options.StreamOptions{
+	options := options.StreamOptions{
 		Subtitle: options.SubtitleCastOptions{
-			Path:     castOptions.SubtitlePath,
-			BurnIn:   settings.SubtitleBurnIn,
-			FontSize: settings.SubtitleFontSize,
+			Path:                 castOptions.SubtitlePath,
+			BurnIn:               settings.SubtitleBurnIn,
+			FontSize:             settings.SubtitleFontSize,
+			IgnoreClosedCaptions: settings.IgnoreClosedCaptions,
 		},
 		VideoTrack:       castOptions.VideoTrack,
 		AudioTrack:       castOptions.AudioTrack,

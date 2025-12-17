@@ -64,6 +64,7 @@ export namespace main {
 	}
 	export interface Settings {
 	    subtitleBurnIn: boolean;
+	    ignoreClosedCaptions: boolean;
 	    defaultTranslationLanguage: string;
 	    geminiApiKey: string;
 	    geminiModel: string;
@@ -126,6 +127,7 @@ export namespace options {
 	    Path: string;
 	    BurnIn: boolean;
 	    FontSize: number;
+	    IgnoreClosedCaptions: boolean;
 	}
 
 }

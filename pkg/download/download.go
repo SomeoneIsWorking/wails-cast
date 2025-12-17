@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"wails-cast/pkg/cast"
+	"wails-cast/pkg/options"
 )
 
 func (d *DownloadManager) GetStatus(url string, mediaType string, track int) (*DownloadStatus, error) {
@@ -73,7 +74,7 @@ func (d *DownloadManager) startDownload(task *DownloadItem) (*DownloadStatus, er
 		if err != nil {
 			return nil, err
 		}
-		task.Handler, err = cast.CreateRemoteHandler(task.URL, nil)
+		task.Handler, err = cast.CreateRemoteHandler(task.URL, options.StreamOptions{})
 
 		if err != nil {
 			return nil, err

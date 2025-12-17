@@ -11,6 +11,7 @@ import (
 	"wails-cast/pkg/events"
 	"wails-cast/pkg/folders"
 	"wails-cast/pkg/mediainfo"
+	"wails-cast/pkg/options"
 	"wails-cast/pkg/stream"
 )
 
@@ -76,7 +77,7 @@ func getTrackProgress(url string, mediaType string, track int) ([]bool, error) {
 		return manifest, nil
 	}
 
-	handler, err := cast.CreateRemoteHandler(url, nil)
+	handler, err := cast.CreateRemoteHandler(url, options.StreamOptions{})
 	if err != nil {
 		return nil, err
 	}
