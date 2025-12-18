@@ -24,7 +24,7 @@ const handleConfirm = async () => {
 
   isLoading.value = true;
   try {
-    await castStore.startCasting(trackInfo.value.path);
+    await castStore.startCasting(trackInfo.value.Path);
     toast.success("Casting started successfully!");
   } finally {
     isLoading.value = false;
@@ -37,12 +37,12 @@ const openTranslationModal = () => {
 
 const openCacheFolder = async () => {
   if (!trackInfo.value) return;
-  await OpenMediaFolder(trackInfo.value.path);
+  await OpenMediaFolder(trackInfo.value.Path);
 };
 
 const hasEmbeddedSubtitles = computed(() =>
-  trackInfo.value?.subtitleTracks.some((track) =>
-    track.path.startsWith("embedded:")
+  trackInfo.value?.SubtitleTracks.some((track) =>
+    track.Path.startsWith("embedded:")
   )
 );
 
@@ -92,7 +92,7 @@ onUnmounted(() => {
         <label>Video Track:</label>
         <div>
           <TrackDownloader
-            :path="trackInfo.path"
+            :path="trackInfo.Path"
             type="video"
             :track="castStore.castOptions!.VideoTrack"
           >
@@ -101,7 +101,7 @@ onUnmounted(() => {
               class="flex-1 bg-gray-700 text-white rounded-md p-2"
             >
               <option
-                v-for="track in trackInfo.videoTracks"
+                v-for="track in trackInfo.VideoTracks"
                 :key="track.Index"
                 :value="track.Index"
               >
@@ -114,10 +114,10 @@ onUnmounted(() => {
         </div>
 
         <!-- Audio Track Selection -->
-        <template v-if="trackInfo.audioTracks.length > 0">
+        <template v-if="trackInfo.AudioTracks.length > 0">
           <label>Audio Track:</label>
           <TrackDownloader
-            :path="trackInfo.path"
+            :path="trackInfo.Path"
             type="audio"
             :track="castStore.castOptions!.AudioTrack"
           >
@@ -126,7 +126,7 @@ onUnmounted(() => {
               class="flex-1 bg-gray-700 text-white rounded-md p-2"
             >
               <option
-                v-for="track in trackInfo.audioTracks"
+                v-for="track in trackInfo.AudioTracks"
                 :key="track.Index"
                 :value="track.Index"
               >
@@ -143,11 +143,11 @@ onUnmounted(() => {
             class="w-full bg-gray-700 text-white rounded-md p-2"
           >
             <option
-              v-for="track in trackInfo.subtitleTracks"
-              :key="track.path"
-              :value="track.path"
+              v-for="track in trackInfo.SubtitleTracks"
+              :key="track.Path"
+              :value="track.Path"
             >
-              {{ track.label }}
+              {{ track.Label }}
             </option>
           </select>
           <button

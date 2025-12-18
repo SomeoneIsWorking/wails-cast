@@ -20,6 +20,7 @@ import (
 	"wails-cast/pkg/ffmpeg"
 	"wails-cast/pkg/folders"
 	"wails-cast/pkg/hls"
+	"wails-cast/pkg/linq"
 	_logger "wails-cast/pkg/logger"
 	"wails-cast/pkg/options"
 	"wails-cast/pkg/remote"
@@ -28,29 +29,6 @@ import (
 
 var logger = _logger.Logger
 var customAppID = "7B88BB2E" // Custom receiver app ID
-
-type SubtitleDisplayItem struct {
-	Path  string `json:"path"`
-	Label string `json:"label"`
-}
-
-type TrackDisplayInfo struct {
-	VideoTracks    []hls.VideoTrack      `json:"videoTracks"`
-	AudioTracks    []hls.AudioTrack      `json:"audioTracks"`
-	SubtitleTracks []SubtitleDisplayItem `json:"subtitleTracks"`
-	Path           string                `json:"path"`
-	NearSubtitle   string                `json:"nearSubtitle"`
-}
-
-type QualityOption struct {
-	Label   string
-	Key     string
-	Default bool
-}
-
-type AppExports struct {
-	DownloadStatus remote.DownloadStatus
-}
 
 type App struct {
 	ctx           context.Context
@@ -63,16 +41,6 @@ type App struct {
 	settingsStore *SettingsStore
 	mu            sync.RWMutex
 	RemoteManager *remote.RemoteManager
-}
-
-type PlaybackState struct {
-	Status      string  `json:"status"`
-	MediaPath   string  `json:"mediaPath"`
-	MediaName   string  `json:"mediaName"`
-	DeviceURL   string  `json:"deviceUrl"`
-	DeviceName  string  `json:"deviceName"`
-	CurrentTime float64 `json:"currentTime"`
-	Duration    float64 `json:"duration"`
 }
 
 func (a *App) createApplication() {
@@ -124,8 +92,8 @@ func (a *App) DiscoverDevices() []Device {
 	return []Device{}
 }
 
-// GetMediaURL returns the URL for a media file to be cast
-func (a *App) GetMediaURL() string {
+// getMediaURL returns the URL for a media file to be cast
+func (a *App) getMediaURL() string {
 	return fmt.Sprintf("http://%s:%d/playlist.m3u8", a.localIp, 8888)
 }
 
@@ -177,8 +145,19 @@ func (a *App) GetTrackDisplayInfo(fileNameOrUrl string) (*TrackDisplayInfo, erro
 	}
 
 	return &TrackDisplayInfo{
-		VideoTracks:    trackInfo.VideoTracks,
-		AudioTracks:    trackInfo.AudioTracks,
+		VideoTracks: linq.Map(trackInfo.VideoTracks, func(v hls.VideoTrack) VideoTrackDisplayItem {
+			return VideoTrackDisplayItem{
+				Index:      v.Index,
+				Resolution: v.Resolution,
+				Codecs:     v.Codecs,
+			}
+		}),
+		AudioTracks: linq.Map(trackInfo.AudioTracks, func(a hls.AudioTrack) AudioTracksDisplayItem {
+			return AudioTracksDisplayItem{
+				Index:    a.Index,
+				Language: a.Language,
+			}
+		}),
 		SubtitleTracks: subtitleItems,
 		Path:           fileNameOrUrl,
 		NearSubtitle:   nearSubtitle,
@@ -257,7 +236,7 @@ func (a *App) CastToDevice(deviceIp string, fileNameOrUrl string, castOptions *o
 
 	if deviceIp == "local" {
 		// Just host the stream without casting
-		logger.Info("Hosting stream without casting", "url", a.GetMediaURL())
+		logger.Info("Hosting stream without casting", "url", a.getMediaURL())
 		a.mu.Lock()
 		a.playbackState.Status = "PLAYING"
 		a.mu.Unlock()
@@ -265,7 +244,7 @@ func (a *App) CastToDevice(deviceIp string, fileNameOrUrl string, castOptions *o
 		return &a.playbackState, nil
 	}
 
-	mediaURL := a.GetMediaURL()
+	mediaURL := a.getMediaURL()
 	a.createApplication()
 
 	err = a.App.Start(host, port)

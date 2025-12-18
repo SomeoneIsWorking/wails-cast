@@ -6,16 +6,16 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
-	"strings"
 	"time"
 
 	"wails-cast/pkg/ffmpeg"
+	"wails-cast/pkg/filehelper"
+	"wails-cast/pkg/folders"
 	"wails-cast/pkg/hls"
 	"wails-cast/pkg/logger"
 	"wails-cast/pkg/mix"
 	"wails-cast/pkg/options"
 	"wails-cast/pkg/remote"
-	"wails-cast/pkg/subtitles"
 	"wails-cast/pkg/urlhelper"
 
 	"github.com/pkg/errors"
@@ -24,11 +24,11 @@ import (
 // RemoteHandler is a handler that serves HLS manifests and segments
 // with captured cookies and headers
 type RemoteHandler struct {
-	Options      options.StreamOptions
-	Manifest     *hls.ManifestPlaylist
-	VideoManager *remote.TrackManager
-	AudioManager *remote.TrackManager
-	CacheDir     string
+	Options          options.StreamOptions
+	Manifest         *hls.ManifestPlaylist
+	VideoManager     *remote.TrackManager
+	AudioManager     *remote.TrackManager
+	StorageDirectory string
 }
 
 // NewRemoteHandler creates a new HLS handler
@@ -36,7 +36,7 @@ func NewRemoteHandler(
 	ctx context.Context,
 	mediaManager *remote.MediaManager,
 	options options.StreamOptions,
-	cacheDir string,
+	storageDirectory string,
 ) (*RemoteHandler, error) {
 	videoManager, err := mediaManager.GetTrack(ctx, "video", options.VideoTrack)
 	if err != nil {
@@ -50,23 +50,23 @@ func NewRemoteHandler(
 		}
 	}
 	return &RemoteHandler{
-		Options:      options,
-		Manifest:     mediaManager.Manifest,
-		VideoManager: videoManager,
-		AudioManager: audioManager,
-		CacheDir:     cacheDir,
+		Options:          options,
+		Manifest:         mediaManager.Manifest,
+		VideoManager:     videoManager,
+		AudioManager:     audioManager,
+		StorageDirectory: folders.Video(mediaManager.URL),
 	}, nil
 }
 
 // ServeManifestPlaylist generates the manifest playlist
-func (p *RemoteHandler) ServeManifestPlaylist(ctx context.Context) (string, error) {
+func (this *RemoteHandler) ServeManifestPlaylist(ctx context.Context) (string, error) {
 	playlist := &hls.ManifestPlaylist{}
 
 	// Add subtitle track if available and not burned in
-	if p.Options.Subtitle.Path != "none" && !p.Options.Subtitle.BurnIn {
+	if this.Options.Subtitle.Path != "none" && !this.Options.Subtitle.BurnIn {
 		playlist.SubtitleTracks = []hls.SubtitleTrack{
 			{
-				URI:        urlhelper.Parse("subtitles.vtt"),
+				URI:        urlhelper.Parse("/subtitles.vtt"),
 				GroupID:    "subs",
 				Name:       "Subtitles",
 				Language:   "en",
@@ -78,13 +78,13 @@ func (p *RemoteHandler) ServeManifestPlaylist(ctx context.Context) (string, erro
 		}
 	}
 
-	videoVariant := p.Manifest.VideoTracks[p.Options.VideoTrack]
+	videoVariant := this.Manifest.VideoTracks[this.Options.VideoTrack]
 	videoVariant.Resolution = ""
 	videoVariant.URI = urlhelper.Parse("/video.m3u8")
 	videoVariant.Subtitles = "subs"
 
-	if len(p.Manifest.AudioTracks) > 0 {
-		audio := p.Manifest.AudioTracks[p.Options.AudioTrack]
+	if len(this.Manifest.AudioTracks) > 0 {
+		audio := this.Manifest.AudioTracks[this.Options.AudioTrack]
 		audio.URI = urlhelper.Parse("/audio.m3u8")
 		playlist.AudioTracks = []hls.AudioTrack{audio}
 	}
@@ -93,16 +93,16 @@ func (p *RemoteHandler) ServeManifestPlaylist(ctx context.Context) (string, erro
 	return playlist.Generate(), nil
 }
 
-func (p *RemoteHandler) getTrackManager(trackType string) *remote.TrackManager {
+func (this *RemoteHandler) getTrackManager(trackType string) *remote.TrackManager {
 	if trackType == "video" {
-		return p.VideoManager
+		return this.VideoManager
 	}
-	return p.AudioManager
+	return this.AudioManager
 }
 
 // ServeTrackPlaylist generates video or audio track playlists
-func (p *RemoteHandler) ServeTrackPlaylist(ctx context.Context, trackType string) (string, error) {
-	trackManager := p.getTrackManager(trackType)
+func (this *RemoteHandler) ServeTrackPlaylist(ctx context.Context, trackType string) (string, error) {
+	trackManager := this.getTrackManager(trackType)
 	playlist := *trackManager.Manifest
 	playlist.Segments = make([]*hls.Segment, len(trackManager.Manifest.Segments))
 
@@ -124,64 +124,63 @@ func (p *RemoteHandler) ServeTrackPlaylist(ctx context.Context, trackType string
 
 // ServeSegment proxies segment requests with captured cookies and headers,
 // and transcodes them using ffmpeg for compatibility
-func (p *RemoteHandler) ServeSegment(ctx context.Context, trackType string, segmentIndex int) (*mix.FileOrBuffer, error) {
+func (this *RemoteHandler) ServeSegment(ctx context.Context, trackType string, segmentIndex int) (*mix.FileOrBuffer, error) {
 	logger.Logger.Info("Proxying request", "type", trackType, "segment", segmentIndex)
 
-	if p.Options.NoTranscodeCache {
-		segment, err := p.getTrackManager(trackType).GetSegment(ctx, segmentIndex)
+	if this.Options.NoTranscodeCache {
+		segment, err := this.getTrackManager(trackType).GetSegment(ctx, segmentIndex)
 		if err != nil {
 			return nil, fmt.Errorf("failed to ensure raw segment exists: %w", err)
 		}
-		return p.transcodeSegment(ctx, segment, mix.BufferTarget())
+		return this.transcodeSegment(ctx, segment, mix.BufferTarget())
 	}
 
-	transcodedPath, err := p.ensureSegmentExistsTranscoded(ctx, trackType, segmentIndex)
+	transcodedPath, err := this.ensureSegmentExistsTranscoded(ctx, trackType, segmentIndex)
 	if err != nil {
 		return nil, fmt.Errorf("failed to ensure transcoded segment exists: %w", err)
 	}
 	return mix.File(transcodedPath), nil
 }
 
-func (p *RemoteHandler) ensureSegmentExistsTranscoded(ctx context.Context, trackType string, segmentIndex int) (string, error) {
-	trackIndex := p.getTrackIndex(trackType)
-	transcodedPath, err := p.getSegmentPath(trackType, segmentIndex)
+func (this *RemoteHandler) ensureSegmentExistsTranscoded(ctx context.Context, trackType string, segmentIndex int) (string, error) {
+	trackIndex := this.getTrackIndex(trackType)
+	transcodedPath, err := this.getSegmentPath(trackType, segmentIndex)
 	if err != nil {
 		return "", errors.Wrapf(err, "failed to get transcoded segment path for segment %d of track %s_%d", segmentIndex, trackType, trackIndex)
 	}
 
 	// Load manifest and check if segment needs regeneration
 	manifest, err := ffmpeg.LoadSegmentManifest(transcodedPath + ".json")
-	needsRegeneration := err != nil || !ffmpeg.ManifestMatches(manifest, p.Options, 0)
+	needsRegeneration := err != nil || !ffmpeg.ManifestMatches(manifest, this.Options, 0)
 
 	if _, err := os.Stat(transcodedPath); err == nil && !needsRegeneration {
 		return transcodedPath, nil
 	}
 
-	segment, err := p.getTrackManager(trackType).GetSegment(ctx, segmentIndex)
+	segment, err := this.getTrackManager(trackType).GetSegment(ctx, segmentIndex)
 	if err != nil {
 		return "", errors.Wrapf(err, "failed to ensure raw segment exists for segment %d of track %s_%d", segmentIndex, trackType, trackIndex)
 	}
 
-	_, err = p.transcodeSegment(ctx, segment, mix.FileTarget(transcodedPath))
+	_, err = this.transcodeSegment(ctx, segment, mix.FileTarget(transcodedPath))
 	if err != nil {
 		return "", errors.Wrapf(err, "failed to transcode segment %d of track %s_%d", segmentIndex, trackType, trackIndex)
 	}
 	return transcodedPath, nil
 }
 
-func (p *RemoteHandler) transcodeSegment(ctx context.Context, input *mix.FileOrBuffer, target *mix.TargetFileOrBuffer) (*mix.FileOrBuffer, error) {
+func (this *RemoteHandler) transcodeSegment(ctx context.Context, input *mix.FileOrBuffer, target *mix.TargetFileOrBuffer) (*mix.FileOrBuffer, error) {
 	var subtitle *ffmpeg.SubtitleTranscodeOptions = nil
 
-	if p.Options.Subtitle.BurnIn {
-		subtitle = &ffmpeg.SubtitleTranscodeOptions{
-			Path:                 p.Options.Subtitle.Path,
-			FontSize:             p.Options.Subtitle.FontSize,
-			IgnoreClosedCaptions: p.Options.Subtitle.IgnoreClosedCaptions,
+	if this.Options.Subtitle.BurnIn {
+		path := filepath.Join(this.StorageDirectory, "subtitles.vtt")
+		_, err := this.getSubtitles(mix.FileTarget(path))
+		if err != nil {
+			return nil, fmt.Errorf("failed to get subtitles for burn-in: %w", err)
 		}
-
-		if index, found := strings.CutPrefix(subtitle.Path, "embedded:"); found {
-			// For remote streams, embedded just means found on website, in this case, we use the cached file
-			subtitle.Path = fmt.Sprintf("external:%s", filepath.Join(p.CacheDir, fmt.Sprintf("subtitle_%s.vtt", index)))
+		subtitle = &ffmpeg.SubtitleTranscodeOptions{
+			Path:     path,
+			FontSize: this.Options.Subtitle.FontSize,
 		}
 	}
 
@@ -189,8 +188,8 @@ func (p *RemoteHandler) transcodeSegment(ctx context.Context, input *mix.FileOrB
 		StartTime:      0,
 		Duration:       0,
 		Subtitle:       subtitle,
-		Bitrate:        p.Options.Bitrate,
-		MaxOutputWidth: p.Options.MaxOutputWidth,
+		Bitrate:        this.Options.Bitrate,
+		MaxOutputWidth: this.Options.MaxOutputWidth,
 	}
 	output, err := ffmpeg.TranscodeSegment(ctx, input, target, opts)
 	if err != nil {
@@ -202,8 +201,16 @@ func (p *RemoteHandler) transcodeSegment(ctx context.Context, input *mix.FileOrB
 	return output, err
 }
 
-func (p *RemoteHandler) getSegmentPath(trackType string, segmentIndex int) (string, error) {
-	trackDir, err := p.getTrackDir(trackType)
+func (this *RemoteHandler) getSubtitlePath() string {
+	path := this.Options.Subtitle.Path
+	if index, found := GetEmbeddedIndex(path); found {
+		return filepath.Join(this.StorageDirectory, fmt.Sprintf("subtitle_%d.vtt", index))
+	}
+	return path
+}
+
+func (this *RemoteHandler) getSegmentPath(trackType string, segmentIndex int) (string, error) {
+	trackDir, err := this.getTrackDir(trackType)
 	if err != nil {
 		return "", err
 	}
@@ -212,16 +219,16 @@ func (p *RemoteHandler) getSegmentPath(trackType string, segmentIndex int) (stri
 	return localPath, nil
 }
 
-func (p *RemoteHandler) getTrackIndex(trackType string) int {
+func (this *RemoteHandler) getTrackIndex(trackType string) int {
 	if trackType == "video" {
-		return p.Options.VideoTrack
+		return this.Options.VideoTrack
 	}
-	return p.Options.AudioTrack
+	return this.Options.AudioTrack
 }
 
-func (p *RemoteHandler) getTrackDir(trackType string) (string, error) {
-	trackIndex := p.getTrackIndex(trackType)
-	trackDir := filepath.Join(p.CacheDir, fmt.Sprintf("%s_%d", trackType, trackIndex))
+func (this *RemoteHandler) getTrackDir(trackType string) (string, error) {
+	trackIndex := this.getTrackIndex(trackType)
+	trackDir := filepath.Join(this.StorageDirectory, fmt.Sprintf("%s_%d", trackType, trackIndex))
 	if err := os.MkdirAll(trackDir, 0755); err != nil {
 		return "", err
 	}
@@ -229,7 +236,7 @@ func (p *RemoteHandler) getTrackDir(trackType string) (string, error) {
 }
 
 // serveFile serves a local file
-func (p *RemoteHandler) serveFile(w http.ResponseWriter, path string, contentType string) {
+func (this *RemoteHandler) serveFile(w http.ResponseWriter, path string, contentType string) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		http.Error(w, "Failed to read file", http.StatusInternalServerError)
@@ -247,40 +254,50 @@ func (p *RemoteHandler) serveFile(w http.ResponseWriter, path string, contentTyp
 }
 
 // ServeSubtitles returns the subtitle file in WebVTT format
-func (p *RemoteHandler) ServeSubtitles(ctx context.Context) (string, error) {
-	if p.Options.Subtitle.Path == "none" || p.Options.Subtitle.BurnIn {
-		return "", fmt.Errorf("no external subtitles available")
+func (this *RemoteHandler) ServeSubtitles(ctx context.Context) (*mix.FileOrBuffer, error) {
+	if this.Options.Subtitle.Path == "none" || this.Options.Subtitle.BurnIn {
+		return nil, fmt.Errorf("no external subtitles available")
 	}
 
-	subtitlePath := p.Options.Subtitle.Path
+	return this.getSubtitles(mix.FileTarget(filepath.Join(this.StorageDirectory, "subtitles.vtt")))
+}
 
-	// Handle embedded subtitles - they're cached in the cache directory
-	if index, found := strings.CutPrefix(subtitlePath, "embedded:"); found {
-		subtitlePath = filepath.Join(p.CacheDir, fmt.Sprintf("subtitle_%s.vtt", index))
-	} else if path, found := strings.CutPrefix(subtitlePath, "external:"); found {
-		subtitlePath = path
-	}
-	// Otherwise it's a direct path, use as-is
-
-	// Read subtitle file
-	data, err := os.ReadFile(subtitlePath)
+func (this *RemoteHandler) getSubtitles(target *mix.TargetFileOrBuffer) (*mix.FileOrBuffer, error) {
+	subtitles, err := this.readSubtitles(target)
 	if err != nil {
-		return "", fmt.Errorf("failed to read subtitle file: %w", err)
+		return nil, fmt.Errorf("failed to read subtitles: %w", err)
+	}
+	return ProcessSubtitles(subtitles, target, this.Options.Subtitle.IgnoreClosedCaptions)
+}
+
+func (this *RemoteHandler) readSubtitles(target *mix.TargetFileOrBuffer) (*mix.FileOrBuffer, error) {
+	subtitlePath := this.Options.Subtitle.Path
+
+	// Handle external subtitle format
+	if path, found := GetExternalPath(subtitlePath); found {
+		if target.IsBuffer {
+			data, err := os.ReadFile(path)
+			if err != nil {
+				return nil, fmt.Errorf("failed to read subtitle file: %w", err)
+			}
+			return mix.Buffer(data), nil
+		} else {
+			filehelper.EnsureSymlink(path, target.FilePath)
+			return target.ToOutput(), nil
+		}
+	} else if index, found := GetEmbeddedIndex(subtitlePath); found {
+		subtitlePath = filepath.Join(this.StorageDirectory, fmt.Sprintf("subtitle_%d.vtt", index))
+		if target.IsBuffer {
+			data, err := os.ReadFile(subtitlePath)
+			if err != nil {
+				return nil, fmt.Errorf("failed to read subtitle file: %w", err)
+			}
+			return mix.Buffer(data), nil
+		} else {
+			filehelper.EnsureSymlink(subtitlePath, target.FilePath)
+			return target.ToOutput(), nil
+		}
 	}
 
-	// Check if it's already WebVTT
-	content := string(data)
-
-	// Otherwise parse and convert to WebVTT
-	subtitles, err := subtitles.Parse(content)
-	if err != nil {
-		return "", fmt.Errorf("failed to parse subtitle file: %w", err)
-	}
-
-	// Apply IgnoreClosedCaptions option if requested
-	if p.Options.Subtitle.IgnoreClosedCaptions {
-		subtitles = subtitles.RemoveClosedCaptions()
-	}
-
-	return subtitles.ToWebVTTString(), nil
+	return nil, fmt.Errorf("unsupported subtitle path format %s", subtitlePath)
 }
