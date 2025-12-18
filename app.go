@@ -48,6 +48,10 @@ type QualityOption struct {
 	Default bool
 }
 
+type AppExports struct {
+	DownloadStatus remote.DownloadStatus
+}
+
 type App struct {
 	ctx           context.Context
 	App           *application.Application
@@ -397,17 +401,21 @@ func (a *App) OpenMediaFolder(fileNameOrUrl string) error {
 	return cmd.Start()
 }
 
-func (a *App) StartDownload(url string, mediaType string, index int) (*remote.DownloadStatus, error) {
+func (a *App) Export() AppExports {
+	panic("DO NOT CALL")
+}
+
+func (a *App) StartDownload(url string, mediaType string, index int) error {
 	return a.RemoteManager.StartDownload(url, mediaType, index)
 }
 
-func (a *App) StopDownload(url string, mediaType string, index int) (*remote.DownloadStatus, error) {
+func (a *App) StopDownload(url string, mediaType string, index int) error {
 	return a.RemoteManager.StopDownload(url, mediaType, index)
 }
 
 // GetDownloadStatus returns the current download progress for a specific track
-func (a *App) GetDownloadStatus(filenameOrUrl string, mediaType string, track int) (*remote.DownloadStatus, error) {
-	return a.RemoteManager.GetDownloadStatus(filenameOrUrl, mediaType, track)
+func (a *App) GetDownloadStatus(url string, mediaType string, track int) (*remote.DownloadStatusQeuryResponse, error) {
+	return a.RemoteManager.GetDownloadStatus(url, mediaType, track)
 }
 
 // Pause pauses current playback

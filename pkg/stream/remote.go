@@ -102,20 +102,20 @@ func (p *RemoteHandler) getTrackManager(trackType string) *remote.TrackManager {
 
 // ServeTrackPlaylist generates video or audio track playlists
 func (p *RemoteHandler) ServeTrackPlaylist(ctx context.Context, trackType string) (string, error) {
-	playlist := &hls.TrackPlaylist{}
-
 	trackManager := p.getTrackManager(trackType)
+	playlist := *trackManager.Manifest
+	playlist.Segments = make([]*hls.Segment, len(trackManager.Manifest.Segments))
+
 	cumulativeTime := 0.0
 	baseTime := time.Now()
 
 	for index, segment := range trackManager.Manifest.Segments {
+		copy := *segment
 		// Add program date time for each segment to help with sync
 		segmentTime := baseTime.Add(time.Duration(cumulativeTime * float64(time.Second)))
-		playlist.Segments = append(playlist.Segments, &hls.Segment{
-			ProgramDateTime: segmentTime.Format(time.RFC3339Nano),
-			Duration:        segment.Duration,
-			URI:             urlhelper.UPrintf("/%s/segment_%d.ts", trackType, index),
-		})
+		copy.ProgramDateTime = segmentTime.Format(time.RFC3339Nano)
+		copy.URI = urlhelper.Parse(fmt.Sprintf("/%s/segment_%d.ts", trackType, index))
+		playlist.Segments[index] = &copy
 		cumulativeTime += segment.Duration
 	}
 

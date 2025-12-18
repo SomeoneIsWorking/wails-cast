@@ -24,26 +24,30 @@ type ExtractionData struct {
 	ManifestURL string
 }
 
-func (m *RemoteManager) GetDownloadStatus(filenameOrUrl string, mediaType string, track int) (*DownloadStatus, error) {
-	media, err := m.GetMedia(filenameOrUrl)
-	if err != nil {
-		return nil, err
-	}
-	return media.GetDownloadStatus(mediaType, track)
-}
-
-func (m *RemoteManager) StopDownload(url string, mediaType string, index int) (*DownloadStatus, error) {
+func (m *RemoteManager) GetDownloadStatus(url string, mediaType string, track int) (*DownloadStatusQeuryResponse, error) {
 	media, err := m.GetMedia(url)
 	if err != nil {
 		return nil, err
+	}
+	status, err := media.GetDownloadStatus(mediaType, track)
+	if err != nil {
+		return nil, err
+	}
+	return status, nil
+}
+
+func (m *RemoteManager) StopDownload(url string, mediaType string, index int) error {
+	media, err := m.GetMedia(url)
+	if err != nil {
+		return err
 	}
 	return media.StopDownload(mediaType, index)
 }
 
-func (m *RemoteManager) StartDownload(url string, mediaType string, index int) (*DownloadStatus, error) {
+func (m *RemoteManager) StartDownload(url string, mediaType string, index int) error {
 	media, err := m.GetMedia(url)
 	if err != nil {
-		return nil, err
+		return err
 	}
 	return media.StartDownload(mediaType, index)
 }
@@ -101,6 +105,7 @@ func (m *RemoteManager) GetMedia(url string) (*MediaManager, error) {
 	}
 
 	mediaItem := NewMediaManager(
+		url,
 		folders.Video(url),
 		extractionData.Title,
 		urlhelper.Parse(extractionData.ManifestURL),

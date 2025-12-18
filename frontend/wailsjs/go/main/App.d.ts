@@ -18,13 +18,15 @@ export function DeleteTranscodedCache():Promise<void>;
 
 export function DiscoverDevices():Promise<Array<main.Device>>;
 
+export function Export():Promise<main.AppExports>;
+
 export function ExportEmbeddedSubtitles(arg1:string):Promise<void>;
 
 export function GenerateTranslationPrompt(arg1:string,arg2:string):Promise<string>;
 
 export function GetCacheStats():Promise<folders.CacheStats>;
 
-export function GetDownloadStatus(arg1:string,arg2:string,arg3:number):Promise<remote.DownloadStatus>;
+export function GetDownloadStatus(arg1:string,arg2:string,arg3:number):Promise<remote.DownloadStatusQeuryResponse>;
 
 export function GetFFmpegInfo(arg1:boolean):Promise<ffmpeg.FFmpegInfo>;
 
@@ -60,9 +62,9 @@ export function ResetSettings():Promise<main.Settings>;
 
 export function SeekTo(arg1:number):Promise<void>;
 
-export function StartDownload(arg1:string,arg2:string,arg3:number):Promise<remote.DownloadStatus>;
+export function StartDownload(arg1:string,arg2:string,arg3:number):Promise<void>;
 
-export function StopDownload(arg1:string,arg2:string,arg3:number):Promise<remote.DownloadStatus>;
+export function StopDownload(arg1:string,arg2:string,arg3:number):Promise<void>;
 
 export function StopPlayback():Promise<void>;
 

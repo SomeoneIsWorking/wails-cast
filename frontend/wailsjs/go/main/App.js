@@ -26,6 +26,10 @@ export function DiscoverDevices() {
   return window['go']['main']['App']['DiscoverDevices']();
 }
 
+export function Export() {
+  return window['go']['main']['App']['Export']();
+}
+
 export function ExportEmbeddedSubtitles(arg1) {
   return window['go']['main']['App']['ExportEmbeddedSubtitles'](arg1);
 }
