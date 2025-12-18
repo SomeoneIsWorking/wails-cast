@@ -20,3 +20,7 @@
             - One AudioTrack (optional)
             - One SubtitleTrack (optional)
         - Calls Remote Media State to download segments as needed
+- [ ] Add custom commands to
+    - Serve subtitles 
+    - Adjust subtitle size
+    
