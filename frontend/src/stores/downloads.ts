@@ -23,8 +23,7 @@ export const useDownloadsStore = defineStore("downloads", () => {
     mediaType: string,
     track: number
   ) => {
-    const status = await StartDownload(url, mediaType, track);
-    downloads.value[`${url}|${mediaType}|${track}`] = status;
+    StartDownload(url, mediaType, track);
   };
 
   const stopDownload = async (
@@ -32,15 +31,10 @@ export const useDownloadsStore = defineStore("downloads", () => {
     mediaType: string,
     track: number
   ) => {
-    const status = await StopDownload(url, mediaType, track);
-    downloads.value[`${url}|${mediaType}|${track}`] = status;
+    await StopDownload(url, mediaType, track);
   };
   // Actions
-  const getDownloadState = (
-    url: string,
-    mediaType: string,
-    track: number
-  ): remote.DownloadStatus | undefined => {
+  const getDownloadState = (url: string, mediaType: string, track: number) => {
     const key = `${url}|${mediaType}|${track}`;
     return downloads.value[key];
   };
@@ -51,7 +45,13 @@ export const useDownloadsStore = defineStore("downloads", () => {
     track: number
   ) => {
     const status = await GetDownloadStatus(url, mediaType, track);
-    downloads.value[`${url}|${mediaType}|${track}`] = status;
+    downloads.value[`${url}|${mediaType}|${track}`] = {
+      URL: url,
+      MediaType: mediaType,
+      Track: track,
+      Status: status.Status,
+      Segments: status.Segments,
+    };
   };
 
   return {

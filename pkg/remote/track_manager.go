@@ -27,19 +27,24 @@ type TrackManager struct {
 	DownloadedSegments []bool
 }
 
-func (this *TrackManager) StopDownload() (*DownloadStatus, error) {
+type DownloadStatusQeuryResponse struct {
+	Status   string
+	Segments []bool
+}
+
+func (this *TrackManager) StopDownload() error {
 	panic("unimplemented")
 }
 
-func (this *TrackManager) StartDownload() (*DownloadStatus, error) {
+func (this *TrackManager) StartDownload() error {
 	panic("unimplemented")
 }
 
-func (this *TrackManager) GetDownloadStatus() (*DownloadStatus, error) {
-	return &DownloadStatus{
+func (this *TrackManager) GetDownloadStatus() *DownloadStatusQeuryResponse {
+	return &DownloadStatusQeuryResponse{
 		Status:   this.DownloadStatus,
 		Segments: this.DownloadedSegments,
-	}, nil
+	}
 }
 
 func (this *TrackManager) StopAndClear() error {
@@ -63,6 +68,7 @@ func NewTrackManager(
 	trackType string,
 	trackIndex int,
 	storageDirectory string,
+	cacheChannel chan int,
 ) *TrackManager {
 	return &TrackManager{
 		FileDownloader:     fileDownloader,
@@ -74,6 +80,8 @@ func NewTrackManager(
 		TrackIndex:         trackIndex,
 		StorageDirectory:   storageDirectory,
 		DownloadedSegments: computeDownloadedSegments(folder, len(manifest.Segments)),
+		cacheChannel:       cacheChannel,
+		DownloadStatus:     "IDLE",
 	}
 }
 
@@ -124,12 +132,17 @@ func (this *TrackManager) GetSegment(ctx context.Context, segmentIndex int) (*mi
 	}
 
 	if filehelper.WriteFile(cachePath, data) == nil {
-		select {
-		case this.cacheChannel <- segmentIndex:
-		default:
-		}
+		this.DownloadedSegments[segmentIndex] = true
+		this.statusUpdate()
 	}
 	return mix.File(cachePath), nil
+}
+
+func (this *TrackManager) statusUpdate() {
+	select {
+	case this.cacheChannel <- 0:
+	default:
+	}
 }
 
 func getSegmentPath(folder string, segmentIndex int) string {

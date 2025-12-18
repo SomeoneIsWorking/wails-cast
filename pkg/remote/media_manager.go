@@ -5,10 +5,17 @@ import (
 	"fmt"
 	"net/url"
 	"path/filepath"
+	"wails-cast/pkg/events"
 	"wails-cast/pkg/hls"
 )
 
+type CacheProgress struct {
+	TrackType  string
+	TrackIndex int
+}
+
 type MediaManager struct {
+	URL            string
 	Title          string
 	Items          map[string]*TrackManager
 	FileDownloader *FileDownloader
@@ -16,30 +23,32 @@ type MediaManager struct {
 	ManifestURL    *url.URL
 	RootDir        string
 	Cache          bool
+	cacheChannel   chan *CacheProgress
 }
 
-func (this *MediaManager) StartDownload(mediaType string, index int) (*DownloadStatus, error) {
+func (this *MediaManager) StartDownload(mediaType string, index int) error {
 	trackManager, err := this.GetTrack(context.Background(), mediaType, index)
 	if err != nil {
-		return nil, err
+		return err
 	}
 	return trackManager.StartDownload()
 }
 
-func (this *MediaManager) StopDownload(mediaType string, index int) (*DownloadStatus, error) {
+func (this *MediaManager) StopDownload(mediaType string, index int) error {
 	trackManager, err := this.GetTrack(context.Background(), mediaType, index)
 	if err != nil {
-		return nil, err
+		return err
 	}
 	return trackManager.StopDownload()
 }
 
-func (this *MediaManager) GetDownloadStatus(mediaType string, track int) (*DownloadStatus, error) {
+func (this *MediaManager) GetDownloadStatus(mediaType string, track int) (*DownloadStatusQeuryResponse, error) {
 	trackManager, err := this.GetTrack(context.Background(), mediaType, track)
 	if err != nil {
 		return nil, err
 	}
-	return trackManager.GetDownloadStatus()
+	status := trackManager.GetDownloadStatus()
+	return status, nil
 }
 
 func (this *MediaManager) StopAllAndClear() error {
@@ -61,6 +70,7 @@ func (this *MediaManager) GetDuration() float64 {
 }
 
 func NewMediaManager(
+	url string,
 	rootDir string,
 	title string,
 	manifestUrl *url.URL,
@@ -69,6 +79,7 @@ func NewMediaManager(
 	cache bool,
 ) *MediaManager {
 	return &MediaManager{
+		URL:            url,
 		RootDir:        rootDir,
 		Items:          make(map[string]*TrackManager),
 		FileDownloader: fileDownloader,
@@ -96,6 +107,8 @@ func (this *MediaManager) GetTrack(
 		return nil, err
 	}
 
+	cacheChannel := make(chan int)
+
 	trackManager := NewTrackManager(
 		*this.FileDownloader,
 		trackManifest,
@@ -105,7 +118,21 @@ func (this *MediaManager) GetTrack(
 		trackType,
 		trackIndex,
 		filepath.Join(this.RootDir, key),
+		cacheChannel,
 	)
+
+	go func() {
+		for range cacheChannel {
+			events.Emit("download:progress", &DownloadStatus{
+				Status:    trackManager.DownloadStatus,
+				Segments:  trackManager.DownloadedSegments,
+				URL:       this.URL,
+				MediaType: trackType,
+				Track:     trackIndex,
+			})
+		}
+	}()
+	
 	this.Items[key] = trackManager
 	return trackManager, nil
 }

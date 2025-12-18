@@ -51,6 +51,9 @@ export namespace hls {
 
 export namespace main {
 	
+	export interface AppExports {
+	    DownloadStatus: remote.DownloadStatus;
+	}
 	export interface Device {
 	    name: string;
 	    type: string;
@@ -127,6 +130,10 @@ export namespace remote {
 	    URL: string;
 	    MediaType: string;
 	    Track: number;
+	}
+	export interface DownloadStatusQeuryResponse {
+	    Status: string;
+	    Segments: boolean[];
 	}
 
 }

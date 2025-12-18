@@ -50,7 +50,7 @@ func (s *LocalHandler) ServeManifestPlaylist(ctx context.Context) (string, error
 			{
 				Index:  0,
 				Codecs: "avc1.4d401f,mp4a.40.2",
-				URI:    urlhelper.Parse("video.m3u8"),
+				URI:    urlhelper.Parse("/video.m3u8"),
 			},
 		},
 	}
@@ -59,7 +59,7 @@ func (s *LocalHandler) ServeManifestPlaylist(ctx context.Context) (string, error
 	if s.Options.Subtitle.Path != "none" && !s.Options.Subtitle.BurnIn {
 		manifestPlaylist.SubtitleTracks = []hls.SubtitleTrack{
 			{
-				URI:        urlhelper.Parse("subtitles.vtt"),
+				URI:        urlhelper.Parse("/subtitles.vtt"),
 				GroupID:    "subs",
 				Name:       "Subtitles",
 				Language:   "en",
@@ -147,7 +147,7 @@ func (s *LocalHandler) ServeSegment(ctx context.Context, trackType string, segme
 }
 
 func (s *LocalHandler) transcodeSegment(ctx context.Context, target *mix.TargetFileOrBuffer, startTime float64) (*mix.FileOrBuffer, error) {
-	ensureSymlink(s.VideoPath, folders.Video(s.VideoPath))
+	input := ensureSymlink(s.VideoPath, folders.Video(s.VideoPath))
 	var subtitle *ffmpeg.SubtitleTranscodeOptions = nil
 
 	if s.Options.Subtitle.BurnIn {
@@ -162,8 +162,7 @@ func (s *LocalHandler) transcodeSegment(ctx context.Context, target *mix.TargetF
 		Bitrate:        s.Options.Bitrate,
 	}
 
-	input := mix.File(filepath.Join(folders.Video(s.VideoPath), "input_video"))
-	output, err := ffmpeg.TranscodeSegment(ctx, input, target, opts)
+	output, err := ffmpeg.TranscodeSegment(ctx, mix.File(input), target, opts)
 
 	if err != nil {
 		return nil, err
@@ -172,11 +171,12 @@ func (s *LocalHandler) transcodeSegment(ctx context.Context, target *mix.TargetF
 	return output, err
 }
 
-func ensureSymlink(filePath string, folder string) {
+func ensureSymlink(filePath string, folder string) string {
+	filehelper.EnsureDir(folder)
 	linkPath := filepath.Join(folder, "input_video")
-	if _, err := os.Lstat(linkPath); os.IsNotExist(err) {
-		os.Symlink(filePath, linkPath)
-	}
+	os.Remove(linkPath)
+	os.Symlink(filePath, linkPath)
+	return linkPath
 }
 
 func (s *LocalHandler) cacheFile(segmentName string) string {
