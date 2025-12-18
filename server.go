@@ -199,7 +199,7 @@ func (s *Server) handleRequest(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Access-Control-Allow-Origin", "*")
 		w.Header().Set("Content-Type", "text/vtt")
 		w.Header().Set("Cache-Control", "public, max-age=31536000")
-		w.Write([]byte(subtitleContent))
+		subtitleContent.Serve(w, r)
 		return
 	}
 

@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strings"
 	"time"
 
 	"wails-cast/pkg/ffmpeg"
@@ -14,7 +13,6 @@ import (
 	"wails-cast/pkg/hls"
 	"wails-cast/pkg/mix"
 	"wails-cast/pkg/options"
-	"wails-cast/pkg/subtitles"
 	"wails-cast/pkg/urlhelper"
 )
 
@@ -35,10 +33,11 @@ func NewLocalHandler(videoPath string, options options.StreamOptions) *LocalHand
 	}
 
 	return &LocalHandler{
-		VideoPath:   videoPath,
-		Options:     options,
-		Duration:    duration,
-		SegmentSize: 8,
+		VideoPath:        videoPath,
+		Options:          options,
+		Duration:         duration,
+		SegmentSize:      8,
+		StorageDirectory: folders.Video(videoPath),
 	}
 }
 
@@ -147,11 +146,24 @@ func (s *LocalHandler) ServeSegment(ctx context.Context, trackType string, segme
 }
 
 func (s *LocalHandler) transcodeSegment(ctx context.Context, target *mix.TargetFileOrBuffer, startTime float64) (*mix.FileOrBuffer, error) {
-	input := ensureSymlink(s.VideoPath, folders.Video(s.VideoPath))
+	linkPath := filepath.Join(s.StorageDirectory, "input_video")
+	err := filehelper.EnsureSymlink(s.VideoPath, linkPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create symlink: %w", err)
+	}
+
 	var subtitle *ffmpeg.SubtitleTranscodeOptions = nil
 
 	if s.Options.Subtitle.BurnIn {
-		subtitle = &ffmpeg.SubtitleTranscodeOptions{}
+		path := filepath.Join(s.StorageDirectory, "subtitles.vtt")
+		_, err := s.getSubtitles(mix.FileTarget(path))
+		if err != nil {
+			return nil, fmt.Errorf("failed to get subtitles for burn-in: %w", err)
+		}
+		subtitle = &ffmpeg.SubtitleTranscodeOptions{
+			Path:     path,
+			FontSize: s.Options.Subtitle.FontSize,
+		}
 	}
 
 	opts := &ffmpeg.TranscodeOptions{
@@ -162,7 +174,7 @@ func (s *LocalHandler) transcodeSegment(ctx context.Context, target *mix.TargetF
 		Bitrate:        s.Options.Bitrate,
 	}
 
-	output, err := ffmpeg.TranscodeSegment(ctx, mix.File(input), target, opts)
+	output, err := ffmpeg.TranscodeSegment(ctx, mix.File(linkPath), target, opts)
 
 	if err != nil {
 		return nil, err
@@ -171,54 +183,45 @@ func (s *LocalHandler) transcodeSegment(ctx context.Context, target *mix.TargetF
 	return output, err
 }
 
-func ensureSymlink(filePath string, folder string) string {
-	filehelper.EnsureDir(folder)
-	linkPath := filepath.Join(folder, "input_video")
-	os.Remove(linkPath)
-	os.Symlink(filePath, linkPath)
-	return linkPath
-}
-
 func (s *LocalHandler) cacheFile(segmentName string) string {
 	return filepath.Join(folders.Video(s.VideoPath), segmentName)
 }
 
 // ServeSubtitles returns the subtitle file in WebVTT format
-func (this *LocalHandler) ServeSubtitles(ctx context.Context) (string, error) {
+func (this *LocalHandler) ServeSubtitles(ctx context.Context) (*mix.FileOrBuffer, error) {
 	if this.Options.Subtitle.Path == "none" || this.Options.Subtitle.BurnIn {
-		return "", fmt.Errorf("no external subtitles available")
+		return nil, fmt.Errorf("no external subtitles available")
 	}
 
+	return this.getSubtitles(mix.BufferTarget())
+}
+
+func (this *LocalHandler) getSubtitles(target *mix.TargetFileOrBuffer) (*mix.FileOrBuffer, error) {
+	subtitles, err := this.readSubtitles(target)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read subtitles: %w", err)
+	}
+	return ProcessSubtitles(subtitles, target, this.Options.Subtitle.IgnoreClosedCaptions)
+}
+
+func (this *LocalHandler) readSubtitles(target *mix.TargetFileOrBuffer) (*mix.FileOrBuffer, error) {
 	subtitlePath := this.Options.Subtitle.Path
 
 	// Handle external subtitle format
-	if path, found := strings.CutPrefix(subtitlePath, "external:"); found {
-		subtitlePath = path
-	} else if embeddedIndex, err := ffmpeg.GetEmbeddedIndex(subtitlePath); err == nil {
-		cachedPath := filepath.Join(this.StorageDirectory, fmt.Sprintf("subtitle_%d.vtt", embeddedIndex))
-		ffmpeg.ExtractSubtitle(this.VideoPath, embeddedIndex, cachedPath)
-		subtitlePath = cachedPath
+	if path, found := GetExternalPath(subtitlePath); found {
+		if target.IsBuffer {
+			data, err := os.ReadFile(path)
+			if err != nil {
+				return nil, fmt.Errorf("failed to read subtitle file: %w", err)
+			}
+			return mix.Buffer(data), nil
+		} else {
+			filehelper.EnsureSymlink(path, target.FilePath)
+			return target.ToOutput(), nil
+		}
+	} else if index, found := GetEmbeddedIndex(subtitlePath); found {
+		return ffmpeg.ExtractSubtitle(this.VideoPath, index, target)
 	}
 
-	// Read subtitle file
-	data, err := os.ReadFile(subtitlePath)
-	if err != nil {
-		return "", fmt.Errorf("failed to read subtitle file: %w", err)
-	}
-
-	// Check if it's already WebVTT
-	content := string(data)
-
-	// Otherwise parse and convert to WebVTT
-	subtitles, err := subtitles.Parse(content)
-	if err != nil {
-		return "", fmt.Errorf("failed to parse subtitle file: %w", err)
-	}
-
-	// Apply IgnoreClosedCaptions option if requested
-	if this.Options.Subtitle.IgnoreClosedCaptions {
-		subtitles = subtitles.RemoveClosedCaptions()
-	}
-
-	return subtitles.ToWebVTTString(), nil
+	return nil, fmt.Errorf("unsupported subtitle path format %s", subtitlePath)
 }

@@ -32,7 +32,7 @@ const handleExportSubtitles = async () => {
 
   isExporting.value = true;
   try {
-    await ExportEmbeddedSubtitles(trackInfo.value.path);
+    await ExportEmbeddedSubtitles(trackInfo.value.Path);
     toast.success("Subtitles exported successfully!");
   } finally {
     isExporting.value = false;
@@ -49,7 +49,7 @@ const handleTranslateSubtitles = async () => {
   isTranslating.value = true;
   try {
     await TranslateExportedSubtitles(
-      trackInfo.value.path,
+      trackInfo.value.Path,
       targetLanguage.value
     );
     toast.info(`Translation started for ${targetLanguage.value}`);
@@ -63,7 +63,7 @@ const handleGeneratePrompt = async () => {
   if (!trackInfo.value) return;
   try {
     const prompt = await GenerateTranslationPrompt(
-      trackInfo.value.path,
+      trackInfo.value.Path,
       targetLanguage.value
     );
     generatedPrompt.value = prompt || "";
@@ -81,7 +81,7 @@ const handleProcessPasted = async () => {
   }
   try {
     await ProcessPastedTranslation(
-      trackInfo.value.path,
+      trackInfo.value.Path,
       targetLanguage.value,
       pastedAnswer.value
     );

@@ -22,5 +22,5 @@ type StreamHandler interface {
 
 	// ServeSubtitles returns the subtitle file in WebVTT format
 	// Returns the subtitle content as string and any error encountered
-	ServeSubtitles(ctx context.Context) (string, error)
+	ServeSubtitles(ctx context.Context) (*mix.FileOrBuffer, error)
 }

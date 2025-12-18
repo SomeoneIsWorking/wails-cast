@@ -69,7 +69,7 @@ export const useCastStore = defineStore("cast", () => {
   const setTrackInfo = (info: main.TrackDisplayInfo) => {
     trackInfo.value = info;
     const historyItem = historyStore.items.find(
-      (item) => item.path === info.path
+      (item) => item.path === info.Path
     );
 
     const historyCastOptions = historyItem?.castOptions;
@@ -89,8 +89,8 @@ export const useCastStore = defineStore("cast", () => {
         VideoTrack: 0,
         AudioTrack: 0,
         Bitrate: settingsStore.settings.defaultQuality,
-        SubtitleType: info?.nearSubtitle ? "external" : "none",
-        SubtitlePath: info?.nearSubtitle || "",
+        SubtitleType: info?.NearSubtitle ? "external" : "none",
+        SubtitlePath: info?.NearSubtitle || "",
       };
     }
   };

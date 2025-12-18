@@ -22,37 +22,14 @@ export namespace folders {
 
 }
 
-export namespace hls {
-	
-	export interface AudioTrack {
-	    URI?: url.URL;
-	    GroupID: string;
-	    Name: string;
-	    Language: string;
-	    Default: boolean;
-	    Autoselect: boolean;
-	    Channels: string;
-	    Attrs: Record<string, string>;
-	    Index: number;
-	}
-	export interface VideoTrack {
-	    URI?: url.URL;
-	    Bandwidth: number;
-	    Codecs: string;
-	    Resolution: string;
-	    FrameRate: number;
-	    Audio: string;
-	    Subtitles: string;
-	    Attrs: Record<string, string>;
-	    Index: number;
-	}
-
-}
-
 export namespace main {
 	
 	export interface AppExports {
 	    DownloadStatus: remote.DownloadStatus;
+	}
+	export interface AudioTracksDisplayItem {
+	    Index: number;
+	    Language: string;
 	}
 	export interface Device {
 	    name: string;
@@ -92,15 +69,20 @@ export namespace main {
 	    noTranscodeCache: boolean;
 	}
 	export interface SubtitleDisplayItem {
-	    path: string;
-	    label: string;
+	    Path: string;
+	    Label: string;
+	}
+	export interface VideoTrackDisplayItem {
+	    Index: number;
+	    Codecs: string;
+	    Resolution: string;
 	}
 	export interface TrackDisplayInfo {
-	    videoTracks: hls.VideoTrack[];
-	    audioTracks: hls.AudioTrack[];
-	    subtitleTracks: SubtitleDisplayItem[];
-	    path: string;
-	    nearSubtitle: string;
+	    VideoTracks: VideoTrackDisplayItem[];
+	    AudioTracks: AudioTracksDisplayItem[];
+	    SubtitleTracks: SubtitleDisplayItem[];
+	    Path: string;
+	    NearSubtitle: string;
 	}
 
 }
@@ -134,28 +116,6 @@ export namespace remote {
 	export interface DownloadStatusQeuryResponse {
 	    Status: string;
 	    Segments: boolean[];
-	}
-
-}
-
-export namespace url {
-	
-	export interface Userinfo {
-	
-	}
-	export interface URL {
-	    Scheme: string;
-	    Opaque: string;
-	    // Go type: Userinfo
-	    User?: any;
-	    Host: string;
-	    Path: string;
-	    RawPath: string;
-	    OmitHost: boolean;
-	    ForceQuery: boolean;
-	    RawQuery: string;
-	    Fragment: string;
-	    RawFragment: string;
 	}
 
 }

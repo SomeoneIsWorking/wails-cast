@@ -34,8 +34,6 @@ export function GetHistory():Promise<Array<main.HistoryItem>>;
 
 export function GetMediaFiles(arg1:string):Promise<Array<string>>;
 
-export function GetMediaURL():Promise<string>;
-
 export function GetSettings():Promise<main.Settings>;
 
 export function GetSubtitleURL(arg1:string):Promise<string>;
