@@ -2,10 +2,10 @@ package hls
 
 import (
 	"fmt"
+	"net/url"
 	"regexp"
 	"strconv"
 	"strings"
-	"wails-cast/pkg/urlhelper"
 )
 
 // ParseManifestPlaylist parses a manifest playlist
@@ -46,10 +46,13 @@ func parseManifestPlaylist(lines []string) (*ManifestPlaylist, error) {
 
 			switch mediaType {
 			case "AUDIO":
-				groupId := extractAttribute(line, "GROUP-ID")
+				url, err := url.Parse(extractAttribute(line, "URI"))
+				if err != nil {
+					return nil, err
+				}
 				audio := AudioTrack{
-					URI:        urlhelper.Parse(extractAttribute(line, "URI")),
-					GroupID:    groupId,
+					URI:        url,
+					GroupID:    extractAttribute(line, "GROUP-ID"),
 					Name:       extractAttribute(line, "NAME"),
 					Language:   extractAttribute(line, "LANGUAGE"),
 					Default:    extractAttribute(line, "DEFAULT") == "YES",
@@ -60,10 +63,13 @@ func parseManifestPlaylist(lines []string) (*ManifestPlaylist, error) {
 				}
 				manifest.AudioTracks = append(manifest.AudioTracks, audio)
 			case "SUBTITLES":
-				groupId := extractAttribute(line, "GROUP-ID")
+				url, err := url.Parse(extractAttribute(line, "URI"))
+				if err != nil {
+					return nil, err
+				}
 				subtitle := SubtitleTrack{
-					URI:        urlhelper.Parse(extractAttribute(line, "URI")),
-					GroupID:    groupId,
+					URI:        url,
+					GroupID:    extractAttribute(line, "GROUP-ID"),
 					Name:       extractAttribute(line, "NAME"),
 					Language:   extractAttribute(line, "LANGUAGE"),
 					Default:    extractAttribute(line, "DEFAULT") == "YES",
@@ -93,7 +99,11 @@ func parseManifestPlaylist(lines []string) (*ManifestPlaylist, error) {
 			// Next line is the URI
 			if i+1 < len(lines) && !strings.HasPrefix(lines[i+1], "#") {
 				i++
-				variant.URI = urlhelper.Parse(lines[i])
+				url, err := url.Parse(lines[i])
+				if err != nil {
+					return nil, err
+				}
+				variant.URI = url
 			}
 
 			manifest.VideoTracks = append(manifest.VideoTracks, variant)

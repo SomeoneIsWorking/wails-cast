@@ -6,13 +6,13 @@ import (
 )
 
 func UPrintf(format string, args ...any) *url.URL {
-	return Parse(fmt.Sprintf(format, args...))
+	return ParseFixed(fmt.Sprintf(format, args...))
 }
 
-func Parse(rawurl string) *url.URL {
+func ParseFixed(rawurl string) *url.URL {
 	url, err := url.Parse(rawurl)
 	if err != nil {
-		return nil
+		panic(err)
 	}
 	return url
 }
