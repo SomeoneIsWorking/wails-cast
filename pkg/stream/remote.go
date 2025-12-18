@@ -66,7 +66,7 @@ func (this *RemoteHandler) ServeManifestPlaylist(ctx context.Context) (string, e
 	if this.Options.Subtitle.Path != "none" && !this.Options.Subtitle.BurnIn {
 		playlist.SubtitleTracks = []hls.SubtitleTrack{
 			{
-				URI:        urlhelper.Parse("/subtitles.vtt"),
+				URI:        urlhelper.ParseFixed("/subtitles.vtt"),
 				GroupID:    "subs",
 				Name:       "Subtitles",
 				Language:   "en",
@@ -80,12 +80,12 @@ func (this *RemoteHandler) ServeManifestPlaylist(ctx context.Context) (string, e
 
 	videoVariant := this.Manifest.VideoTracks[this.Options.VideoTrack]
 	videoVariant.Resolution = ""
-	videoVariant.URI = urlhelper.Parse("/video.m3u8")
+	videoVariant.URI = urlhelper.ParseFixed("/video.m3u8")
 	videoVariant.Subtitles = "subs"
 
 	if len(this.Manifest.AudioTracks) > 0 {
 		audio := this.Manifest.AudioTracks[this.Options.AudioTrack]
-		audio.URI = urlhelper.Parse("/audio.m3u8")
+		audio.URI = urlhelper.ParseFixed("/audio.m3u8")
 		playlist.AudioTracks = []hls.AudioTrack{audio}
 	}
 
@@ -114,7 +114,7 @@ func (this *RemoteHandler) ServeTrackPlaylist(ctx context.Context, trackType str
 		// Add program date time for each segment to help with sync
 		segmentTime := baseTime.Add(time.Duration(cumulativeTime * float64(time.Second)))
 		copy.ProgramDateTime = segmentTime.Format(time.RFC3339Nano)
-		copy.URI = urlhelper.Parse(fmt.Sprintf("/%s/segment_%d.ts", trackType, index))
+		copy.URI = urlhelper.UPrintf("/%s/segment_%d.ts", trackType, index)
 		playlist.Segments[index] = &copy
 		cumulativeTime += segment.Duration
 	}

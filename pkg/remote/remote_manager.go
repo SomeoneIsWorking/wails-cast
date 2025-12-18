@@ -8,7 +8,6 @@ import (
 	"wails-cast/pkg/filehelper"
 	"wails-cast/pkg/folders"
 	"wails-cast/pkg/hls"
-	"wails-cast/pkg/urlhelper"
 )
 
 type RemoteManager struct {
@@ -104,11 +103,15 @@ func (m *RemoteManager) GetMedia(url string) (*MediaManager, error) {
 		}
 	}
 
+	manifestUrl, err := u.Parse(extractionData.ManifestURL)
+	if err != nil {
+		return nil, err
+	}
 	mediaItem := NewMediaManager(
 		url,
 		folders.Video(url),
 		extractionData.Title,
-		urlhelper.Parse(extractionData.ManifestURL),
+		manifestUrl,
 		manifest,
 		&FileDownloader{
 			Cookies: extractionData.Cookies,

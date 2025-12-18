@@ -49,7 +49,7 @@ func (s *LocalHandler) ServeManifestPlaylist(ctx context.Context) (string, error
 			{
 				Index:  0,
 				Codecs: "avc1.4d401f,mp4a.40.2",
-				URI:    urlhelper.Parse("/video.m3u8"),
+				URI:    urlhelper.ParseFixed("/video.m3u8"),
 			},
 		},
 	}
@@ -58,7 +58,7 @@ func (s *LocalHandler) ServeManifestPlaylist(ctx context.Context) (string, error
 	if s.Options.Subtitle.Path != "none" && !s.Options.Subtitle.BurnIn {
 		manifestPlaylist.SubtitleTracks = []hls.SubtitleTrack{
 			{
-				URI:        urlhelper.Parse("/subtitles.vtt"),
+				URI:        urlhelper.ParseFixed("/subtitles.vtt"),
 				GroupID:    "subs",
 				Name:       "Subtitles",
 				Language:   "en",
