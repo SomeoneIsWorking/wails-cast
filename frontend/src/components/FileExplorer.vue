@@ -17,6 +17,7 @@ const isLoading = ref(false);
 
 const handleCast = async (mediaPath: string) => {
   if (!store.selectedDevice) return;
+  if (isLoading.value) return;
 
   isLoading.value = true;
   try {
