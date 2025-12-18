@@ -54,23 +54,6 @@ func (s *LocalHandler) ServeManifestPlaylist(ctx context.Context) (string, error
 		},
 	}
 
-	// Add subtitle track if available and not burned in
-	if s.Options.Subtitle.Path != "none" && !s.Options.Subtitle.BurnIn {
-		manifestPlaylist.SubtitleTracks = []hls.SubtitleTrack{
-			{
-				URI:        urlhelper.ParseFixed("/subtitles.vtt"),
-				GroupID:    "subs",
-				Name:       "Subtitles",
-				Language:   "en",
-				Default:    true,
-				Autoselect: true,
-				Forced:     false,
-				Index:      0,
-			},
-		}
-		manifestPlaylist.VideoTracks[0].Subtitles = "subs"
-	}
-
 	return manifestPlaylist.Generate(), nil
 }
 

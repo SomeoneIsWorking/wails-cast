@@ -36,8 +36,6 @@ export function GetMediaFiles(arg1:string):Promise<Array<string>>;
 
 export function GetSettings():Promise<main.Settings>;
 
-export function GetSubtitleURL(arg1:string):Promise<string>;
-
 export function GetTrackDisplayInfo(arg1:string):Promise<main.TrackDisplayInfo>;
 
 export function LogError(arg1:string,arg2:Array<any>):Promise<void>;
@@ -59,6 +57,8 @@ export function RemoveFromHistory(arg1:string):Promise<void>;
 export function ResetSettings():Promise<main.Settings>;
 
 export function SeekTo(arg1:number):Promise<void>;
+
+export function SetSubtitleSize(arg1:number):Promise<void>;
 
 export function StartDownload(arg1:string,arg2:string,arg3:number):Promise<void>;
 

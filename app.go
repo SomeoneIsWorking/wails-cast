@@ -36,6 +36,7 @@ type App struct {
 	discovery     *DeviceDiscovery
 	mediaServer   *Server
 	localIp       string
+	port          int
 	playbackState PlaybackState
 	historyStore  *HistoryStore
 	settingsStore *SettingsStore
@@ -54,11 +55,12 @@ func (a *App) createApplication() {
 func NewApp() *App {
 	discovery := NewDeviceDiscovery()
 	localIP := discovery.GetLocalIP()
-
+	port := 8888
 	return &App{
 		discovery:     NewDeviceDiscovery(),
-		mediaServer:   NewServer(localIP, 8888),
+		mediaServer:   NewServer(localIP, port),
 		localIp:       localIP,
+		port:          port,
 		playbackState: PlaybackState{},
 		historyStore:  NewHistoryStore(),
 		settingsStore: NewSettingsStore(),
@@ -94,15 +96,7 @@ func (a *App) DiscoverDevices() []Device {
 
 // getMediaURL returns the URL for a media file to be cast
 func (a *App) getMediaURL() string {
-	return fmt.Sprintf("http://%s:%d/playlist.m3u8", a.localIp, 8888)
-}
-
-// GetSubtitleURL returns the URL for subtitle file (for Shaka player)
-func (a *App) GetSubtitleURL(subtitlePath string) string {
-	if subtitlePath == "" {
-		return ""
-	}
-	return "/subtitle.vtt"
+	return fmt.Sprintf("http://%s:%d/playlist.m3u8", a.localIp, a.port)
 }
 
 func (a *App) GetTrackDisplayInfo(fileNameOrUrl string) (*TrackDisplayInfo, error) {
@@ -280,6 +274,10 @@ func (a *App) CastToDevice(deviceIp string, fileNameOrUrl string, castOptions *o
 
 	// Add to history
 	a.historyStore.Add(fileNameOrUrl, name, castOptions)
+
+	if options.Subtitle.Path != "none" && !settings.SubtitleBurnIn {
+		a.sendSubtitles(fmt.Sprintf("http://%s:%d/subtitles.vtt", a.localIp, a.port))
+	}
 
 	return &a.playbackState, nil
 }

@@ -62,22 +62,6 @@ func NewRemoteHandler(
 func (this *RemoteHandler) ServeManifestPlaylist(ctx context.Context) (string, error) {
 	playlist := &hls.ManifestPlaylist{}
 
-	// Add subtitle track if available and not burned in
-	if this.Options.Subtitle.Path != "none" && !this.Options.Subtitle.BurnIn {
-		playlist.SubtitleTracks = []hls.SubtitleTrack{
-			{
-				URI:        urlhelper.ParseFixed("/subtitles.vtt"),
-				GroupID:    "subs",
-				Name:       "Subtitles",
-				Language:   "en",
-				Default:    true,
-				Autoselect: true,
-				Forced:     false,
-				Index:      0,
-			},
-		}
-	}
-
 	videoVariant := this.Manifest.VideoTracks[this.Options.VideoTrack]
 	videoVariant.Resolution = ""
 	videoVariant.URI = urlhelper.ParseFixed("/video.m3u8")

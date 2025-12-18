@@ -62,10 +62,6 @@ export function GetSettings() {
   return window['go']['main']['App']['GetSettings']();
 }
 
-export function GetSubtitleURL(arg1) {
-  return window['go']['main']['App']['GetSubtitleURL'](arg1);
-}
-
 export function GetTrackDisplayInfo(arg1) {
   return window['go']['main']['App']['GetTrackDisplayInfo'](arg1);
 }
@@ -108,6 +104,10 @@ export function ResetSettings() {
 
 export function SeekTo(arg1) {
   return window['go']['main']['App']['SeekTo'](arg1);
+}
+
+export function SetSubtitleSize(arg1) {
+  return window['go']['main']['App']['SetSubtitleSize'](arg1);
 }
 
 export function StartDownload(arg1, arg2, arg3) {

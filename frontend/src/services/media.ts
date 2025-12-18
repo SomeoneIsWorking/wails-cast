@@ -17,11 +17,6 @@ export const mediaService = {
     return await UpdateSubtitleSettings(options);
   },
 
-  async getSubtitleURL(subtitlePath: string): Promise<string> {
-    const { GetSubtitleURL } = await import("../../wailsjs/go/main/App");
-    return await GetSubtitleURL(subtitlePath);
-  },
-
   async getMediaFiles(dirPath: string): Promise<string[]> {
     const { GetMediaFiles } = await import("../../wailsjs/go/main/App");
     return await GetMediaFiles(dirPath);
