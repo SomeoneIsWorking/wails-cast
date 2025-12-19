@@ -27,7 +27,7 @@ go.work
 .DS_Store
 
 # Wails
-build/
+build/bin/
 dist/
 frontend/dist/
 frontend/node_modules/
