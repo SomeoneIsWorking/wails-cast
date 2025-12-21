@@ -3,6 +3,7 @@ package stream
 import (
 	"fmt"
 	"os"
+	"strings"
 	"wails-cast/pkg/mix"
 	"wails-cast/pkg/subtitles"
 )
@@ -17,12 +18,11 @@ func GetEmbeddedIndex(subtitlePath string) (int, bool) {
 }
 
 func GetExternalPath(subtitlePath string) (string, bool) {
-	var path string
-	n, err := fmt.Sscanf(subtitlePath, "external:%s", &path)
-	if n != 1 || err != nil {
-		return "", false
+	path, found := strings.CutPrefix(subtitlePath, "external:")
+	if found {
+		return path, true
 	}
-	return path, true
+	return "", false
 }
 
 func FoBToWebTT(file *mix.FileOrBuffer) (*subtitles.WebVTTJson, error) {
