@@ -65,7 +65,7 @@ func (this *RemoteHandler) ServeManifestPlaylist(ctx context.Context) (string, e
 	videoVariant := this.Manifest.VideoTracks[this.Options.VideoTrack]
 	videoVariant.Resolution = ""
 	videoVariant.URI = urlhelper.ParseFixed("/video.m3u8")
-	videoVariant.Subtitles = "subs"
+	videoVariant.Subtitles = ""
 
 	if len(this.Manifest.AudioTracks) > 0 {
 		audio := this.Manifest.AudioTracks[this.Options.AudioTrack]
