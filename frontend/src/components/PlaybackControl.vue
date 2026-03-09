@@ -50,6 +50,9 @@
 
       <!-- Controls -->
       <div class="flex items-center gap-2">
+        <!-- Volume controls -->
+        <VolumePopover />
+
         <div class="flex-1"></div>
         <button @click="seekRelative(-30)" class="btn-icon" title="Rewind 30s">
           <Rewind :size="18" />
@@ -82,6 +85,7 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted, computed } from "vue";
 import { mediaService } from "../services/media";
+import VolumePopover from "./VolumePopover.vue";
 import {
   Video,
   Pause,

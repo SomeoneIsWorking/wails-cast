@@ -58,7 +58,11 @@ export function ResetSettings():Promise<main.Settings>;
 
 export function SeekTo(arg1:number):Promise<void>;
 
+export function SetMuted(arg1:boolean):Promise<void>;
+
 export function SetSubtitleSize(arg1:number):Promise<void>;
+
+export function SetVolume(arg1:number):Promise<void>;
 
 export function StartDownload(arg1:string,arg2:string,arg3:number):Promise<void>;
 
