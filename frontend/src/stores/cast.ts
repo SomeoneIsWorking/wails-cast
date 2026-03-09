@@ -43,6 +43,8 @@ export const useCastStore = defineStore("cast", () => {
     deviceName: "",
     currentTime: 0,
     duration: 0,
+    volume: 1,
+    muted: false,
   });
 
   // Cast Options

@@ -42,6 +42,16 @@ export const mediaService = {
     return await Unpause();
   },
 
+  async setVolume(value: number): Promise<void> {
+    const { SetVolume } = await import("../../wailsjs/go/main/App");
+    return await SetVolume(value);
+  },
+
+  async setMuted(muted: boolean): Promise<void> {
+    const { SetMuted } = await import("../../wailsjs/go/main/App");
+    return await SetMuted(muted);
+  },
+
   isMediaFile(filePath: string): boolean {
     const extensions = [
       ".mp4",

@@ -44,4 +44,6 @@ type PlaybackState struct {
 	DeviceName  string  `json:"deviceName"`
 	CurrentTime float64 `json:"currentTime"`
 	Duration    float64 `json:"duration"`
+	Volume      float64 `json:"volume"`
+	Muted       bool    `json:"muted"`
 }

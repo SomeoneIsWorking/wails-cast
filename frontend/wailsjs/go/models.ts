@@ -54,6 +54,8 @@ export namespace main {
 	    deviceName: string;
 	    currentTime: number;
 	    duration: number;
+	    volume: number;
+	    muted: boolean;
 	}
 	export interface Settings {
 	    subtitleBurnIn: boolean;

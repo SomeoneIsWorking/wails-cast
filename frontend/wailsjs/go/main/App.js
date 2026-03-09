@@ -106,8 +106,16 @@ export function SeekTo(arg1) {
   return window['go']['main']['App']['SeekTo'](arg1);
 }
 
+export function SetMuted(arg1) {
+  return window['go']['main']['App']['SetMuted'](arg1);
+}
+
 export function SetSubtitleSize(arg1) {
   return window['go']['main']['App']['SetSubtitleSize'](arg1);
+}
+
+export function SetVolume(arg1) {
+  return window['go']['main']['App']['SetVolume'](arg1);
 }
 
 export function StartDownload(arg1, arg2, arg3) {

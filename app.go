@@ -415,6 +415,38 @@ func (a *App) Unpause() error {
 	return nil
 }
 
+// SetVolume sets the volume of the Chromecast (0.0 to 1.0)
+func (a *App) SetVolume(value float32) error {
+	if a.App == nil {
+		return fmt.Errorf("no application active")
+	}
+	err := a.App.SetVolume(value)
+	if err != nil {
+		return err
+	}
+	a.mu.Lock()
+	a.playbackState.Volume = float64(value)
+	a.mu.Unlock()
+	events.Emit("playback:state", a.playbackState)
+	return nil
+}
+
+// SetMuted mutes or unmutes the Chromecast
+func (a *App) SetMuted(muted bool) error {
+	if a.App == nil {
+		return fmt.Errorf("no application active")
+	}
+	err := a.App.SetMuted(muted)
+	if err != nil {
+		return err
+	}
+	a.mu.Lock()
+	a.playbackState.Muted = muted
+	a.mu.Unlock()
+	events.Emit("playback:state", a.playbackState)
+	return nil
+}
+
 // StopPlayback stops current playback
 func (a *App) StopPlayback() error {
 	err := a.stopPlayback(true)
@@ -587,6 +619,22 @@ func (a *App) handleChromecastMessage(msg *cast_proto.CastMessage) {
 
 	// Handle different message types
 	switch msgType.Type {
+	case "RECEIVER_STATUS":
+		var resp struct {
+			Status struct {
+				Volume struct {
+					Level float64 `json:"level"`
+					Muted bool    `json:"muted"`
+				} `json:"volume"`
+			} `json:"status"`
+		}
+		if err := json.Unmarshal(messageBytes, &resp); err == nil {
+			a.mu.Lock()
+			a.playbackState.Volume = resp.Status.Volume.Level
+			a.playbackState.Muted = resp.Status.Volume.Muted
+			a.mu.Unlock()
+		}
+
 	case "MEDIA_STATUS":
 		var resp struct {
 			Status []struct {
