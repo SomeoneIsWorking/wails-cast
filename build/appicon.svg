@@ -1,0 +1,33 @@
+<svg width="1024" height="1024" viewBox="0 0 1024 1024" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg_grad" x1="0" y1="0" x2="1024" y2="1024" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#1e293b"/>
+      <stop offset="100%" stop-color="#0f172a"/>
+    </linearGradient>
+    <linearGradient id="wave_grad" x1="230" y1="400" x2="550" y2="700" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#60a5fa"/>
+      <stop offset="100%" stop-color="#2563eb"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Background -->
+  <rect width="1024" height="1024" rx="220" fill="url(#bg_grad)"/>
+  
+  <!-- Monitor Frame (Thicker stroke: 56) -->
+  <rect x="180" y="220" width="664" height="480" rx="48" stroke="#f8fafc" stroke-width="56" stroke-linejoin="round"/>
+  
+  <!-- Slanted Base (Thicker stroke: 56) -->
+  <path d="M420 700L380 800H644L604 700" stroke="#f8fafc" stroke-width="56" stroke-linecap="round" stroke-linejoin="round"/>
+  
+  <!-- Enlarged Cast Signal -->
+  <g transform="translate(250, 630)">
+    <!-- Core Dot: Adjusted for thicker lines -->
+    <path d="M0 0V-65C35.899 -65 65 -35.899 65 0H0Z" fill="url(#wave_grad)"/>
+    
+    <!-- Middle Wave (Thicker stroke: 52) -->
+    <path d="M150 0C150 -82.843 82.843 -150 0 -150" stroke="url(#wave_grad)" stroke-width="52" stroke-linecap="butt" fill="none"/>
+    
+    <!-- Outer Wave (Thicker stroke: 52) -->
+    <path d="M265 0C265 -146.355 146.355 -265 0 -265" stroke="url(#wave_grad)" stroke-width="52" stroke-linecap="butt" fill="none"/>
+  </g>
+</svg>
