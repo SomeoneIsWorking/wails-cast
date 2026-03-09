@@ -25,6 +25,7 @@ type TrackManager struct {
 	StorageDirectory   string
 	DownloadStatus     string
 	DownloadedSegments []bool
+	cancelDownload     context.CancelFunc
 }
 
 type DownloadStatusQeuryResponse struct {
@@ -33,11 +34,56 @@ type DownloadStatusQeuryResponse struct {
 }
 
 func (this *TrackManager) StopDownload() error {
-	panic("unimplemented")
+	if this.cancelDownload != nil {
+		this.cancelDownload()
+		this.cancelDownload = nil
+	}
+	this.DownloadStatus = "STOPPED"
+	this.statusUpdate()
+	return nil
 }
 
 func (this *TrackManager) StartDownload() error {
-	panic("unimplemented")
+	if this.DownloadStatus == "INPROGRESS" {
+		return nil
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	this.cancelDownload = cancel
+	this.DownloadStatus = "INPROGRESS"
+	this.statusUpdate()
+
+	go func() {
+		defer cancel()
+		for i := range this.Manifest.Segments {
+			select {
+			case <-ctx.Done():
+				return
+			default:
+				if this.DownloadedSegments[i] {
+					continue
+				}
+
+				_, err := this.GetSegment(ctx, i)
+				if err != nil {
+					// Check if it was canceled
+					select {
+					case <-ctx.Done():
+						return
+					default:
+						// Log error but continue or stop? Let's stop for now on real errors
+						this.DownloadStatus = "ERROR"
+						this.statusUpdate()
+						return
+					}
+				}
+			}
+		}
+		this.DownloadStatus = "COMPLETED"
+		this.statusUpdate()
+	}()
+
+	return nil
 }
 
 func (this *TrackManager) GetDownloadStatus() *DownloadStatusQeuryResponse {
@@ -48,7 +94,20 @@ func (this *TrackManager) GetDownloadStatus() *DownloadStatusQeuryResponse {
 }
 
 func (this *TrackManager) StopAndClear() error {
-	panic("unimplemented")
+	this.StopDownload()
+	err := os.RemoveAll(this.Folder)
+	if err != nil {
+		return errors.Wrapf(err, "failed to remove folder: %s", this.Folder)
+	}
+	err = os.MkdirAll(this.Folder, 0755)
+	if err != nil {
+		return errors.Wrapf(err, "failed to recreate folder: %s", this.Folder)
+	}
+
+	this.DownloadedSegments = make([]bool, len(this.Manifest.Segments))
+	this.DownloadStatus = "IDLE"
+	this.statusUpdate()
+	return nil
 }
 
 func (this *TrackManager) GetDuration() float64 {
@@ -70,6 +129,19 @@ func NewTrackManager(
 	storageDirectory string,
 	cacheChannel chan int,
 ) *TrackManager {
+	downloaded := computeDownloadedSegments(folder, len(manifest.Segments))
+	status := "IDLE"
+	allDownloaded := true
+	for _, d := range downloaded {
+		if !d {
+			allDownloaded = false
+			break
+		}
+	}
+	if allDownloaded {
+		status = "COMPLETED"
+	}
+
 	return &TrackManager{
 		FileDownloader:     fileDownloader,
 		Manifest:           manifest,
@@ -79,9 +151,9 @@ func NewTrackManager(
 		TrackType:          trackType,
 		TrackIndex:         trackIndex,
 		StorageDirectory:   storageDirectory,
-		DownloadedSegments: computeDownloadedSegments(folder, len(manifest.Segments)),
+		DownloadedSegments: downloaded,
 		cacheChannel:       cacheChannel,
-		DownloadStatus:     "IDLE",
+		DownloadStatus:     status,
 	}
 }
 

@@ -88,11 +88,11 @@ const entries = computed(() =>
 );
 
 const start = (item: any) => {
-  store.startDownload(item.Url, item.MediaType, item.Track);
+  store.startDownload(item.URL, item.MediaType, item.Track);
 };
 
 const stop = (item: any) => {
-  store.stopDownload(item.Url, item.MediaType, item.Track);
+  store.stopDownload(item.URL, item.MediaType, item.Track);
 };
 </script>
 
