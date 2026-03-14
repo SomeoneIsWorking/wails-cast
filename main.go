@@ -2,6 +2,7 @@ package main
 
 import (
 	"embed"
+	"runtime"
 
 	"github.com/wailsapp/wails/v2"
 	"github.com/wailsapp/wails/v2/pkg/options"
@@ -33,7 +34,7 @@ func main() {
 			CSSDropValue:       "drop",
 		},
 		DisablePanicRecovery: true,
-		HideWindowOnClose:    true,
+		HideWindowOnClose:    runtime.GOOS == "darwin",
 		Bind: []any{
 			app,
 		},
