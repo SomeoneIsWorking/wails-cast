@@ -7,6 +7,7 @@ require (
 	github.com/pkg/errors v0.9.1
 	github.com/vishen/go-chromecast v0.3.4
 	github.com/wailsapp/wails/v2 v2.11.0
+	github.com/yuin/gopher-lua v1.1.2
 	google.golang.org/genai v1.36.0
 )
 
