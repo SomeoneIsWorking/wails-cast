@@ -1,272 +1,366 @@
 package extractor
 
 import (
+	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
+	"os"
+	"path/filepath"
 	"strings"
 	"time"
+
+	lua "github.com/yuin/gopher-lua"
 
 	"github.com/go-rod/rod"
 	"github.com/go-rod/rod/lib/launcher"
 	"github.com/go-rod/rod/lib/proto"
+
+	"wails-cast/pkg/folders"
 )
 
 const (
-	// WaitAfterManifestFound is the time to wait after finding m3u8 to capture subtitles
 	WaitAfterManifestFound = 2 * time.Second
 )
 
-// ExtractedSubtitleTrack represents a captured subtitle file
 type ExtractedSubtitleTrack struct {
-	URL     string // Subtitle URL
-	Content string `json:"-"` // Raw VTT content
-	Charset string // Charset from Content-Type (e.g., "UTF-8", "Windows-1254")
-	Label   string // Optional label (extracted from URL or filename)
+	URL     string
+	Content string `json:"-"`
+	Charset string
+	Label   string
 }
 
-// ExtractResult contains the extracted video information
 type ExtractResult struct {
-	URL       *url.URL                 // HLS URL
-	Title     string                   // Title
-	Manifest  string                   `json:"-"` // m3u8 content
-	Cookies   map[string]string        // Captured cookies
-	Headers   map[string]string        // Captured headers
-	Subtitles []ExtractedSubtitleTrack // Captured subtitle tracks
+	URL       *url.URL
+	Title     string
+	Manifest  string `json:"-"`
+	Cookies   map[string]string
+	Headers   map[string]string
+	Subtitles []ExtractedSubtitleTrack
 }
 
 type PlaylistExtractionResult struct {
-	URL      *url.URL          // Original HLS URL
-	Cookies  map[string]string // Captured cookies
-	Headers  map[string]string // Captured headers
-	Manifest string            // m3u8 content
+	URL      *url.URL
+	Cookies  map[string]string
+	Headers  map[string]string
+	Manifest string
 }
 
-// handlePlaylist processes an HLS manifest request
-func handlePlaylist(ctx *rod.Hijack) *PlaylistExtractionResult {
-	reqURL := ctx.Request.URL()
-	contentType := ctx.Response.Headers().Get("Content-Type")
+// Extract navigates to the page and extracts the HLS stream.
+// It first looks for a Lua script in {configDir}/scripts/{domain}.lua.
+// If found, uses headless browser with Lua automation.
+// Otherwise, uses headful browser with generic request interception.
+func Extract(pageURL string) (*ExtractResult, error) {
+	scriptPath := findScript(pageURL)
+	if scriptPath != "" {
+		fmt.Printf("Found Lua script: %s\n", scriptPath)
+		return extractWithScript(pageURL, scriptPath)
+	}
+	fmt.Println("No Lua script found, using headful extraction")
+	return extractGeneric(pageURL)
+}
 
-	fmt.Printf("Found HLS stream: %s (Content-Type: %s)\n", reqURL, contentType)
+func extractWithScript(pageURL string, scriptPath string) (*ExtractResult, error) {
+	path, _ := launcher.LookPath()
+	u := launcher.New().Bin(path).Headless(true).MustLaunch()
+	browser := rod.New().ControlURL(u).MustConnect()
+	defer browser.MustClose()
 
-	// Get the response body (m3u8 manifest)
-	manifestContent := ctx.Response.Body()
-	fmt.Printf("Manifest content length: %d bytes\n", len(manifestContent))
+	page := browser.MustPage("")
+	page.MustSetUserAgent(&proto.NetworkSetUserAgentOverride{
+		UserAgent: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.0 Safari/605.1.15",
+	})
+	page.MustEvalOnNewDocument(`
+		HTMLMediaElement.prototype.canPlayType = function(type) {
+			if (type && (type.includes('video') || type.includes('audio'))) return 'probably'; return '';
+		};
+		if (window.MediaSource) {
+			MediaSource.isTypeSupported = function(type) {
+				if (type && (type.includes('video') || type.includes('audio'))) return true; return false;
+			};
+		}
+	`)
 
-	// Capture cookies from request
-	cookies := make(map[string]string)
-	cookieHeader := ctx.Request.Header("Cookie")
-	if cookieHeader != "" {
-		// Parse cookie header
-		for cookie := range strings.SplitSeq(cookieHeader, "; ") {
-			parts := strings.SplitN(cookie, "=", 2)
-			if len(parts) == 2 {
-				cookies[parts[0]] = parts[1]
+	L := lua.NewState()
+	defer L.Close()
+
+	registerFuncs(L, page)
+
+	if err := L.DoFile(scriptPath); err != nil {
+		return nil, fmt.Errorf("load script: %w", err)
+	}
+
+	var blockURLs []string
+	if tbl := L.GetGlobal("block_urls"); tbl != lua.LNil {
+		if t, ok := tbl.(*lua.LTable); ok {
+			t.ForEach(func(_, value lua.LValue) {
+				blockURLs = append(blockURLs, lua.LVAsString(value))
+			})
+		}
+	}
+
+	type interceptRule struct {
+		pattern string
+		handler lua.LValue
+	}
+	var intercepts []interceptRule
+	if tbl := L.GetGlobal("intercepts"); tbl != lua.LNil {
+		if t, ok := tbl.(*lua.LTable); ok {
+			t.ForEach(func(_, value lua.LValue) {
+				if rule, ok := value.(*lua.LTable); ok {
+					p := rule.RawGetString("pattern")
+					h := rule.RawGetString("handler")
+					intercepts = append(intercepts, interceptRule{
+						pattern: lua.LVAsString(p),
+						handler: h,
+					})
+				}
+			})
+		}
+	}
+
+	var hlsURL string
+
+	router := page.HijackRequests()
+	router.MustAdd("*", func(ctx *rod.Hijack) {
+		reqURL := ctx.Request.URL().String()
+
+		for _, b := range blockURLs {
+			if strings.Contains(reqURL, b) {
+				ctx.Response.SetHeader("Content-Type", "application/javascript")
+				ctx.Response.SetBody("// blocked")
+				return
 			}
 		}
-	}
-	fmt.Printf("Captured %d cookies\n", len(cookies))
 
-	// Capture important headers
-	headers := make(map[string]string)
-	importantHeaders := []string{"User-Agent", "Referer", "Origin", "Accept", "Accept-Language"}
-	for _, headerName := range importantHeaders {
-		if value := ctx.Request.Header(headerName); value != "" {
-			headers[headerName] = value
+		for _, rule := range intercepts {
+			if strings.Contains(reqURL, rule.pattern) {
+				client := &http.Client{
+					Transport:     &http.Transport{DisableKeepAlives: true},
+					CheckRedirect: func(req *http.Request, via []*http.Request) error { return http.ErrUseLastResponse },
+				}
+				if err := ctx.LoadResponse(client, true); err != nil {
+					ctx.ContinueRequest(&proto.FetchContinueRequest{})
+					return
+				}
+				body := ctx.Response.Body()
+
+				L.Push(rule.handler)
+				L.Push(lua.LString(reqURL))
+				L.Push(lua.LString(body))
+				if err := L.PCall(2, 1, nil); err == nil {
+					result := L.Get(-1)
+					L.Pop(1)
+					if result != lua.LNil {
+						hlsURL = lua.LVAsString(result)
+						fmt.Printf("Lua intercept returned HLS URL: %s\n", hlsURL)
+					}
+				}
+				return
+			}
+		}
+
+		ctx.ContinueRequest(&proto.FetchContinueRequest{})
+	})
+	go router.Run()
+
+	page.EnableDomain(proto.NetworkEnable{})
+	cdpWait := page.EachEvent(func(e *proto.NetworkResponseReceived) bool {
+		ct := e.Response.MIMEType
+		if hlsURL == "" && (strings.Contains(ct, "application/vnd.apple.mpegurl") ||
+			strings.Contains(ct, "application/x-mpegURL") ||
+			strings.Contains(ct, "mpegurl")) {
+			hlsURL = e.Response.URL
+			fmt.Printf("CDP detected HLS: %s (CT: %s)\n", hlsURL, ct)
+			return true
+		}
+		return false
+	})
+	go cdpWait()
+
+	fmt.Printf("Navigating to %s...\n", pageURL)
+	page.MustNavigate(pageURL)
+	time.Sleep(2 * time.Second)
+	fmt.Printf("Page loaded. Title: %s\n", page.MustInfo().Title)
+
+	onReady := L.GetGlobal("on_ready")
+	if onReady != lua.LNil {
+		L.Push(onReady)
+		if err := L.PCall(0, 0, nil); err != nil {
+			fmt.Printf("Lua on_ready error: %v\n", err)
 		}
 	}
-	fmt.Printf("Captured %d headers\n", len(headers))
 
-	fmt.Printf("Manifest found, waiting %v for subtitles...\n", WaitAfterManifestFound)
-
-	return &PlaylistExtractionResult{
-		URL:      reqURL,
-		Manifest: manifestContent,
-		Cookies:  cookies,
-		Headers:  headers,
+	fmt.Println("Waiting for HLS URL...")
+	deadline := time.Now().Add(30 * time.Second)
+	for time.Now().Before(deadline) {
+		if hlsURL != "" {
+			break
+		}
+		time.Sleep(200 * time.Millisecond)
 	}
+
+	if hlsURL == "" {
+		return nil, fmt.Errorf("timeout waiting for HLS URL")
+	}
+
+	fmt.Printf("Loading HLS manifest: %s\n", hlsURL)
+	client := &http.Client{Timeout: 15 * time.Second}
+	req, _ := http.NewRequest("GET", hlsURL, nil)
+	req.Header.Set("User-Agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.0 Safari/605.1.15")
+	// Use the HLS URL's own origin as referer (matches the domain the content is served from)
+	if parsedHLS, err := url.Parse(hlsURL); err == nil {
+		req.Header.Set("Referer", parsedHLS.Scheme+"://"+parsedHLS.Host+"/")
+		req.Header.Set("Origin", parsedHLS.Scheme+"://"+parsedHLS.Host)
+	}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("load manifest: %w", err)
+	}
+	defer resp.Body.Close()
+	manifestBytes, _ := io.ReadAll(resp.Body)
+
+	parsedURL, _ := url.Parse(hlsURL)
+	result := &ExtractResult{
+		URL:      parsedURL,
+		Title:    page.MustInfo().Title,
+		Manifest: string(manifestBytes),
+		Cookies:  make(map[string]string),
+		Headers:  make(map[string]string),
+	}
+	for _, c := range resp.Cookies() {
+		result.Cookies[c.Name] = c.Value
+	}
+	result.Headers["User-Agent"] = req.UserAgent()
+	result.Headers["Referer"] = req.Header.Get("Referer")
+	result.Headers["Origin"] = req.Header.Get("Origin")
+
+	fmt.Printf("Manifest loaded: %d bytes\n", len(manifestBytes))
+	return result, nil
 }
 
-// handleSubtitle processes a VTT subtitle request
-func handleSubtitle(ctx *rod.Hijack, subtitleURLs map[string]bool) *ExtractedSubtitleTrack {
-	reqURL := ctx.Request.URL().String()
-	contentType := ctx.Response.Headers().Get("Content-Type")
-
-	// Skip if already processed
-	if subtitleURLs[reqURL] {
-		return nil
-	}
-	subtitleURLs[reqURL] = true
-
-	fmt.Printf("Found subtitle: %s (Content-Type: %s)\n", reqURL, contentType)
-
-	// Extract charset from Content-Type
-	charset := "UTF-8" // default
-	if strings.Contains(contentType, "charset=") {
-		parts := strings.Split(contentType, "charset=")
-		if len(parts) > 1 {
-			charset = strings.TrimSpace(strings.Split(parts[1], ";")[0])
-		}
-	}
-	fmt.Printf("Subtitle charset: %s\n", charset)
-
-	// Get subtitle content
-	subtitleContent := ctx.Response.Body()
-	fmt.Printf("Subtitle content length: %d bytes\n", len(subtitleContent))
-
-	// Extract label from URL (filename without extension)
-	label := ""
-	if parsedURL, err := url.Parse(reqURL); err == nil {
-		pathParts := strings.Split(parsedURL.Path, "/")
-		if len(pathParts) > 0 {
-			filename := pathParts[len(pathParts)-1]
-			label = strings.TrimSuffix(filename, ".vtt")
-		}
-	}
-
-	return &ExtractedSubtitleTrack{
-		URL:     reqURL,
-		Content: subtitleContent,
-		Charset: charset,
-		Label:   label,
-	}
-}
-
-// ExtractManifestPlaylist opens a browser, navigates to the URL, and extracts the HLS stream
-// by intercepting network requests and checking Content-Type headers.
-// It captures cookies, headers, and saves the m3u8 manifest.
-func ExtractManifestPlaylist(pageURL string) (*ExtractResult, error) {
-	// Launch system browser (to ensure codecs) in headful mode
+func extractGeneric(pageURL string) (*ExtractResult, error) {
 	path, _ := launcher.LookPath()
 	u := launcher.New().Bin(path).Headless(false).MustLaunch()
 	browser := rod.New().ControlURL(u).MustConnect()
 	defer browser.MustClose()
 
-	// Create a new page
 	page := browser.MustPage("")
 
-	// Shared result that will accumulate data
 	var result = &ExtractResult{}
 	var manifestFound bool
-	var manifestFoundTime time.Time
-	subtitleURLs := make(map[string]bool) // Track processed subtitle URLs
+	subtitleURLs := make(map[string]bool)
 
-	// Channel to signal completion
-	done := make(chan struct{})
-
-	// Setup request hijacking
 	router := page.HijackRequests()
-
 	router.MustAdd("*", func(ctx *rod.Hijack) {
-		// Load the response to check headers
 		err := ctx.LoadResponse(http.DefaultClient, true)
 		if err != nil {
-			// If loading fails, just continue
 			return
 		}
-
-		// Check Content-Type header
 		contentType := ctx.Response.Headers().Get("Content-Type")
-
 		if !manifestFound {
-			// Check for HLS manifest
 			if strings.Contains(contentType, "application/vnd.apple.mpegurl") ||
 				strings.Contains(contentType, "application/x-mpegURL") {
-				if r := handlePlaylist(ctx); r != nil {
-					result.Cookies = r.Cookies
-					result.Headers = r.Headers
-					result.URL = r.URL
-					result.Manifest = r.Manifest
-					manifestFound = true
-					manifestFoundTime = time.Now()
+				reqURL := ctx.Request.URL()
+				fmt.Printf("Found HLS stream: %s (Content-Type: %s)\n", reqURL, contentType)
+				manifestContent := ctx.Response.Body()
+				fmt.Printf("Manifest content length: %d bytes\n", len(manifestContent))
+				cookies := make(map[string]string)
+				cookieHeader := ctx.Request.Header("Cookie")
+				if cookieHeader != "" {
+					for cookie := range strings.SplitSeq(cookieHeader, "; ") {
+						parts := strings.SplitN(cookie, "=", 2)
+						if len(parts) == 2 {
+							cookies[parts[0]] = parts[1]
+						}
+					}
 				}
+				headers := make(map[string]string)
+				for _, h := range []string{"User-Agent", "Referer", "Origin"} {
+					if v := ctx.Request.Header(h); v != "" {
+						headers[h] = v
+					}
+				}
+				result.Cookies = cookies
+				result.Headers = headers
+				result.URL = reqURL
+				result.Manifest = manifestContent
+				manifestFound = true
 			}
 		}
-
-		// Check for VTT subtitles
 		if strings.Contains(strings.ToLower(contentType), "text/vtt") {
-			if subtitle := handleSubtitle(ctx, subtitleURLs); subtitle != nil {
-				result.Subtitles = append(result.Subtitles, *subtitle)
-				fmt.Printf("Captured subtitle '%s' (%d total subtitles)\n", subtitle.Label, len(result.Subtitles))
-			}
-		}
-	})
-
-	// Start the router
-	go router.Run()
-
-	// Goroutine to handle timing logic
-	go func() {
-		ticker := time.NewTicker(100 * time.Millisecond)
-		defer ticker.Stop()
-
-		for range ticker.C {
-			if manifestFound && time.Since(manifestFoundTime) >= WaitAfterManifestFound {
-				close(done)
+			reqURL := ctx.Request.URL().String()
+			if subtitleURLs[reqURL] {
 				return
 			}
+			subtitleURLs[reqURL] = true
+			subtitleContent := ctx.Response.Body()
+			label := ""
+			if p, err := url.Parse(reqURL); err == nil {
+				parts := strings.Split(p.Path, "/")
+				label = strings.TrimSuffix(parts[len(parts)-1], ".vtt")
+			}
+			result.Subtitles = append(result.Subtitles, ExtractedSubtitleTrack{
+				URL:     reqURL,
+				Content: subtitleContent,
+				Label:   label,
+			})
 		}
-	}()
+	})
+	go router.Run()
 
-	// Set User Agent to Safari to encourage HLS
 	page.MustSetUserAgent(&proto.NetworkSetUserAgentOverride{
 		UserAgent: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.0 Safari/605.1.15",
 	})
-
-	// Override media capability detection APIs to trick JW Player into thinking
-	// the browser supports all codecs, even though Chromium lacks H.264/AAC.
-	// This prevents JW Player error 102630 (empty playlist due to codec filtering).
 	page.MustEvalOnNewDocument(`
-		// Override HTMLMediaElement.canPlayType to always return "probably"
-		const originalCanPlayType = HTMLMediaElement.prototype.canPlayType;
 		HTMLMediaElement.prototype.canPlayType = function(type) {
-			console.log('[Codec Override] canPlayType called with:', type);
-			// Always return "probably" for any video/audio type
-			if (type && (type.includes('video') || type.includes('audio'))) {
-				return 'probably';
-			}
-			return originalCanPlayType.call(this, type);
+			if (type && (type.includes('video') || type.includes('audio'))) return 'probably';
+			return '';
 		};
-
-		// Override MediaSource.isTypeSupported to always return true
-		if (window.MediaSource && MediaSource.isTypeSupported) {
-			const originalIsTypeSupported = MediaSource.isTypeSupported;
+		if (window.MediaSource) {
 			MediaSource.isTypeSupported = function(type) {
-				console.log('[Codec Override] MediaSource.isTypeSupported called with:', type);
-				// Always return true for any codec type
-				if (type && (type.includes('video') || type.includes('audio'))) {
-					return true;
-				}
-				return originalIsTypeSupported.call(this, type);
+				if (type && (type.includes('video') || type.includes('audio'))) return true;
+				return false;
 			};
 		}
-
-		console.log('[Codec Override] Media capability detection overrides installed');
 	`)
 
 	fmt.Printf("Navigating to %s...\n", pageURL)
 	page.MustNavigate(pageURL)
 	page.MustWaitLoad()
+	fmt.Printf("Page loaded. Title: %s\n", page.MustInfo().Title)
 
-	// Try to auto-click the play button using JavaScript (bypasses pointer-events)
-	fmt.Println("Looking for play button...")
-	var err error
-	_, err = page.Eval(`() => {
-		var playBtn = document.querySelector('#play-video');
-		if (playBtn) {
-			$(playBtn).parent().find("*").trigger("click");
+	// Try common play button selectors
+	for _, sel := range []string{"#play-video", ".play-button", ".video-play-button"} {
+		el, err := page.Timeout(3 * time.Second).Element(sel)
+		if err == nil {
+			fmt.Printf("Clicking play button: %s\n", sel)
+			box := el.MustShape().Box()
+			page.Mouse.MustMoveTo(box.X+box.Width/2, box.Y+box.Height/2)
+			page.Mouse.MustDown("left")
+			page.Mouse.MustUp("left")
+			time.Sleep(2 * time.Second)
+			break
 		}
-	}`)
-	if err != nil {
-		fmt.Printf("Failed to click play button: %v\n", err)
-	} else {
-		fmt.Println("Clicked play button via JavaScript")
-		time.Sleep(2 * time.Second) // Wait for player to load
 	}
 
-	fmt.Println("Waiting for video URL and subtitles... Please play the video if it doesn't start automatically.")
+	done := make(chan struct{})
+	go func() {
+		for range time.NewTicker(100 * time.Millisecond).C {
+			if manifestFound {
+				select {
+				case <-done:
+					return
+				default:
+					close(done)
+					return
+				}
+			}
+		}
+	}()
 
-	// Wait for completion or timeout
+	fmt.Println("Waiting for video URL...")
 	select {
 	case <-done:
 	case <-time.After(5 * time.Minute):
@@ -278,4 +372,196 @@ func ExtractManifestPlaylist(pageURL string) (*ExtractResult, error) {
 
 	result.Title = page.MustInfo().Title
 	return result, nil
+}
+
+// findScript scans all Lua scripts for match_patterns matching the URL.
+func findScript(pageURL string) string {
+	scriptsDir := filepath.Join(folders.GetConfig(), "scripts")
+	entries, err := os.ReadDir(scriptsDir)
+	if err != nil {
+		return ""
+	}
+	for _, entry := range entries {
+		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".lua") {
+			continue
+		}
+		scriptPath := filepath.Join(scriptsDir, entry.Name())
+		if matchesURLPattern(scriptPath, pageURL) {
+			return scriptPath
+		}
+	}
+	return ""
+}
+
+// matchesURLPattern checks if a script's match_patterns table contains
+// a wildcard pattern matching the given URL.
+// Patterns are matched against the full URL, then against host+path.
+func matchesURLPattern(scriptPath, pageURL string) bool {
+	L := lua.NewState()
+	defer L.Close()
+	if err := L.DoFile(scriptPath); err != nil {
+		return false
+	}
+	tbl := L.GetGlobal("match_patterns")
+	if tbl == lua.LNil {
+		return false
+	}
+	t, ok := tbl.(*lua.LTable)
+	if !ok {
+		return false
+	}
+	// Also try matching against just scheme+host+path (no query/fragment)
+	parsed, _ := url.Parse(pageURL)
+	hostPath := parsed.Host + parsed.Path
+	hostPath = strings.TrimPrefix(hostPath, "www.")
+
+	var matched bool
+	t.ForEach(func(_, value lua.LValue) {
+		pattern := lua.LVAsString(value)
+		if pattern == "" {
+			return
+		}
+		if wildcardMatch(pattern, pageURL) || wildcardMatch(pattern, hostPath) {
+			matched = true
+		}
+	})
+	return matched
+}
+
+// wildcardMatch checks if text matches a pattern containing * wildcards.
+func wildcardMatch(pattern, text string) bool {
+	parts := strings.Split(pattern, "*")
+	if len(parts) == 1 {
+		return pattern == text
+	}
+	if !strings.HasPrefix(text, parts[0]) {
+		return false
+	}
+	text = text[len(parts[0]):]
+	for i := 1; i < len(parts)-1; i++ {
+		idx := strings.Index(text, parts[i])
+		if idx < 0 {
+			return false
+		}
+		text = text[idx+len(parts[i]):]
+	}
+	return strings.HasSuffix(text, parts[len(parts)-1])
+}
+
+func registerFuncs(L *lua.LState, page *rod.Page) {
+	L.SetGlobal("wait_element", L.NewFunction(func(L *lua.LState) int {
+		selector := L.CheckString(1)
+		timeout := L.OptInt(2, 10)
+		_, err := page.Timeout(time.Duration(timeout) * time.Second).Element(selector)
+		if err != nil {
+			L.Push(lua.LNil)
+			L.Push(lua.LString(err.Error()))
+			return 2
+		}
+		L.Push(lua.LTrue)
+		return 1
+	}))
+
+	L.SetGlobal("click", L.NewFunction(func(L *lua.LState) int {
+		selector := L.CheckString(1)
+		el, err := page.Element(selector)
+		if err != nil {
+			L.Push(lua.LNil)
+			L.Push(lua.LString(err.Error()))
+			return 2
+		}
+		box := el.MustShape().Box()
+		page.Mouse.MustMoveTo(box.X+box.Width/2, box.Y+box.Height/2)
+		page.Mouse.MustDown("left")
+		page.Mouse.MustUp("left")
+		L.Push(lua.LTrue)
+		return 1
+	}))
+
+	L.SetGlobal("sleep", L.NewFunction(func(L *lua.LState) int {
+		secs := L.CheckNumber(1)
+		time.Sleep(time.Duration(secs*1000) * time.Millisecond)
+		return 0
+	}))
+
+	L.SetGlobal("log", L.NewFunction(func(L *lua.LState) int {
+		fmt.Println("[LUA]", L.CheckString(1))
+		return 0
+	}))
+
+	L.SetGlobal("js", L.NewFunction(func(L *lua.LState) int {
+		code := L.CheckString(1)
+		result, err := page.Eval(code)
+		if err != nil {
+			L.Push(lua.LNil)
+			L.Push(lua.LString(err.Error()))
+			return 2
+		}
+		L.Push(lua.LTrue)
+		_ = result
+		return 1
+	}))
+
+	L.SetGlobal("scroll_into_view", L.NewFunction(func(L *lua.LState) int {
+		selector := L.CheckString(1)
+		_, err := page.Eval(fmt.Sprintf(`() => {
+			var el = document.querySelector('%s');
+			if (el) el.scrollIntoView({behavior: 'instant', block: 'center'});
+		}`, selector))
+		if err != nil {
+			L.Push(lua.LNil)
+			L.Push(lua.LString(err.Error()))
+			return 2
+		}
+		time.Sleep(500 * time.Millisecond)
+		L.Push(lua.LTrue)
+		return 1
+	}))
+
+	L.SetGlobal("json_decode", L.NewFunction(func(L *lua.LState) int {
+		s := L.CheckString(1)
+		val, err := decodeJSON(L, s)
+		if err != nil {
+			L.Push(lua.LNil)
+			L.Push(lua.LString(err.Error()))
+			return 2
+		}
+		L.Push(val)
+		return 1
+	}))
+}
+
+func decodeJSON(L *lua.LState, s string) (lua.LValue, error) {
+	var val interface{}
+	if err := json.Unmarshal([]byte(s), &val); err != nil {
+		return lua.LNil, err
+	}
+	return toLuaValue(L, val), nil
+}
+
+func toLuaValue(L *lua.LState, v interface{}) lua.LValue {
+	switch vv := v.(type) {
+	case nil:
+		return lua.LNil
+	case bool:
+		return lua.LBool(vv)
+	case float64:
+		return lua.LNumber(vv)
+	case string:
+		return lua.LString(vv)
+	case []interface{}:
+		tbl := L.NewTable()
+		for i, item := range vv {
+			tbl.RawSetInt(i+1, toLuaValue(L, item))
+		}
+		return tbl
+	case map[string]interface{}:
+		tbl := L.NewTable()
+		for k, val := range vv {
+			tbl.RawSetString(k, toLuaValue(L, val))
+		}
+		return tbl
+	default:
+		return lua.LString(fmt.Sprintf("%v", vv))
+	}
 }

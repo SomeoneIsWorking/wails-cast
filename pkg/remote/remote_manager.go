@@ -128,7 +128,7 @@ func extractionFile(url string) string {
 }
 
 func (*RemoteManager) doExtraction(url *u.URL) (*ExtractionData, *hls.ManifestPlaylist, error) {
-	extraction, err := extractor.ExtractManifestPlaylist(url.String())
+	extraction, err := extractor.Extract(url.String())
 	if err != nil {
 		return nil, nil, err
 	}
