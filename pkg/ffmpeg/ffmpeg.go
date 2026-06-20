@@ -75,6 +75,12 @@ func ffmpeg(ctx context.Context, input *mix.FileOrBuffer, output *mix.TargetFile
 func buildTranscodeArgs(input *mix.FileOrBuffer, output *mix.TargetFileOrBuffer, opts *TranscodeOptions) ([]string, error) {
 	args := []string{"-y"}
 
+	// Local playback transcodes fixed-duration segments on demand (Duration > 0),
+	// so each segment is an independent encode that must be placed on an exact
+	// timeline grid. Remote playback proxies whole source segments (Duration == 0)
+	// and must preserve their original timestamps.
+	segmented := opts.Duration > 0
+
 	if opts.StartTime > 0 {
 		args = append(args, "-ss", fmt.Sprintf("%.2f", opts.StartTime))
 	}
@@ -92,8 +98,25 @@ func buildTranscodeArgs(input *mix.FileOrBuffer, output *mix.TargetFileOrBuffer,
 		"-b:a", "96k",
 		"-ac", "2",
 		"-f", "mpegts",
-		"-copyts",
 	)
+
+	if segmented {
+		// Reset each segment's timestamps to a local zero and re-anchor it at its
+		// exact start on the global timeline. This keeps audio and video starting
+		// together on every segment boundary; the previous "-copyts" approach let
+		// the video snap to keyframes while audio stayed grid-aligned, so the A/V
+		// offset drifted segment to segment and accumulated into audible audio
+		// desync over time. Input seeking stays frame-accurate via -accurate_seek
+		// (default), so this does not hurt transcoding performance.
+		args = append(args,
+			"-output_ts_offset", fmt.Sprintf("%.2f", opts.StartTime),
+			"-muxpreload", "0",
+			"-muxdelay", "0",
+		)
+	} else {
+		// Remote: keep the source segment's original timestamps untouched.
+		args = append(args, "-copyts")
+	}
 
 	if opts.Bitrate != "" {
 		args = append(args, "-b:v", opts.Bitrate)
