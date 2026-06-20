@@ -1,9 +1,13 @@
 package ai
 
 import (
+	"bufio"
 	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
+	"io"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
@@ -11,8 +15,6 @@ import (
 
 	"wails-cast/pkg/events"
 	"wails-cast/pkg/subtitles"
-
-	"google.golang.org/genai"
 )
 
 // TranslateOptions contains options for subtitle translation
@@ -37,34 +39,119 @@ func scoreLangPriority(filename string) int {
 	return 0
 }
 
-// Translator handles AI-powered subtitle translation
+// Translator handles AI-powered subtitle translation via the opencode-go
+// (OpenAI-compatible) gateway.
 type Translator struct {
-	client *genai.Client
-	model  string
+	client  *http.Client
+	apiKey  string
+	model   string
+	baseURL string
 }
 
-// NewTranslator creates a new translator instance
+// NewTranslator creates a new translator instance backed by opencode-go.
 func NewTranslator(apiKey string, model string) (*Translator, error) {
-	ctx := context.Background()
-	client, err := genai.NewClient(ctx, &genai.ClientConfig{
-		APIKey:  apiKey,
-		Backend: genai.BackendGeminiAPI,
-	})
-	if err != nil {
-		return nil, fmt.Errorf("failed to create Gemini client: %w", err)
+	if apiKey == "" {
+		return nil, fmt.Errorf("opencode API key is required")
+	}
+	if model == "" {
+		return nil, fmt.Errorf("model is required")
 	}
 
 	return &Translator{
-		client: client,
-		model:  model,
+		client:  &http.Client{},
+		apiKey:  apiKey,
+		model:   model,
+		baseURL: OpenCodeBaseURL,
 	}, nil
 }
 
-// Close closes the client connection
+// Close releases any held resources.
 func (t *Translator) Close() error {
-	// Note: genai.Client doesn't have a Close method in current version
-	// Keep this for future compatibility
 	return nil
+}
+
+// chatMessage is a single OpenAI-compatible chat message.
+type chatMessage struct {
+	Role    string `json:"role"`
+	Content string `json:"content"`
+}
+
+// chatRequest is the OpenAI-compatible chat completion request body.
+type chatRequest struct {
+	Model    string        `json:"model"`
+	Messages []chatMessage `json:"messages"`
+	Stream   bool          `json:"stream"`
+}
+
+// chatStreamChunk is a single SSE delta chunk from the chat completions stream.
+type chatStreamChunk struct {
+	Choices []struct {
+		Delta struct {
+			Content string `json:"content"`
+		} `json:"delta"`
+	} `json:"choices"`
+}
+
+// streamCompletion sends the prompt to the chat completions endpoint and streams
+// the response back, emitting each chunk and returning the accumulated text.
+func (t *Translator) streamCompletion(ctx context.Context, prompt string) (string, error) {
+	reqBody, err := json.Marshal(chatRequest{
+		Model:    t.model,
+		Messages: []chatMessage{{Role: "user", Content: prompt}},
+		Stream:   true,
+	})
+	if err != nil {
+		return "", fmt.Errorf("failed to marshal request: %w", err)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, t.baseURL+"/chat/completions", bytes.NewReader(reqBody))
+	if err != nil {
+		return "", fmt.Errorf("failed to create request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+t.apiKey)
+
+	resp, err := t.client.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("failed to call opencode: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return "", fmt.Errorf("opencode returned %s: %s", resp.Status, strings.TrimSpace(string(body)))
+	}
+
+	var fullResponse strings.Builder
+	scanner := bufio.NewScanner(resp.Body)
+	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if line == "" || !strings.HasPrefix(line, "data:") {
+			continue
+		}
+		data := strings.TrimSpace(strings.TrimPrefix(line, "data:"))
+		if data == "[DONE]" {
+			break
+		}
+
+		var chunk chatStreamChunk
+		if err := json.Unmarshal([]byte(data), &chunk); err != nil {
+			continue // skip malformed/keep-alive lines
+		}
+		for _, choice := range chunk.Choices {
+			if choice.Delta.Content != "" {
+				fmt.Print(choice.Delta.Content) // Print to console for logging
+				fullResponse.WriteString(choice.Delta.Content)
+				events.Emit("translation:stream", choice.Delta.Content)
+			}
+		}
+	}
+	if err := scanner.Err(); err != nil {
+		return "", fmt.Errorf("failed to read stream: %w", err)
+	}
+
+	return fullResponse.String(), nil
 }
 
 // TranslateEmbeddedSubtitles exports and translates all embedded subtitles
@@ -166,24 +253,11 @@ func (t *Translator) TranslateEmbeddedSubtitles(ctx context.Context, opts Transl
 
 	// Generate translation with streaming
 	fmt.Println(prompt)
-	iter := t.client.Models.GenerateContentStream(ctx, t.model, genai.Text(prompt), nil)
-
-	var fullResponse strings.Builder
-	for resp, err := range iter {
-		if err != nil {
-			return nil, fmt.Errorf("failed to generate translation: %w", err)
-		}
-
-		for _, part := range resp.Candidates[0].Content.Parts {
-			if part.Text != "" {
-				fmt.Print(part.Text) // Print to console for logging
-				fullResponse.WriteString(part.Text)
-				events.Emit("translation:stream", part.Text)
-			}
-		}
+	translatedText, err := t.streamCompletion(ctx, prompt)
+	if err != nil {
+		return nil, fmt.Errorf("failed to generate translation: %w", err)
 	}
 
-	translatedText := fullResponse.String()
 	if translatedText == "" {
 		return nil, fmt.Errorf("translation is empty")
 	}

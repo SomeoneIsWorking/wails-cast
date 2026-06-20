@@ -53,6 +53,28 @@
         <!-- Volume controls -->
         <VolumePopover />
 
+        <!-- Subtitle size controls -->
+        <div class="flex items-center gap-1" title="Subtitle size">
+          <Captions :size="18" class="text-gray-400" />
+          <button
+            @click="adjustSubtitleSize(-2)"
+            class="btn-icon"
+            title="Decrease subtitle size"
+          >
+            <Minus :size="16" />
+          </button>
+          <span class="text-xs font-mono text-gray-300 w-6 text-center">{{
+            subtitleSize
+          }}</span>
+          <button
+            @click="adjustSubtitleSize(2)"
+            class="btn-icon"
+            title="Increase subtitle size"
+          >
+            <Plus :size="16" />
+          </button>
+        </div>
+
         <div class="flex-1"></div>
         <button @click="seekRelative(-30)" class="btn-icon" title="Rewind 30s">
           <Rewind :size="18" />
@@ -95,8 +117,13 @@ import {
   FastForward,
   SkipBack,
   SkipForward,
+  Captions,
+  Minus,
+  Plus,
 } from "lucide-vue-next";
 import { useCastStore } from "@/stores/cast";
+import { useSettingsStore } from "@/stores/settings";
+import { SetSubtitleSize } from "../../wailsjs/go/main/App";
 import { watch } from "vue";
 
 const seekPosition = ref(0);
@@ -107,8 +134,19 @@ const seekBar = ref<HTMLInputElement | null>(null);
 let updateInterval: ReturnType<typeof setInterval> | null = null;
 let localTimeIncrement: ReturnType<typeof setInterval> | null = null;
 const castStore = useCastStore();
+const settingsStore = useSettingsStore();
 
 const playbackState = computed(() => castStore.playbackState);
+
+// Live subtitle size, seeded from the configured default font size.
+const subtitleSize = ref(settingsStore.settings?.subtitleFontSize ?? 24);
+
+const adjustSubtitleSize = async (delta: number) => {
+  const next = Math.min(80, Math.max(8, subtitleSize.value + delta));
+  if (next === subtitleSize.value) return;
+  subtitleSize.value = next;
+  await SetSubtitleSize(next);
+};
 
 watch(
   () => playbackState.value.status,

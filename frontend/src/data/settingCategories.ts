@@ -51,14 +51,14 @@ export const settingCategories: SettingCategory[] = [
     settings: [
       {
         key: "geminiApiKey",
-        label: "Gemini API Key",
-        description: "Your Google Gemini API key for AI features",
+        label: "OpenCode API Key",
+        description: "Your opencode-go API key for AI features (defaults to opencode's auth.json)",
         type: "password",
       },
       {
         key: "geminiModel",
-        label: "Gemini Model",
-        description: "Which Gemini model to use",
+        label: "Model",
+        description: "Which opencode-go model to use (e.g. deepseek-v4-flash)",
         type: "text",
       },
       {

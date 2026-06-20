@@ -1,17 +1,18 @@
 <script setup lang="ts">
-import { computed, ref, onMounted, onUnmounted } from "vue";
+import { computed, ref } from "vue";
 import { useCastStore } from "@/stores/cast";
+import { useTranslationStore } from "@/stores/translation";
 import { Cloud, Play } from "lucide-vue-next";
 import LoadingIcon from "./LoadingIcon.vue";
 import TranslationStreamModal from "./TranslationStreamModal.vue";
 import { useToast } from "vue-toastification";
-import { EventsOn, EventsOff } from "../../wailsjs/runtime/runtime";
 import FileSelector from "./FileSelector.vue";
 import { qualityOptions } from "@/data/qualityOptions";
 import { OpenMediaFolder } from "../../wailsjs/go/main/App";
 import TrackDownloader from "./TrackDownloader.vue";
 
 const castStore = useCastStore();
+const translationStore = useTranslationStore();
 const toast = useToast();
 
 const trackInfo = computed(() => castStore.trackInfo);
@@ -46,27 +47,7 @@ const hasEmbeddedSubtitles = computed(() =>
   )
 );
 
-onMounted(() => {
-  EventsOn("translation:complete", (translatedFiles: string[]) => {
-    if (translatedFiles && translatedFiles.length > 0) {
-      // Auto-select external subtitle with the first translated file
-      if (castStore.castOptions) {
-        castStore.castOptions.SubtitleType = "external";
-        castStore.castOptions.SubtitlePath = translatedFiles[0];
-      }
-      toast.success(`Translated subtitle(s) completed!`);
-    }
-  });
-
-  EventsOn("translation:error", (error: string) => {
-    toast.error(`Translation failed: ${error}`);
-  });
-});
-
-onUnmounted(() => {
-  EventsOff("translation:complete");
-  EventsOff("translation:error");
-});
+const isTranslating = computed(() => translationStore.isTranslating);
 </script>
 
 <template>
@@ -153,9 +134,10 @@ onUnmounted(() => {
           <button
             v-if="hasEmbeddedSubtitles"
             @click="openTranslationModal"
-            class="btn-success text-nowrap py-0!"
+            class="btn-success text-nowrap py-0! flex items-center gap-1"
           >
-            More Options
+            <LoadingIcon v-if="isTranslating" class="w-4 h-4" />
+            {{ isTranslating ? "Translating..." : "More Options" }}
           </button>
         </div>
         <template v-if="castStore.castOptions?.SubtitleType === 'external'">
