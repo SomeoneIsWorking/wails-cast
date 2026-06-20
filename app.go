@@ -42,6 +42,9 @@ type App struct {
 	settingsStore *SettingsStore
 	mu            sync.RWMutex
 	RemoteManager *remote.RemoteManager
+
+	translationCancel context.CancelFunc
+	translationMu     sync.Mutex
 }
 
 func (a *App) createApplication() {
@@ -512,27 +515,77 @@ func (a *App) ExportEmbeddedSubtitles(videoPath string) error {
 	return ffmpeg.ExportEmbeddedSubtitles(videoPath)
 }
 
-// TranslateExportedSubtitles exports embedded subtitles and translates them in the background
-func (a *App) TranslateExportedSubtitles(fileNameOrUrl string, targetLanguage string) ([]string, error) {
+// TranslateExportedSubtitles exports embedded subtitles and translates them in the
+// background, streaming progress via the "translation:stream" event and signalling
+// the outcome via "translation:complete", "translation:error" or
+// "translation:cancelled".
+func (a *App) TranslateExportedSubtitles(fileNameOrUrl string, targetLanguage string) error {
 	settings := a.settingsStore.Get()
 
 	apiKey := settings.GeminiApiKey
 	if apiKey == "" {
-		return nil, fmt.Errorf("Gemini API key is required. Please set it in Settings or GEMINI_API_KEY environment variable")
+		// Fall back to the user's opencode-go credentials.
+		if key, err := ai.LoadOpenCodeAPIKey(); err == nil {
+			apiKey = key
+		}
+	}
+	if apiKey == "" {
+		return fmt.Errorf("opencode API key is required. Please set it in Settings or in opencode's auth.json")
 	}
 
 	if targetLanguage == "" {
-		return nil, fmt.Errorf("target language is required")
+		return fmt.Errorf("target language is required")
 	}
 
-	return ai.TranslateForFile(a.ctx, ai.Request{
+	a.translationMu.Lock()
+	if a.translationCancel != nil {
+		a.translationMu.Unlock()
+		return fmt.Errorf("a translation is already in progress")
+	}
+	ctx, cancel := context.WithCancel(a.ctx)
+	a.translationCancel = cancel
+	a.translationMu.Unlock()
+
+	req := ai.Request{
 		FileNameOrURL:  fileNameOrUrl,
 		TargetLanguage: targetLanguage,
 		APIKey:         apiKey,
 		Model:          settings.GeminiModel,
 		PromptTemplate: settings.TranslatePromptTemplate,
 		MaxSamples:     settings.MaxSubtitleSamples,
-	})
+	}
+
+	go func() {
+		defer func() {
+			a.translationMu.Lock()
+			a.translationCancel = nil
+			a.translationMu.Unlock()
+			cancel()
+		}()
+
+		files, err := ai.TranslateForFile(ctx, req)
+		if err != nil {
+			if ctx.Err() == context.Canceled {
+				events.Emit("translation:cancelled", targetLanguage)
+			} else {
+				events.Emit("translation:error", err.Error())
+			}
+			return
+		}
+		events.Emit("translation:complete", files)
+	}()
+
+	return nil
+}
+
+// CancelTranslation aborts an in-progress background translation, if any.
+func (a *App) CancelTranslation() {
+	a.translationMu.Lock()
+	cancel := a.translationCancel
+	a.translationMu.Unlock()
+	if cancel != nil {
+		cancel()
+	}
 }
 
 // GenerateTranslationPrompt builds and returns the LLM prompt for subtitles without invoking the model

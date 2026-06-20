@@ -6,6 +6,8 @@ import {folders} from '../models';
 import {remote} from '../models';
 import {ffmpeg} from '../models';
 
+export function CancelTranslation():Promise<void>;
+
 export function CastToDevice(arg1:string,arg2:string,arg3:options.CastOptions):Promise<main.PlaybackState>;
 
 export function ClearCache():Promise<void>;
@@ -70,7 +72,7 @@ export function StopDownload(arg1:string,arg2:string,arg3:number):Promise<void>;
 
 export function StopPlayback():Promise<void>;
 
-export function TranslateExportedSubtitles(arg1:string,arg2:string):Promise<Array<string>>;
+export function TranslateExportedSubtitles(arg1:string,arg2:string):Promise<void>;
 
 export function Unpause():Promise<void>;
 

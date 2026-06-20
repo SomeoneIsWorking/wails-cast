@@ -1,27 +1,31 @@
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted, computed } from "vue";
-import { X, Download, Languages } from "lucide-vue-next";
-import { EventsOn, EventsOff } from "../../wailsjs/runtime/runtime";
+import { ref, computed } from "vue";
+import { X, Download, Languages, Square } from "lucide-vue-next";
 import {
   ExportEmbeddedSubtitles,
-  TranslateExportedSubtitles,
   GenerateTranslationPrompt,
   ProcessPastedTranslation,
 } from "../../wailsjs/go/main/App";
 import { useToast } from "vue-toastification";
 import { useCastStore } from "@/stores/cast";
 import { useSettingsStore } from "@/stores/settings";
+import { useTranslationStore } from "@/stores/translation";
+import { storeToRefs } from "pinia";
 import LoadingIcon from "./LoadingIcon.vue";
 
 const castStore = useCastStore();
 const settingsStore = useSettingsStore();
+const translationStore = useTranslationStore();
 const toast = useToast();
 
+const { isTranslating, isCancelling, streamContent } =
+  storeToRefs(translationStore);
+
 const showDialog = defineModel<boolean>();
-const streamContent = ref("");
 const isExporting = ref(false);
-const isTranslating = ref(false);
-const targetLanguage = ref(settingsStore.settings.defaultTranslationLanguage);
+const targetLanguage = ref(
+  translationStore.targetLanguage || settingsStore.settings.defaultTranslationLanguage
+);
 const generatedPrompt = ref("");
 const pastedAnswer = ref("");
 
@@ -46,17 +50,16 @@ const handleTranslateSubtitles = async () => {
     return;
   }
 
-  isTranslating.value = true;
   try {
-    await TranslateExportedSubtitles(
-      trackInfo.value.Path,
-      targetLanguage.value
-    );
+    await translationStore.start(trackInfo.value.Path, targetLanguage.value);
     toast.info(`Translation started for ${targetLanguage.value}`);
   } catch (error: any) {
-    isTranslating.value = false;
-    throw error;
+    toast.error(`Failed to start translation: ${error?.message || error}`);
   }
+};
+
+const handleCancelTranslation = async () => {
+  await translationStore.cancel();
 };
 
 const handleGeneratePrompt = async () => {
@@ -91,24 +94,11 @@ const handleProcessPasted = async () => {
   }
 };
 
-onMounted(() => {
-  EventsOn("translation:stream", (chunk: string) => {
-    streamContent.value += chunk;
-  });
-
-  EventsOn("translation:complete", () => {
-    isTranslating.value = false;
-  });
-});
-
-onUnmounted(() => {
-  EventsOff("translation:stream");
-  EventsOff("translation:complete");
-});
-
 const handleClose = () => {
   showDialog.value = false;
-  streamContent.value = "";
+  // Keep the stream around while translating so reopening shows live progress;
+  // only clear it once the run has finished.
+  translationStore.clearStream();
 };
 </script>
 
@@ -160,8 +150,16 @@ const handleClose = () => {
             class="bg-gray-700 text-white rounded-md p-2 flex px-4 text-sm items-center"
           >
             <LoadingIcon class="w-4 h-4 mr-2" />
-            Translating to {{ targetLanguage }}...
+            Translating to {{ translationStore.targetLanguage }}...
           </div>
+          <button
+            @click="handleCancelTranslation"
+            :disabled="isCancelling"
+            class="btn-danger text-sm"
+          >
+            <Square class="w-4 h-4" />
+            {{ isCancelling ? "Cancelling..." : "Cancel" }}
+          </button>
         </template>
       </div>
       <!-- Prompt / Pasted Answer Section -->
