@@ -412,14 +412,33 @@ func (a *App) TranslateSeason(
 
 	// Check / retrieve API key the same way TranslateExportedSubtitles does.
 	settings := a.settingsStore.Get()
-	apiKey := settings.GeminiApiKey
-	if apiKey == "" {
-		if key, err := ai.LoadOpenCodeAPIKey(); err == nil {
-			apiKey = key
+	var apiKey, model, baseURL string
+	switch settings.LLMProvider {
+	case ai.ProviderOpenAICompat:
+		apiKey = settings.LLMApiKey
+		model = settings.LLMModel
+		baseURL = settings.LLMBaseURL
+		if apiKey == "" {
+			return fmt.Errorf("openai-compat API key is required. Please set it in Settings")
 		}
-	}
-	if apiKey == "" {
-		return fmt.Errorf("opencode API key is required. Please set it in Settings or in opencode's auth.json")
+		if baseURL == "" {
+			return fmt.Errorf("openai-compat base URL is required. Please set it in Settings")
+		}
+		if model == "" {
+			return fmt.Errorf("openai-compat model is required. Please set it in Settings")
+		}
+	default:
+		apiKey = settings.LLMApiKey
+		if apiKey == "" {
+			if key, err := ai.LoadOpenCodeAPIKey(); err == nil {
+				apiKey = key
+			}
+		}
+		if apiKey == "" {
+			return fmt.Errorf("opencode API key is required. Please set it in Settings or in opencode's auth.json")
+		}
+		model = settings.LLMModel
+		baseURL = ai.OpenCodeBaseURL
 	}
 
 	libraryTranslateMu.Lock()
@@ -468,7 +487,8 @@ func (a *App) TranslateSeason(
 				FileNameOrURL:  ep,
 				TargetLanguage: targetLanguage,
 				APIKey:         apiKey,
-				Model:          settings.GeminiModel,
+				Model:          model,
+				BaseURL:        baseURL,
 				PromptTemplate: settings.TranslatePromptTemplate,
 				MaxSamples:     settings.MaxSubtitleSamples,
 			}

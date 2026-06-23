@@ -118,12 +118,10 @@ export namespace main {
 	    subtitleBurnIn: boolean;
 	    ignoreClosedCaptions: boolean;
 	    defaultTranslationLanguage: string;
-	    geminiApiKey: string;
-	    geminiModel: string;
 	    llmProvider: string;
-	    openAICompatBaseURL: string;
-	    openAICompatApiKey: string;
-	    openAICompatModel: string;
+	    llmApiKey: string;
+	    llmModel: string;
+	    llmBaseURL: string;
 	    defaultQuality: string;
 	    subtitleFontSize: number;
 	    maxOutputWidth: number;

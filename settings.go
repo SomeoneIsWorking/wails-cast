@@ -19,12 +19,10 @@ func getDefaultSettings() Settings {
 		SubtitleBurnIn:             true,
 		IgnoreClosedCaptions:       false,
 		DefaultTranslationLanguage: "English",
-		GeminiApiKey:               "",
-		GeminiModel:                "deepseek-v4-flash",
 		LLMProvider:                "opencode",
-		OpenAICompatBaseURL:        "",
-		OpenAICompatAPIKey:         "",
-		OpenAICompatModel:          "",
+		LLMApiKey:                  "",
+		LLMModel:                   "",
+		LLMBaseURL:                 "",
 		DefaultQuality:             "5M",
 		SubtitleFontSize:           24,
 		MaxOutputWidth:             0,
@@ -42,21 +40,22 @@ type Settings struct {
 	IgnoreClosedCaptions       bool   `json:"ignoreClosedCaptions"`
 	DefaultTranslationLanguage string `json:"defaultTranslationLanguage"`
 
-	// GeminiApiKey / GeminiModel are the opencode-specific credentials.
-	// The field names are kept as-is for backward-compatibility with existing
-	// persisted settings.json files (renaming would silently lose saved values).
-	GeminiApiKey string `json:"geminiApiKey"`
-	GeminiModel  string `json:"geminiModel"`
-
 	// LLMProvider selects which backend to use for AI features.
 	// Supported values: "opencode" (default), "openai-compat".
 	LLMProvider string `json:"llmProvider"`
 
-	// OpenAICompatBaseURL / OpenAICompatAPIKey / OpenAICompatModel are used when
-	// LLMProvider == "openai-compat".
-	OpenAICompatBaseURL string `json:"openAICompatBaseURL"`
-	OpenAICompatAPIKey  string `json:"openAICompatApiKey"`
-	OpenAICompatModel   string `json:"openAICompatModel"`
+	// LLMApiKey is the API key for the selected provider.
+	// For "opencode", if empty, falls back to ai.LoadOpenCodeAPIKey().
+	// For "openai-compat", this is the Bearer token.
+	LLMApiKey string `json:"llmApiKey"`
+
+	// LLMModel is the model to request from the provider.
+	LLMModel string `json:"llmModel"`
+
+	// LLMBaseURL is the base URL for the provider endpoint.
+	// Only used when LLMProvider == "openai-compat".
+	// For "opencode", the fixed ai.OpenCodeBaseURL is used instead.
+	LLMBaseURL string `json:"llmBaseURL"`
 
 	DefaultQuality          string `json:"defaultQuality"`
 	SubtitleFontSize        int    `json:"subtitleFontSize"`
@@ -73,6 +72,17 @@ type Settings struct {
 	RemoteAPIEnabled bool   `json:"remoteApiEnabled"`
 	RemoteAPIPort    int    `json:"remoteApiPort"`
 	RemoteAPIToken   string `json:"remoteApiToken"` // empty = no auth required
+}
+
+// legacySettings is used during load to migrate old field names to the new
+// unified LLM fields. We unmarshal into this struct first, then copy any
+// non-empty legacy values into Settings if the new fields are still empty.
+type legacySettings struct {
+	GeminiApiKey        string `json:"geminiApiKey"`
+	GeminiModel         string `json:"geminiModel"`
+	OpenAICompatBaseURL string `json:"openAICompatBaseURL"`
+	OpenAICompatAPIKey  string `json:"openAICompatApiKey"`
+	OpenAICompatModel   string `json:"openAICompatModel"`
 }
 
 type SettingsStore struct {
@@ -113,7 +123,37 @@ func (s *SettingsStore) load() error {
 		return err
 	}
 
-	return json.Unmarshal(data, &s.settings)
+	if err := json.Unmarshal(data, &s.settings); err != nil {
+		return err
+	}
+
+	// Migration: if the new unified LLM fields are empty but the legacy fields
+	// are present in the file, copy them over so we don't silently lose the
+	// user's saved credentials. The next save will persist only the new names.
+	var legacy legacySettings
+	if err := json.Unmarshal(data, &legacy); err == nil {
+		if s.settings.LLMApiKey == "" {
+			switch s.settings.LLMProvider {
+			case "openai-compat":
+				s.settings.LLMApiKey = legacy.OpenAICompatAPIKey
+			default:
+				s.settings.LLMApiKey = legacy.GeminiApiKey
+			}
+		}
+		if s.settings.LLMModel == "" {
+			switch s.settings.LLMProvider {
+			case "openai-compat":
+				s.settings.LLMModel = legacy.OpenAICompatModel
+			default:
+				s.settings.LLMModel = legacy.GeminiModel
+			}
+		}
+		if s.settings.LLMBaseURL == "" && s.settings.LLMProvider == "openai-compat" {
+			s.settings.LLMBaseURL = legacy.OpenAICompatBaseURL
+		}
+	}
+
+	return nil
 }
 
 func (s *SettingsStore) save() error {
