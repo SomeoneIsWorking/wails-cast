@@ -26,11 +26,18 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"os"
 	"sync"
 	"time"
 
+	"github.com/grandcat/zeroconf"
+
 	"wails-cast/pkg/options"
 )
+
+// mdnsService is the mDNS/Bonjour service type the desktop advertises so the
+// companion app can discover it automatically on the LAN.
+const mdnsService = "_wailscast._tcp"
 
 // ----------------------------------------------------------------------------
 // Library abstraction (consumed by /library)
@@ -101,6 +108,7 @@ type HTTPServer struct {
 	listener net.Listener
 	srv      *http.Server
 	lister   LibraryLister
+	mdns     *zeroconf.Server
 	mu       sync.Mutex
 	running  bool
 }
@@ -157,6 +165,18 @@ func (h *HTTPServer) Start(port int) error {
 		}
 	}()
 
+	// Advertise over mDNS so the companion app can auto-discover this host.
+	instance, _ := os.Hostname()
+	if instance == "" {
+		instance = "wails-cast"
+	}
+	if mdns, err := zeroconf.Register(instance, mdnsService, "local.", port, []string{"app=wails-cast"}, nil); err != nil {
+		logger.Warn("Remote API: mDNS advertisement failed", "error", err)
+	} else {
+		h.mdns = mdns
+		logger.Info("Remote API mDNS advertised", "instance", instance, "service", mdnsService, "port", port)
+	}
+
 	return nil
 }
 
@@ -170,6 +190,10 @@ func (h *HTTPServer) Stop() {
 	}
 	h.running = false
 
+	if h.mdns != nil {
+		h.mdns.Shutdown()
+		h.mdns = nil
+	}
 	if h.srv != nil {
 		_ = h.srv.Close()
 		h.srv = nil
