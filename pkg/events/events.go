@@ -27,7 +27,10 @@ func (eb *EventBus) Subscribe(callback func(string, any)) func() {
 	eb.mu.Lock()
 	id := eb.nextID
 	eb.nextID++
-	ch := make(chan Event)
+	// Buffered so bursts of events (e.g. token-by-token translation streaming)
+	// don't block the publisher; combined with a blocking send in Emit this
+	// guarantees in-order, lossless delivery.
+	ch := make(chan Event, 1024)
 	eb.subs[id] = ch
 	eb.mu.Unlock()
 
@@ -47,15 +50,16 @@ func (eb *EventBus) Subscribe(callback func(string, any)) func() {
 	return unsubscribe
 }
 
-// Emit publishes an event to all subscribers
+// Emit publishes an event to all subscribers. The send is blocking (not a
+// best-effort select/default) so events are never dropped and stay ordered —
+// dropping was producing garbled live translation streams. Holding RLock for
+// the send is safe because Unsubscribe (which closes the channel) takes the
+// write lock and therefore cannot run concurrently with a send.
 func (eb *EventBus) Emit(topic string, payload any) {
 	e := Event{Topic: topic, Payload: payload}
 	eb.mu.RLock()
 	for _, ch := range eb.subs {
-		select {
-		case ch <- e:
-		default:
-		}
+		ch <- e
 	}
 	eb.mu.RUnlock()
 }

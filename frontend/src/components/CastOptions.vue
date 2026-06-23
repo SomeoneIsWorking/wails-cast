@@ -47,7 +47,13 @@ const hasEmbeddedSubtitles = computed(() =>
   )
 );
 
-const isTranslating = computed(() => translationStore.isTranslating);
+// Only reflect "Translating…" when the active translation is for THIS media —
+// a library episode translating in the background shouldn't light up here.
+const isTranslating = computed(
+  () =>
+    translationStore.isTranslating &&
+    translationStore.activePath === trackInfo.value?.Path
+);
 </script>
 
 <template>

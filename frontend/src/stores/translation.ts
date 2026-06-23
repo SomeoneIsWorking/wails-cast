@@ -14,6 +14,10 @@ export const useTranslationStore = defineStore("translation", () => {
   const streamContent = ref("");
   const targetLanguage = ref("");
   const translatedFiles = ref<string[]>([]);
+  // Path of the file currently being translated (single-file translation), so
+  // UI can show the "Translating…" state only where it actually applies rather
+  // than globally. Only one single-file translation runs at a time.
+  const activePath = ref<string | null>(null);
 
   const toast = useToast();
 
@@ -26,6 +30,7 @@ export const useTranslationStore = defineStore("translation", () => {
   EventsOn("translation:complete", (files: string[]) => {
     isTranslating.value = false;
     isCancelling.value = false;
+    activePath.value = null;
     translatedFiles.value = files || [];
     if (files && files.length > 0) {
       const castStore = useCastStore();
@@ -40,12 +45,14 @@ export const useTranslationStore = defineStore("translation", () => {
   EventsOn("translation:error", (error: string) => {
     isTranslating.value = false;
     isCancelling.value = false;
+    activePath.value = null;
     toast.error(`Translation failed: ${error}`);
   });
 
   EventsOn("translation:cancelled", () => {
     isTranslating.value = false;
     isCancelling.value = false;
+    activePath.value = null;
     toast.info("Translation cancelled");
   });
 
@@ -55,10 +62,12 @@ export const useTranslationStore = defineStore("translation", () => {
     targetLanguage.value = language;
     isTranslating.value = true;
     isCancelling.value = false;
+    activePath.value = path;
     try {
       await TranslateExportedSubtitles(path, language);
     } catch (e) {
       isTranslating.value = false;
+      activePath.value = null;
       throw e;
     }
   }
@@ -88,6 +97,7 @@ export const useTranslationStore = defineStore("translation", () => {
     streamContent,
     targetLanguage,
     translatedFiles,
+    activePath,
     start,
     cancel,
     clearStream,

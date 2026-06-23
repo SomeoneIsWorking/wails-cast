@@ -48,9 +48,6 @@ const translateTarget = ref<{
 } | null>(null);
 const translateLanguage = ref(settingsStore.settings?.defaultTranslationLanguage || "English");
 
-// Path of the episode currently being translated on its own (single-episode
-// translate via the translation store), or null.
-const translatingEpisodePath = ref<string | null>(null);
 
 // Live translation-stream modal (shared by single-episode and season runs).
 const showStreamModal = ref(false);
@@ -154,17 +151,20 @@ async function startTranslate() {
 
   if (episode) {
     // Single-episode translation via the shared translation store.
-    translatingEpisodePath.value = episode.path;
     try {
       await translationStore.start(episode.path, lang);
     } catch (err: any) {
-      translatingEpisodePath.value = null;
       toast.error(`Failed to start translation: ${err?.message || err}`);
     }
     return;
   }
 
-  const paths = season.episodes.map((e) => e.path);
+  // Season: only translate episodes that aren't already translated.
+  const paths = season.episodes.filter((e) => !e.translated).map((e) => e.path);
+  if (paths.length === 0) {
+    toast.info("All episodes in this season are already translated.");
+    return;
+  }
   await libraryStore.startSeasonTranslation(show.name, season.name, paths, lang);
 }
 
@@ -172,14 +172,23 @@ async function cancelSeasonTranslate() {
   await libraryStore.cancelSeasonTranslation();
 }
 
-// When a single-episode translation finishes, re-scan so the new subtitle
-// shows up (green check) and clear the per-episode translating marker.
+// When a single-file translation finishes (activePath clears), re-scan so the
+// new subtitle is reflected (translated flag / green check).
 watch(
-  () => translationStore.isTranslating,
+  () => translationStore.activePath,
   (now, prev) => {
-    if (prev && !now && translatingEpisodePath.value) {
-      translatingEpisodePath.value = null;
-      if (rootPath.value) libraryStore.scan(rootPath.value);
+    if (prev && !now && rootPath.value) {
+      libraryStore.scan(rootPath.value);
+    }
+  }
+);
+
+// Likewise re-scan when a season batch translation finishes.
+watch(
+  () => libraryStore.isTranslating,
+  (now, prev) => {
+    if (prev && !now && rootPath.value) {
+      libraryStore.scan(rootPath.value);
     }
   }
 );
@@ -198,7 +207,7 @@ function episodeCount(show: main.LibraryShow) {
 }
 
 function translatedCount(season: main.LibrarySeason) {
-  return season.episodes.filter((e) => e.hasSubtitles).length;
+  return season.episodes.filter((e) => e.translated).length;
 }
 
 async function runIdentify() {
@@ -410,9 +419,9 @@ function cancelOrganize() {
                 class="flex items-center gap-3 px-8 py-2 hover:bg-gray-700/30 transition-colors group"
               >
                 <CheckCircle
-                  v-if="ep.hasSubtitles"
+                  v-if="ep.translated"
                   class="w-3.5 h-3.5 text-green-500 shrink-0"
-                  title="Has subtitles"
+                  :title="'Translated (' + (settingsStore.settings?.defaultTranslationLanguage || '') + ')'"
                 />
                 <span v-else class="w-3.5 h-3.5 shrink-0" />
                 <span class="text-sm text-gray-300 flex-1 truncate">
@@ -423,10 +432,10 @@ function cancelOrganize() {
                   </template>
                   <template v-else>{{ ep.name }}</template>
                 </span>
-                <!-- Translating indicator: season run (current episode) or single-episode run -->
+                <!-- Translating indicator: single-episode run or season run (current episode) -->
                 <template
                   v-if="
-                    translatingEpisodePath === ep.path ||
+                    translationStore.activePath === ep.path ||
                     (libraryStore.isTranslating && progress && progress.currentEpisode > 0 && season.episodes[progress.currentEpisode - 1]?.path === ep.path)
                   "
                 >
@@ -447,7 +456,7 @@ function cancelOrganize() {
                 <button
                   v-else-if="!anyTranslating"
                   class="btn-success text-xs py-1 px-2 opacity-0 group-hover:opacity-100 transition-opacity shrink-0"
-                  :title="ep.hasSubtitles ? 'Re-translate this episode' : 'Translate this episode'"
+                  :title="ep.translated ? 'Re-translate this episode' : 'Translate this episode'"
                   @click="openTranslateModal(show, season, ep)"
                 >
                   <Languages class="w-3 h-3" />
@@ -485,10 +494,12 @@ function cancelOrganize() {
           from <span class="text-white font-medium">{{ translateTarget.show.name }}</span>.
         </p>
         <p v-else class="text-gray-400 text-sm mb-4">
-          Translate all {{ translateTarget.season.episodes.length }} episodes of
+          Translate the
+          {{ translateTarget.season.episodes.filter((e) => !e.translated).length }}
+          untranslated episode(s) of
           <span class="text-white font-medium">{{ translateTarget.season.name }}</span>
           from <span class="text-white font-medium">{{ translateTarget.show.name }}</span>
-          sequentially.
+          sequentially. Already-translated episodes are skipped.
         </p>
         <div class="mb-4">
           <label class="block text-sm text-gray-300 mb-1">Target Language</label>
