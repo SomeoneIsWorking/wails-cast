@@ -27,6 +27,10 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"os/exec"
+	"runtime"
+	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -108,7 +112,8 @@ type HTTPServer struct {
 	listener net.Listener
 	srv      *http.Server
 	lister   LibraryLister
-	mdns     *zeroconf.Server
+	mdns     *zeroconf.Server // pure-Go advertiser (non-darwin)
+	mdnsCmd  *exec.Cmd        // system `dns-sd -R` advertiser (darwin)
 	mu       sync.Mutex
 	running  bool
 }
@@ -166,18 +171,56 @@ func (h *HTTPServer) Start(port int) error {
 	}()
 
 	// Advertise over mDNS so the companion app can auto-discover this host.
-	instance, _ := os.Hostname()
-	if instance == "" {
-		instance = "wails-cast"
+	instance := strings.TrimSuffix(hostnameOrDefault(), ".local")
+	h.startMDNS(instance, port)
+
+	return nil
+}
+
+// hostnameOrDefault returns the OS hostname, falling back to "wails-cast".
+func hostnameOrDefault() string {
+	if h, err := os.Hostname(); err == nil && h != "" {
+		return h
+	}
+	return "wails-cast"
+}
+
+// startMDNS advertises the remote API over mDNS. On macOS it registers through
+// the system mDNS responder via the `dns-sd` CLI: a pure-Go responder bound to
+// UDP 5353 is not discoverable while macOS's own mDNSResponder owns the port.
+// On other platforms grandcat/zeroconf is used.
+func (h *HTTPServer) startMDNS(instance string, port int) {
+	if runtime.GOOS == "darwin" {
+		if path, err := exec.LookPath("dns-sd"); err == nil {
+			cmd := exec.Command(path, "-R", instance, mdnsService, "local", strconv.Itoa(port), "app=wails-cast")
+			if err := cmd.Start(); err != nil {
+				logger.Warn("Remote API: dns-sd register failed", "error", err)
+			} else {
+				h.mdnsCmd = cmd
+				logger.Info("Remote API mDNS advertised (dns-sd)", "instance", instance, "service", mdnsService, "port", port)
+			}
+			return
+		}
 	}
 	if mdns, err := zeroconf.Register(instance, mdnsService, "local.", port, []string{"app=wails-cast"}, nil); err != nil {
 		logger.Warn("Remote API: mDNS advertisement failed", "error", err)
 	} else {
 		h.mdns = mdns
-		logger.Info("Remote API mDNS advertised", "instance", instance, "service", mdnsService, "port", port)
+		logger.Info("Remote API mDNS advertised (zeroconf)", "instance", instance, "service", mdnsService, "port", port)
 	}
+}
 
-	return nil
+// stopMDNS tears down whichever mDNS advertiser is active.
+func (h *HTTPServer) stopMDNS() {
+	if h.mdnsCmd != nil && h.mdnsCmd.Process != nil {
+		_ = h.mdnsCmd.Process.Kill()
+		_ = h.mdnsCmd.Wait()
+		h.mdnsCmd = nil
+	}
+	if h.mdns != nil {
+		h.mdns.Shutdown()
+		h.mdns = nil
+	}
 }
 
 // Stop shuts the server down gracefully.
@@ -190,10 +233,7 @@ func (h *HTTPServer) Stop() {
 	}
 	h.running = false
 
-	if h.mdns != nil {
-		h.mdns.Shutdown()
-		h.mdns = nil
-	}
+	h.stopMDNS()
 	if h.srv != nil {
 		_ = h.srv.Close()
 		h.srv = nil
