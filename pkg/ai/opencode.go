@@ -8,7 +8,10 @@ import (
 )
 
 // OpenCodeBaseURL is the OpenAI-compatible endpoint for the "opencode-go" provider.
-const OpenCodeBaseURL = "https://opencode.ai/zen/go/v1"
+// This is the OpenCode Zen endpoint, which serves both the paid models and the
+// free-tier models (e.g. "deepseek-v4-flash-free"). The "/zen/go/v1" variant only
+// exposes the paid coding models and rejects the free model ids.
+const OpenCodeBaseURL = "https://opencode.ai/zen/v1"
 
 // openCodeProvider is the provider key looked up in opencode's auth.json.
 const openCodeProvider = "opencode-go"
