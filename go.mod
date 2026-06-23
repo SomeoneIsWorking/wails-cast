@@ -4,6 +4,7 @@ go 1.24.0
 
 require (
 	github.com/go-rod/rod v0.116.2
+	github.com/grandcat/zeroconf v1.0.0
 	github.com/pkg/errors v0.9.1
 	github.com/vishen/go-chromecast v0.3.4
 	github.com/wailsapp/wails/v2 v2.11.0
@@ -20,7 +21,6 @@ require (
 	github.com/google/go-cmp v0.7.0 // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/gorilla/websocket v1.5.3 // indirect
-	github.com/grandcat/zeroconf v1.0.0 // indirect
 	github.com/h2non/filetype v1.1.3 // indirect
 	github.com/jchv/go-winloader v0.0.0-20250406163304-c1995be93bd1 // indirect
 	github.com/labstack/echo/v4 v4.13.4 // indirect
