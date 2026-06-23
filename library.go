@@ -57,8 +57,13 @@ type LibraryEpisode struct {
 	// Season/episode numbers parsed from the filename (0 = unknown).
 	Season  int `json:"season"`
 	Episode int `json:"episode"`
-	// Whether a subtitle directory already exists next to the video file.
+	// Whether a subtitle directory already exists next to the video file
+	// (true once embedded subtitles have been extracted — not the same as
+	// having a translation).
 	HasSubtitles bool `json:"hasSubtitles"`
+	// Translated is true when a subtitle for the default target language exists
+	// (i.e. the file <subtitleDir>/<DefaultTargetLanguage>.vtt is present).
+	Translated bool `json:"translated"`
 	// EpisodeName is the official episode title from TMDB (empty if unidentified).
 	EpisodeName string `json:"episodeName"`
 	// Identified is true when TMDB metadata was successfully fetched.
@@ -172,9 +177,27 @@ func subtitleDirExists(videoPath string) bool {
 	return err == nil && info.IsDir()
 }
 
+// translatedSubtitlePath returns the path where a translation for the given
+// language is saved: <videoDir>/<baseName>/<language>.vtt (matching the naming
+// used by the translator).
+func translatedSubtitlePath(videoPath, language string) string {
+	base := strings.TrimSuffix(videoPath, filepath.Ext(videoPath))
+	return filepath.Join(base, language+".vtt")
+}
+
+// hasTranslation reports whether a translated subtitle for the given language
+// already exists next to the video.
+func hasTranslation(videoPath, language string) bool {
+	if language == "" {
+		return false
+	}
+	info, err := os.Stat(translatedSubtitlePath(videoPath, language))
+	return err == nil && !info.IsDir()
+}
+
 // scanSeasonDir scans a single directory (season folder) for video files and
 // returns the episodes sorted by episode number.
-func scanSeasonDir(dir string) []LibraryEpisode {
+func scanSeasonDir(dir, targetLang string) []LibraryEpisode {
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		return nil
@@ -197,6 +220,7 @@ func scanSeasonDir(dir string) []LibraryEpisode {
 			Season:       s,
 			Episode:      ep,
 			HasSubtitles: subtitleDirExists(absPath),
+			Translated:   hasTranslation(absPath, targetLang),
 		})
 	}
 
@@ -212,7 +236,7 @@ func scanSeasonDir(dir string) []LibraryEpisode {
 // scanShowDir analyses a show directory. It looks for season sub-folders
 // (matching "Season N" in the name) and — if none are found — treats the
 // directory itself as a single flat season.
-func scanShowDir(showDir string) LibraryShow {
+func scanShowDir(showDir, targetLang string) LibraryShow {
 	show := LibraryShow{
 		Name: cleanShowName(filepath.Base(showDir)),
 		Path: showDir,
@@ -255,7 +279,7 @@ func scanShowDir(showDir string) LibraryShow {
 			return seasonDirs[i].number < seasonDirs[j].number
 		})
 		for _, sd := range seasonDirs {
-			eps := scanSeasonDir(sd.path)
+			eps := scanSeasonDir(sd.path, targetLang)
 			if len(eps) > 0 {
 				show.Seasons = append(show.Seasons, LibrarySeason{
 					Name:     sd.name,
@@ -266,7 +290,7 @@ func scanShowDir(showDir string) LibraryShow {
 		}
 	} else {
 		// No season sub-dirs – treat the show dir as a single season.
-		eps := scanSeasonDir(showDir)
+		eps := scanSeasonDir(showDir, targetLang)
 		if len(eps) > 0 {
 			// Try to determine season number from first episode.
 			sNum := 1
@@ -288,7 +312,7 @@ func scanShowDir(showDir string) LibraryShow {
 // immediate child directory is treated as a show root; deeper nesting is
 // handled by scanShowDir.
 func (a *App) ScanLibrary(rootPath string) (*LibraryScanResult, error) {
-	result, err := scanLibraryRoot(rootPath)
+	result, err := scanLibraryRoot(rootPath, a.settingsStore.Get().DefaultTranslationLanguage)
 	if err != nil {
 		return nil, err
 	}
@@ -305,7 +329,7 @@ func (a *App) ScanLibrary(rootPath string) (*LibraryScanResult, error) {
 // returns the show/season/episode tree. It has no side effects (it does not
 // persist settings), so it is safe to call from non-interactive callers such
 // as the HTTP remote API.
-func scanLibraryRoot(rootPath string) (*LibraryScanResult, error) {
+func scanLibraryRoot(rootPath, targetLang string) (*LibraryScanResult, error) {
 	if rootPath == "" {
 		return nil, fmt.Errorf("rootPath must not be empty")
 	}
@@ -330,7 +354,7 @@ func scanLibraryRoot(rootPath string) (*LibraryScanResult, error) {
 			continue
 		}
 		showPath := filepath.Join(rootPath, e.Name())
-		show := scanShowDir(showPath)
+		show := scanShowDir(showPath, targetLang)
 		// Only include entries that have at least one episode.
 		totalEps := 0
 		for _, s := range show.Seasons {
@@ -349,12 +373,13 @@ func scanLibraryRoot(rootPath string) (*LibraryScanResult, error) {
 // into a flat list of LibraryItems so companion apps can browse and select
 // content. Returns an empty list (not an error) when no library is configured.
 func (a *App) ListLibraryItems() ([]LibraryItem, error) {
-	root := a.settingsStore.Get().LibraryRoot
+	settings := a.settingsStore.Get()
+	root := settings.LibraryRoot
 	if root == "" {
 		return []LibraryItem{}, nil
 	}
 
-	result, err := scanLibraryRoot(root)
+	result, err := scanLibraryRoot(root, settings.DefaultTranslationLanguage)
 	if err != nil {
 		return nil, err
 	}

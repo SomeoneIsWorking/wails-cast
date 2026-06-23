@@ -52,6 +52,7 @@ export namespace main {
 	    season: number;
 	    episode: number;
 	    hasSubtitles: boolean;
+	    translated: boolean;
 	    episodeName: string;
 	    identified: boolean;
 	}

@@ -153,7 +153,14 @@ func (a *App) GetTrackDisplayInfo(fileNameOrUrl string) (*TrackDisplayInfo, erro
 
 	nearSubtitle := ""
 	if !remote {
-		nearSubtitle = findSubtitleFile(fileNameOrUrl)
+		// Prefer an existing translation for the default target language so it
+		// is auto-selected; otherwise fall back to a sibling subtitle file.
+		lang := a.settingsStore.Get().DefaultTranslationLanguage
+		if hasTranslation(fileNameOrUrl, lang) {
+			nearSubtitle = translatedSubtitlePath(fileNameOrUrl, lang)
+		} else {
+			nearSubtitle = findSubtitleFile(fileNameOrUrl)
+		}
 	}
 
 	return &TrackDisplayInfo{
