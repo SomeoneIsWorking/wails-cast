@@ -6,6 +6,14 @@ import {folders} from '../models';
 import {remote} from '../models';
 import {ffmpeg} from '../models';
 
+export function CancelSeasonTranslation():Promise<void>;
+
+export function IdentifyLibrary(arg1:main.LibraryScanResult):Promise<main.LibraryScanResult>;
+
+export function PreviewOrganize(arg1:main.LibraryScanResult):Promise<Array<main.OrganizeMove>>;
+
+export function OrganizeLibrary(arg1:Array<main.OrganizeMove>):Promise<void>;
+
 export function CancelTranslation():Promise<void>;
 
 export function CastToDevice(arg1:string,arg2:string,arg3:options.CastOptions):Promise<main.PlaybackState>;
@@ -48,6 +56,8 @@ export function LogWarn(arg1:string,arg2:Array<any>):Promise<void>;
 
 export function OpenFileDialog(arg1:string,arg2:Array<string>):Promise<string>;
 
+export function OpenLibraryFolderDialog():Promise<string>;
+
 export function OpenMediaFolder(arg1:string):Promise<void>;
 
 export function Pause():Promise<void>;
@@ -70,9 +80,13 @@ export function StartDownload(arg1:string,arg2:string,arg3:number):Promise<void>
 
 export function StopDownload(arg1:string,arg2:string,arg3:number):Promise<void>;
 
+export function ScanLibrary(arg1:string):Promise<main.LibraryScanResult>;
+
 export function StopPlayback():Promise<void>;
 
 export function TranslateExportedSubtitles(arg1:string,arg2:string):Promise<void>;
+
+export function TranslateSeason(arg1:string,arg2:string,arg3:Array<string>,arg4:string):Promise<void>;
 
 export function Unpause():Promise<void>;
 

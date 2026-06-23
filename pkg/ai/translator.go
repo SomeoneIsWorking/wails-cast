@@ -50,19 +50,34 @@ type Translator struct {
 
 // NewTranslator creates a new translator instance backed by opencode-go.
 func NewTranslator(apiKey string, model string) (*Translator, error) {
+	return NewTranslatorWithBaseURL(apiKey, model, OpenCodeBaseURL)
+}
+
+// NewTranslatorWithBaseURL creates a translator that talks to any
+// OpenAI-compatible endpoint.  Use this for the "openai-compat" provider.
+func NewTranslatorWithBaseURL(apiKey, model, baseURL string) (*Translator, error) {
 	if apiKey == "" {
-		return nil, fmt.Errorf("opencode API key is required")
+		return nil, fmt.Errorf("API key is required")
 	}
 	if model == "" {
 		return nil, fmt.Errorf("model is required")
+	}
+	if baseURL == "" {
+		return nil, fmt.Errorf("base URL is required")
 	}
 
 	return &Translator{
 		client:  &http.Client{},
 		apiKey:  apiKey,
 		model:   model,
-		baseURL: OpenCodeBaseURL,
+		baseURL: baseURL,
 	}, nil
+}
+
+// StreamCompletion satisfies the LLMClient interface by delegating to the
+// internal streaming implementation.
+func (t *Translator) StreamCompletion(ctx context.Context, prompt string) (string, error) {
+	return t.streamCompletion(ctx, prompt)
 }
 
 // Close releases any held resources.

@@ -17,6 +17,9 @@ type Request struct {
 	TargetLanguage string
 	APIKey         string
 	Model          string
+	// BaseURL is the OpenAI-compatible endpoint base URL.  Leave empty to use
+	// the opencode default (OpenCodeBaseURL).
+	BaseURL        string
 	PromptTemplate string
 	MaxSamples     int
 }
@@ -66,7 +69,11 @@ func TranslateForFile(ctx context.Context, req Request) ([]string, error) {
 		return nil, err
 	}
 
-	translator, err := NewTranslator(req.APIKey, req.Model)
+	baseURL := req.BaseURL
+	if baseURL == "" {
+		baseURL = OpenCodeBaseURL
+	}
+	translator, err := NewTranslatorWithBaseURL(req.APIKey, req.Model, baseURL)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create translator: %w", err)
 	}
