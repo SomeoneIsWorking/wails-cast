@@ -131,6 +131,9 @@ export namespace main {
 	    libraryRoot: string;
 	    /** TMDB v3 API key for show/episode identification. */
 	    tmdbApiKey: string;
+	    remoteApiEnabled: boolean;
+	    remoteApiPort: number;
+	    remoteApiToken: string;
 	}
 	export interface SubtitleDisplayItem {
 	    Path: string;
