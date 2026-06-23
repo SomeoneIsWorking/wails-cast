@@ -6,13 +6,9 @@ import {folders} from '../models';
 import {remote} from '../models';
 import {ffmpeg} from '../models';
 
+export function ApplyRemoteAPISettings(arg1:boolean,arg2:number,arg3:string):Promise<void>;
+
 export function CancelSeasonTranslation():Promise<void>;
-
-export function IdentifyLibrary(arg1:main.LibraryScanResult):Promise<main.LibraryScanResult>;
-
-export function PreviewOrganize(arg1:main.LibraryScanResult):Promise<Array<main.OrganizeMove>>;
-
-export function OrganizeLibrary(arg1:Array<main.OrganizeMove>):Promise<void>;
 
 export function CancelTranslation():Promise<void>;
 
@@ -42,13 +38,19 @@ export function GetFFmpegInfo(arg1:boolean):Promise<ffmpeg.FFmpegInfo>;
 
 export function GetHistory():Promise<Array<main.HistoryItem>>;
 
-export function ListModels(arg1:string):Promise<Array<string>>;
-
 export function GetMediaFiles(arg1:string):Promise<Array<string>>;
+
+export function GetRemoteAPIAddress():Promise<string>;
 
 export function GetSettings():Promise<main.Settings>;
 
 export function GetTrackDisplayInfo(arg1:string):Promise<main.TrackDisplayInfo>;
+
+export function IdentifyLibrary(arg1:main.LibraryScanResult):Promise<main.LibraryScanResult>;
+
+export function ListLibraryItems():Promise<Array<main.LibraryItem>>;
+
+export function ListModels(arg1:string):Promise<Array<string>>;
 
 export function LogError(arg1:string,arg2:Array<any>):Promise<void>;
 
@@ -62,13 +64,19 @@ export function OpenLibraryFolderDialog():Promise<string>;
 
 export function OpenMediaFolder(arg1:string):Promise<void>;
 
+export function OrganizeLibrary(arg1:Array<main.OrganizeMove>):Promise<void>;
+
 export function Pause():Promise<void>;
+
+export function PreviewOrganize(arg1:main.LibraryScanResult):Promise<Array<main.OrganizeMove>>;
 
 export function ProcessPastedTranslation(arg1:string,arg2:string,arg3:string):Promise<Array<string>>;
 
 export function RemoveFromHistory(arg1:string):Promise<void>;
 
 export function ResetSettings():Promise<main.Settings>;
+
+export function ScanLibrary(arg1:string):Promise<main.LibraryScanResult>;
 
 export function SeekTo(arg1:number):Promise<void>;
 
@@ -81,8 +89,6 @@ export function SetVolume(arg1:number):Promise<void>;
 export function StartDownload(arg1:string,arg2:string,arg3:number):Promise<void>;
 
 export function StopDownload(arg1:string,arg2:string,arg3:number):Promise<void>;
-
-export function ScanLibrary(arg1:string):Promise<main.LibraryScanResult>;
 
 export function StopPlayback():Promise<void>;
 
