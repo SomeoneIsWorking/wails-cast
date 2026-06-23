@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onMounted } from "vue";
+import { ref, computed, onMounted, watch } from "vue";
 import {
   FolderOpen,
   RefreshCw,
@@ -12,6 +12,7 @@ import {
   CheckCircle,
   Search,
   FolderCheck,
+  Eye,
   X,
 } from "lucide-vue-next";
 import { useLibraryStore } from "@/stores/library";
@@ -37,10 +38,22 @@ const toast = useToast();
 const expandedShows = ref<Set<string>>(new Set());
 const expandedSeasons = ref<Set<string>>(new Set());
 
-// Season-translate modal state.
+// Translate modal state. A target is either a whole season (episode undefined)
+// or a single episode.
 const showTranslateModal = ref(false);
-const translateTarget = ref<{ show: main.LibraryShow; season: main.LibrarySeason } | null>(null);
+const translateTarget = ref<{
+  show: main.LibraryShow;
+  season: main.LibrarySeason;
+  episode?: main.LibraryEpisode;
+} | null>(null);
 const translateLanguage = ref(settingsStore.settings?.defaultTranslationLanguage || "English");
+
+// Path of the episode currently being translated on its own (single-episode
+// translate via the translation store), or null.
+const translatingEpisodePath = ref<string | null>(null);
+
+// Live translation-stream modal (shared by single-episode and season runs).
+const showStreamModal = ref(false);
 
 // Per-episode loading state when clicking Play.
 const loadingEpisode = ref<string | null>(null);
@@ -117,28 +130,67 @@ async function playEpisode(ep: main.LibraryEpisode) {
   }
 }
 
-function openTranslateModal(show: main.LibraryShow, season: main.LibrarySeason) {
-  translateTarget.value = { show, season };
+// Is any translation (single-episode or season) currently running?
+const anyTranslating = computed(
+  () => libraryStore.isTranslating || translationStore.isTranslating
+);
+
+function openTranslateModal(
+  show: main.LibraryShow,
+  season: main.LibrarySeason,
+  episode?: main.LibraryEpisode
+) {
+  translateTarget.value = { show, season, episode };
   translateLanguage.value =
     settingsStore.settings?.defaultTranslationLanguage || "English";
   showTranslateModal.value = true;
 }
 
-async function startSeasonTranslate() {
+async function startTranslate() {
   if (!translateTarget.value) return;
-  const { show, season } = translateTarget.value;
-  const paths = season.episodes.map((e) => e.path);
+  const { show, season, episode } = translateTarget.value;
+  const lang = translateLanguage.value;
   showTranslateModal.value = false;
-  await libraryStore.startSeasonTranslation(
-    show.name,
-    season.name,
-    paths,
-    translateLanguage.value
-  );
+
+  if (episode) {
+    // Single-episode translation via the shared translation store.
+    translatingEpisodePath.value = episode.path;
+    try {
+      await translationStore.start(episode.path, lang);
+    } catch (err: any) {
+      translatingEpisodePath.value = null;
+      toast.error(`Failed to start translation: ${err?.message || err}`);
+    }
+    return;
+  }
+
+  const paths = season.episodes.map((e) => e.path);
+  await libraryStore.startSeasonTranslation(show.name, season.name, paths, lang);
 }
 
 async function cancelSeasonTranslate() {
   await libraryStore.cancelSeasonTranslation();
+}
+
+// When a single-episode translation finishes, re-scan so the new subtitle
+// shows up (green check) and clear the per-episode translating marker.
+watch(
+  () => translationStore.isTranslating,
+  (now, prev) => {
+    if (prev && !now && translatingEpisodePath.value) {
+      translatingEpisodePath.value = null;
+      if (rootPath.value) libraryStore.scan(rootPath.value);
+    }
+  }
+);
+
+// Cancel whichever translation is active (from the live modal).
+async function cancelActiveTranslation() {
+  if (libraryStore.isTranslating) {
+    await libraryStore.cancelSeasonTranslation();
+  } else {
+    await translationStore.cancel();
+  }
 }
 
 function episodeCount(show: main.LibraryShow) {
@@ -147,18 +199,6 @@ function episodeCount(show: main.LibraryShow) {
 
 function translatedCount(season: main.LibrarySeason) {
   return season.episodes.filter((e) => e.hasSubtitles).length;
-}
-
-function identifiedCount(show: main.LibraryShow) {
-  let total = 0;
-  let identified = 0;
-  for (const s of show.seasons) {
-    for (const e of s.episodes) {
-      total++;
-      if (e.identified) identified++;
-    }
-  }
-  return { total, identified };
 }
 
 async function runIdentify() {
@@ -257,6 +297,10 @@ function cancelOrganize() {
           ></div>
         </div>
       </div>
+      <button @click="showStreamModal = true" class="btn-secondary text-xs shrink-0">
+        <Eye class="w-3 h-3" />
+        View live
+      </button>
       <button @click="cancelSeasonTranslate()" class="btn-danger text-xs shrink-0">
         <Square class="w-3 h-3" />
         Cancel
@@ -348,7 +392,7 @@ function cancelOrganize() {
               </button>
               <!-- Translate whole season button -->
               <button
-                v-if="!libraryStore.isTranslating"
+                v-if="!anyTranslating"
                 class="btn-success text-xs py-1 px-2 mr-3 shrink-0"
                 :title="'Translate ' + season.name"
                 @click.stop="openTranslateModal(show, season)"
@@ -379,14 +423,36 @@ function cancelOrganize() {
                   </template>
                   <template v-else>{{ ep.name }}</template>
                 </span>
-                <!-- Translate indicator when this episode is being translated -->
-                <span
-                  v-if="libraryStore.isTranslating && progress && progress.currentEpisode > 0 && season.episodes[progress.currentEpisode - 1]?.path === ep.path"
-                  class="text-xs text-blue-400 shrink-0 flex items-center gap-1"
+                <!-- Translating indicator: season run (current episode) or single-episode run -->
+                <template
+                  v-if="
+                    translatingEpisodePath === ep.path ||
+                    (libraryStore.isTranslating && progress && progress.currentEpisode > 0 && season.episodes[progress.currentEpisode - 1]?.path === ep.path)
+                  "
                 >
-                  <LoadingIcon class="w-3 h-3" />
-                  Translating…
-                </span>
+                  <span class="text-xs text-blue-400 shrink-0 flex items-center gap-1">
+                    <LoadingIcon class="w-3 h-3" />
+                    Translating…
+                  </span>
+                  <button
+                    class="btn-secondary text-xs py-1 px-2 shrink-0"
+                    title="Show live translation"
+                    @click="showStreamModal = true"
+                  >
+                    <Eye class="w-3 h-3" />
+                    View live
+                  </button>
+                </template>
+                <!-- Per-episode translate button (hidden while any translation runs) -->
+                <button
+                  v-else-if="!anyTranslating"
+                  class="btn-success text-xs py-1 px-2 opacity-0 group-hover:opacity-100 transition-opacity shrink-0"
+                  :title="ep.hasSubtitles ? 'Re-translate this episode' : 'Translate this episode'"
+                  @click="openTranslateModal(show, season, ep)"
+                >
+                  <Languages class="w-3 h-3" />
+                  Translate
+                </button>
                 <button
                   class="btn-primary text-xs py-1 px-2 opacity-0 group-hover:opacity-100 transition-opacity shrink-0"
                   :disabled="loadingEpisode === ep.path"
@@ -410,8 +476,15 @@ function cancelOrganize() {
       @click.self="showTranslateModal = false"
     >
       <div class="bg-gray-800 rounded-md p-6 max-w-md w-full mx-4">
-        <h2 class="text-xl font-bold text-white mb-2">Translate Season</h2>
-        <p class="text-gray-400 text-sm mb-4">
+        <h2 class="text-xl font-bold text-white mb-2">
+          {{ translateTarget.episode ? "Translate Episode" : "Translate Season" }}
+        </h2>
+        <p v-if="translateTarget.episode" class="text-gray-400 text-sm mb-4">
+          Translate
+          <span class="text-white font-medium">{{ translateTarget.episode.episodeName || translateTarget.episode.name }}</span>
+          from <span class="text-white font-medium">{{ translateTarget.show.name }}</span>.
+        </p>
+        <p v-else class="text-gray-400 text-sm mb-4">
           Translate all {{ translateTarget.season.episodes.length }} episodes of
           <span class="text-white font-medium">{{ translateTarget.season.name }}</span>
           from <span class="text-white font-medium">{{ translateTarget.show.name }}</span>
@@ -429,7 +502,7 @@ function cancelOrganize() {
         <div class="flex gap-2 justify-end">
           <button @click="showTranslateModal = false" class="btn-secondary text-sm">Cancel</button>
           <button
-            @click="startSeasonTranslate()"
+            @click="startTranslate()"
             :disabled="!translateLanguage.trim()"
             class="btn-primary text-sm"
           >
@@ -492,6 +565,55 @@ function cancelOrganize() {
             <FolderCheck v-else class="w-4 h-4" />
             Move {{ organizePlan.length }} File{{ organizePlan.length !== 1 ? 's' : '' }}
           </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Live translation stream modal -->
+    <div
+      v-if="showStreamModal"
+      class="fixed inset-0 bg-black/50 flex items-center justify-center z-50"
+      @click.self="showStreamModal = false"
+    >
+      <div class="bg-gray-800 rounded-md p-6 max-w-3xl w-full mx-4 max-h-[80vh] flex flex-col">
+        <div class="flex items-center justify-between mb-3">
+          <h2 class="text-xl font-bold text-white flex items-center gap-2">
+            <Languages class="w-5 h-5 text-blue-400" />
+            Live Translation
+          </h2>
+          <button @click="showStreamModal = false" class="text-gray-400 hover:text-white transition-colors">
+            <X class="w-5 h-5" />
+          </button>
+        </div>
+
+        <!-- Status row -->
+        <div class="flex items-center gap-3 mb-3">
+          <template v-if="anyTranslating">
+            <div class="bg-gray-700 text-white rounded-md px-4 py-2 flex items-center text-sm">
+              <LoadingIcon class="w-4 h-4 mr-2" />
+              <span v-if="libraryStore.isTranslating && progress">
+                Translating {{ progress.seasonName }}
+                <span v-if="progress.totalEpisodes > 0" class="text-gray-400 ml-1">
+                  ({{ progress.currentEpisode }}/{{ progress.totalEpisodes }})
+                </span>
+              </span>
+              <span v-else>Translating…</span>
+            </div>
+            <div class="flex-1"></div>
+            <button @click="cancelActiveTranslation()" class="btn-danger text-sm">
+              <Square class="w-4 h-4" />
+              Cancel
+            </button>
+          </template>
+          <template v-else>
+            <div class="text-sm text-gray-400">Translation finished.</div>
+          </template>
+        </div>
+
+        <!-- Stream output -->
+        <div class="flex-1 overflow-y-auto bg-gray-900 rounded-md p-4 font-mono text-sm text-green-400 min-h-[8rem]">
+          <pre v-if="translationStore.streamContent" class="whitespace-pre-wrap text-left">{{ translationStore.streamContent }}</pre>
+          <span v-else class="text-gray-500">Waiting for model output…</span>
         </div>
       </div>
     </div>

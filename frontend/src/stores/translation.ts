@@ -75,6 +75,13 @@ export const useTranslationStore = defineStore("translation", () => {
     }
   }
 
+  // resetStream clears the buffer unconditionally. Used by the library's season
+  // translation to show only the current episode's stream (a season run feeds
+  // translation:stream continuously across episodes).
+  function resetStream() {
+    streamContent.value = "";
+  }
+
   return {
     isTranslating,
     isCancelling,
@@ -84,5 +91,6 @@ export const useTranslationStore = defineStore("translation", () => {
     start,
     cancel,
     clearStream,
+    resetStream,
   };
 });
