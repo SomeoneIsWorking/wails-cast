@@ -75,8 +75,9 @@ export const settingCategories: SettingCategory[] = [
       {
         key: "geminiModel",
         label: "OpenCode Model",
-        description: "Which opencode-go model to use (e.g. deepseek-v4-flash). Used when provider is OpenCode.",
-        type: "text",
+        description: "Which opencode-go model to use. Used when provider is OpenCode.",
+        type: "dynamic-select",
+        dynamicOptionsProvider: "llmProvider",
       },
       // --- openai-compat provider ---
       {
@@ -95,7 +96,8 @@ export const settingCategories: SettingCategory[] = [
         key: "openAICompatModel",
         label: "OpenAI-compat Model",
         description: "Model name to request from the OpenAI-compatible endpoint. Used when provider is OpenAI-compatible endpoint.",
-        type: "text",
+        type: "dynamic-select",
+        dynamicOptionsProvider: "llmProvider",
       },
       // --- shared ---
       {

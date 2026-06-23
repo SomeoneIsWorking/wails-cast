@@ -8,15 +8,22 @@ import {
 import { main } from "../../wailsjs/go/models";
 import { settingCategories } from "../data/settingCategories";
 
-interface SettingDefinition {
+export interface SettingDefinition {
   key: keyof main.Settings;
   label: string;
   description: string;
-  type: "boolean" | "text" | "password" | "number" | "select" | "textarea";
+  type: "boolean" | "text" | "password" | "number" | "select" | "dynamic-select" | "textarea";
   min?: number;
   max?: number;
   step?: number;
+  /** Static options for type === "select" */
   options?: { value: string; label: string }[];
+  /**
+   * For type === "dynamic-select": the key of the sibling setting whose
+   * current value is passed as the `provider` argument to ListModels().
+   * When that key changes the dropdown is refreshed automatically.
+   */
+  dynamicOptionsProvider?: keyof main.Settings;
 }
 
 export interface SettingCategory {

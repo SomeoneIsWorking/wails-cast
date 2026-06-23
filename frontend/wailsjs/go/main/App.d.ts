@@ -42,6 +42,8 @@ export function GetFFmpegInfo(arg1:boolean):Promise<ffmpeg.FFmpegInfo>;
 
 export function GetHistory():Promise<Array<main.HistoryItem>>;
 
+export function ListModels(arg1:string):Promise<Array<string>>;
+
 export function GetMediaFiles(arg1:string):Promise<Array<string>>;
 
 export function GetSettings():Promise<main.Settings>;
