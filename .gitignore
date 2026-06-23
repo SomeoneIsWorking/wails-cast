@@ -53,3 +53,6 @@ yarn-error.log*
 Thumbs.db
 .AppleDouble
 .LSOverride
+
+# Claude Code worktrees
+.claude/

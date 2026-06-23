@@ -12,6 +12,7 @@ import {
   Languages,
   Brain,
   HardDrive,
+  Smartphone,
 } from "lucide-vue-next";
 import CacheManagement from "./CacheManagement.vue";
 
@@ -104,6 +105,8 @@ const getIconComponent = (iconName: string) => {
       return Brain;
     case "HardDrive":
       return HardDrive;
+    case "Smartphone":
+      return Smartphone;
     default:
       return SettingsIcon;
   }

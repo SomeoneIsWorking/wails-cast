@@ -35,6 +35,7 @@ type App struct {
 	App           *application.Application
 	discovery     *DeviceDiscovery
 	mediaServer   *Server
+	httpServer    *HTTPServer // remote control API for companion apps
 	localIp       string
 	port          int
 	playbackState PlaybackState
@@ -59,7 +60,7 @@ func NewApp() *App {
 	discovery := NewDeviceDiscovery()
 	localIP := discovery.GetLocalIP()
 	port := 8888
-	return &App{
+	app := &App{
 		discovery:     NewDeviceDiscovery(),
 		mediaServer:   NewServer(localIP, port),
 		localIp:       localIP,
@@ -69,6 +70,8 @@ func NewApp() *App {
 		settingsStore: NewSettingsStore(),
 		RemoteManager: remote.NewManager(true),
 	}
+	app.httpServer = NewHTTPServer(app)
+	return app
 }
 
 func (a *App) startup(ctx context.Context) {
@@ -79,11 +82,22 @@ func (a *App) startup(ctx context.Context) {
 	// Start media server
 	go a.mediaServer.Start()
 
+	// Start remote control HTTP API if enabled. Wire the library scanner in so
+	// the /library endpoint serves real items instead of the history fallback.
+	a.httpServer.SetLibraryLister(a)
+	settings := a.settingsStore.Get()
+	if settings.RemoteAPIEnabled {
+		if err := a.httpServer.Start(settings.RemoteAPIPort); err != nil {
+			logger.Error("Failed to start remote API", "error", err)
+		}
+	}
+
 	logger.Info("App started")
 }
 
 func (a *App) shutdown(ctx context.Context) {
 	a.mediaServer.Stop()
+	a.httpServer.Stop()
 }
 
 // DiscoverDevices discovers Chromecast devices on the network
@@ -522,15 +536,36 @@ func (a *App) ExportEmbeddedSubtitles(videoPath string) error {
 func (a *App) TranslateExportedSubtitles(fileNameOrUrl string, targetLanguage string) error {
 	settings := a.settingsStore.Get()
 
-	apiKey := settings.GeminiApiKey
-	if apiKey == "" {
-		// Fall back to the user's opencode-go credentials.
-		if key, err := ai.LoadOpenCodeAPIKey(); err == nil {
-			apiKey = key
+	// Resolve API key, model, and base URL based on the selected LLM provider.
+	var apiKey, model, baseURL string
+	switch settings.LLMProvider {
+	case ai.ProviderOpenAICompat:
+		apiKey = settings.OpenAICompatAPIKey
+		model = settings.OpenAICompatModel
+		baseURL = settings.OpenAICompatBaseURL
+		if apiKey == "" {
+			return fmt.Errorf("openai-compat API key is required. Please set it in Settings")
 		}
-	}
-	if apiKey == "" {
-		return fmt.Errorf("opencode API key is required. Please set it in Settings or in opencode's auth.json")
+		if baseURL == "" {
+			return fmt.Errorf("openai-compat base URL is required. Please set it in Settings")
+		}
+		if model == "" {
+			return fmt.Errorf("openai-compat model is required. Please set it in Settings")
+		}
+	default:
+		// "opencode" (or empty/unrecognised) — use opencode credentials.
+		apiKey = settings.GeminiApiKey
+		if apiKey == "" {
+			// Fall back to the user's opencode-go credentials.
+			if key, err := ai.LoadOpenCodeAPIKey(); err == nil {
+				apiKey = key
+			}
+		}
+		if apiKey == "" {
+			return fmt.Errorf("opencode API key is required. Please set it in Settings or in opencode's auth.json")
+		}
+		model = settings.GeminiModel
+		baseURL = ai.OpenCodeBaseURL
 	}
 
 	if targetLanguage == "" {
@@ -550,7 +585,8 @@ func (a *App) TranslateExportedSubtitles(fileNameOrUrl string, targetLanguage st
 		FileNameOrURL:  fileNameOrUrl,
 		TargetLanguage: targetLanguage,
 		APIKey:         apiKey,
-		Model:          settings.GeminiModel,
+		Model:          model,
+		BaseURL:        baseURL,
 		PromptTemplate: settings.TranslatePromptTemplate,
 		MaxSamples:     settings.MaxSubtitleSamples,
 	}
@@ -642,6 +678,41 @@ func (a *App) ResetSettings() (*Settings, error) {
 		return nil, err
 	}
 	return a.settingsStore.Get(), nil
+}
+
+// UpdateSettings updates the settings and applies remote API changes immediately.
+// Overrides the simple delegation to settingsStore so we can start/stop the HTTP
+// server without requiring an app restart.
+func (a *App) ApplyRemoteAPISettings(enabled bool, port int, token string) error {
+	settings := a.settingsStore.Get()
+	settings.RemoteAPIEnabled = enabled
+	settings.RemoteAPIPort = port
+	settings.RemoteAPIToken = token
+	if err := a.settingsStore.Update(*settings); err != nil {
+		return err
+	}
+
+	if enabled {
+		// Stop first so we can restart on a potentially different port
+		a.httpServer.Stop()
+		if err := a.httpServer.Start(port); err != nil {
+			return fmt.Errorf("remote API: %w", err)
+		}
+	} else {
+		a.httpServer.Stop()
+	}
+	return nil
+}
+
+// GetRemoteAPIAddress returns the listening address of the remote API server,
+// or an empty string if it is not running.  The frontend shows this to the user
+// so they can connect the Android app.
+func (a *App) GetRemoteAPIAddress() string {
+	if !a.httpServer.IsRunning() {
+		return ""
+	}
+	settings := a.settingsStore.Get()
+	return fmt.Sprintf("http://%s:%d", a.localIp, settings.RemoteAPIPort)
 }
 
 // GetFFmpegInfo returns ffmpeg and ffprobe version information

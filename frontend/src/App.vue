@@ -4,16 +4,17 @@ import { useCastStore } from "./stores/cast";
 import DeviceDiscovery from "./components/DeviceDiscovery.vue";
 import CastOptions from "./components/CastOptions.vue";
 import FileExplorer from "./components/FileExplorer.vue";
+import LibraryView from "./components/LibraryView.vue";
 import PlaybackControl from "./components/PlaybackControl.vue";
 import Settings from "./components/Settings.vue";
 import ConfirmModal from "./components/ConfirmModal.vue";
 import Footer from "./components/Footer.vue";
 import { useConfirm } from "./composables/useConfirm";
-import { Tv, Video, Play, Settings as SettingsIcon, DownloadIcon } from "lucide-vue-next";
+import { Tv, Video, Play, Settings as SettingsIcon, DownloadIcon, BookOpen } from "lucide-vue-next";
 import DownloadsPanel from "./components/DownloadsPanel.vue";
 
 const store = useCastStore();
-const activeTab = ref<"devices" | "files" | "options">("devices");
+const activeTab = ref<"devices" | "files" | "library" | "options">("devices");
 const showSettings = ref(false);
 const showDownloads = ref(false);
 const { showConfirmModal, confirmOptions, isConfirmLoading } = useConfirm();
@@ -97,6 +98,19 @@ const selectDevice = (device: any) => {
             </span>
           </button>
           <button
+            :class="[
+              'px-4 py-2 font-medium transition-all duration-200 border-b-2',
+              activeTab === 'library'
+                ? 'border-blue-500 text-blue-400'
+                : 'border-transparent text-gray-400 hover:text-gray-200',
+            ]"
+            @click="activeTab = 'library'"
+          >
+            <span class="flex items-center gap-2">
+              <BookOpen :size="18" /> Library
+            </span>
+          </button>
+          <button
             v-if="store.trackInfo"
             :class="[
               'px-4 py-2 font-medium transition-all duration-200 border-b-2',
@@ -120,6 +134,11 @@ const selectDevice = (device: any) => {
         <!-- Media Files Tab -->
         <section class="h-full" v-show="activeTab === 'files'">
           <FileExplorer @options="activeTab = 'options'" />
+        </section>
+
+        <!-- Library Tab -->
+        <section class="h-full" v-show="activeTab === 'library'">
+          <LibraryView @options="activeTab = 'options'" />
         </section>
 
         <!-- Cast Options Tab -->
