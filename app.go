@@ -541,9 +541,9 @@ func (a *App) TranslateExportedSubtitles(fileNameOrUrl string, targetLanguage st
 	var apiKey, model, baseURL string
 	switch settings.LLMProvider {
 	case ai.ProviderOpenAICompat:
-		apiKey = settings.OpenAICompatAPIKey
-		model = settings.OpenAICompatModel
-		baseURL = settings.OpenAICompatBaseURL
+		apiKey = settings.LLMApiKey
+		model = settings.LLMModel
+		baseURL = settings.LLMBaseURL
 		if apiKey == "" {
 			return fmt.Errorf("openai-compat API key is required. Please set it in Settings")
 		}
@@ -555,7 +555,7 @@ func (a *App) TranslateExportedSubtitles(fileNameOrUrl string, targetLanguage st
 		}
 	default:
 		// "opencode" (or empty/unrecognised) — use opencode credentials.
-		apiKey = settings.GeminiApiKey
+		apiKey = settings.LLMApiKey
 		if apiKey == "" {
 			// Fall back to the user's opencode-go credentials.
 			if key, err := ai.LoadOpenCodeAPIKey(); err == nil {
@@ -565,7 +565,7 @@ func (a *App) TranslateExportedSubtitles(fileNameOrUrl string, targetLanguage st
 		if apiKey == "" {
 			return fmt.Errorf("opencode API key is required. Please set it in Settings or in opencode's auth.json")
 		}
-		model = settings.GeminiModel
+		model = settings.LLMModel
 		baseURL = ai.OpenCodeBaseURL
 	}
 
@@ -705,56 +705,38 @@ func (a *App) ApplyRemoteAPISettings(enabled bool, port int, token string) error
 	return nil
 }
 
-// ListModels returns available model IDs for the given provider.
-// For "openai-compat" it queries GET {baseURL}/v1/models using the configured
-// credentials.  If the endpoint is unreachable or no credentials are set it
-// falls back to a small curated list so the UI always has options.
-// For "opencode" (or anything else) it returns the curated list of supported
-// model IDs with the current default first.
-// This method never returns an error; problems are handled gracefully.
+// ListModels returns available model IDs for the given provider by querying
+// the provider's live models endpoint. No hardcoded model names are returned.
+// On error or missing credentials an empty list (or the error) is returned —
+// the frontend keeps the currently-saved value selectable in any case.
 func (a *App) ListModels(provider string) ([]string, error) {
+	settings := a.settingsStore.Get()
 	switch provider {
 	case ai.ProviderOpenAICompat:
-		settings := a.settingsStore.Get()
-		models, err := listOpenAICompatModels(settings.OpenAICompatBaseURL, settings.OpenAICompatAPIKey)
-		if err != nil || len(models) == 0 {
-			// Graceful fallback: return a small curated list
-			return []string{
-				"gpt-4o",
-				"gpt-4o-mini",
-				"gpt-4-turbo",
-				"gpt-3.5-turbo",
-				"llama3.2",
-				"llama3.1",
-				"mistral",
-				"phi4",
-			}, nil
-		}
-		return models, nil
+		// GET {LLMBaseURL}/v1/models
+		modelsURL := strings.TrimRight(settings.LLMBaseURL, "/") + "/v1/models"
+		return fetchModels(modelsURL, settings.LLMApiKey)
 	default:
-		// "opencode" – curated list, current default first
-		return []string{
-			"deepseek-v4-flash",
-			"deepseek-v4",
-			"claude-fable-5",
-			"claude-opus-4-8",
-			"claude-opus-4-7",
-			"claude-opus-4-6",
-			"claude-sonnet-4-6",
-			"claude-haiku-4-5",
-			"gpt-4o",
-			"gpt-4o-mini",
-		}, nil
+		// "opencode" — GET {OpenCodeBaseURL}/models (base already ends in /v1)
+		apiKey := settings.LLMApiKey
+		if apiKey == "" {
+			if key, err := ai.LoadOpenCodeAPIKey(); err == nil {
+				apiKey = key
+			}
+		}
+		modelsURL := ai.OpenCodeBaseURL + "/models"
+		return fetchModels(modelsURL, apiKey)
 	}
 }
 
-// listOpenAICompatModels calls GET {baseURL}/v1/models and returns model IDs.
-func listOpenAICompatModels(baseURL, apiKey string) ([]string, error) {
-	if baseURL == "" || apiKey == "" {
-		return nil, fmt.Errorf("no credentials")
+// fetchModels calls GET modelsURL with the given Bearer key and returns model IDs
+// from an OpenAI-style {"data":[{"id":...}]} response. 5 s timeout.
+func fetchModels(modelsURL, apiKey string) ([]string, error) {
+	if modelsURL == "" || apiKey == "" {
+		return nil, fmt.Errorf("no credentials or URL")
 	}
 
-	req, err := http.NewRequest(http.MethodGet, strings.TrimRight(baseURL, "/")+"/v1/models", nil)
+	req, err := http.NewRequest(http.MethodGet, modelsURL, nil)
 	if err != nil {
 		return nil, err
 	}

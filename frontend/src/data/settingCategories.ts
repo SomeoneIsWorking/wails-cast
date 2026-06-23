@@ -46,7 +46,7 @@ export const settingCategories: SettingCategory[] = [
   },
   {
     id: "ai",
-    label: "AI Configuration",
+    label: "LLM",
     icon: "Brain",
     settings: [
       {
@@ -59,47 +59,32 @@ export const settingCategories: SettingCategory[] = [
           { value: "openai-compat", label: "OpenAI-compatible endpoint" },
         ],
       },
-      // --- opencode provider ---
       {
-        key: "geminiApiKey",
-        label: "OpenCode API Key",
-        description: "Your opencode-go API key for AI features (defaults to opencode's auth.json). Used when provider is OpenCode.",
+        key: "llmApiKey",
+        label: "API Key",
+        description: "API key for the selected provider. For OpenCode, defaults to opencode's auth.json if empty. For OpenAI-compatible, this is the Bearer token.",
         type: "password",
       },
+      {
+        key: "llmModel",
+        label: "Model",
+        description: "Model to use for translation. Loaded dynamically from the selected provider.",
+        type: "dynamic-select",
+        dynamicOptionsProvider: "llmProvider",
+      },
+      {
+        key: "llmBaseURL",
+        label: "Base URL",
+        description: "Base URL for the OpenAI-compatible endpoint (e.g. http://localhost:11434). Only used when provider is OpenAI-compatible endpoint.",
+        type: "text",
+      },
+      // --- shared ---
       {
         key: "tmdbApiKey",
         label: "TMDB API Key",
         description: "Your TMDB v3 API key for show/episode identification. Get one free at themoviedb.org.",
         type: "password",
       },
-      {
-        key: "geminiModel",
-        label: "OpenCode Model",
-        description: "Which opencode-go model to use. Used when provider is OpenCode.",
-        type: "dynamic-select",
-        dynamicOptionsProvider: "llmProvider",
-      },
-      // --- openai-compat provider ---
-      {
-        key: "openAICompatBaseURL",
-        label: "OpenAI-compat Base URL",
-        description: "Base URL of the OpenAI-compatible endpoint (e.g. http://localhost:11434/v1). Used when provider is OpenAI-compatible endpoint.",
-        type: "text",
-      },
-      {
-        key: "openAICompatApiKey",
-        label: "OpenAI-compat API Key",
-        description: "Bearer token for the OpenAI-compatible endpoint. Used when provider is OpenAI-compatible endpoint.",
-        type: "password",
-      },
-      {
-        key: "openAICompatModel",
-        label: "OpenAI-compat Model",
-        description: "Model name to request from the OpenAI-compatible endpoint. Used when provider is OpenAI-compatible endpoint.",
-        type: "dynamic-select",
-        dynamicOptionsProvider: "llmProvider",
-      },
-      // --- shared ---
       {
         key: "translatePromptTemplate",
         label: "Translation Prompt Template",
