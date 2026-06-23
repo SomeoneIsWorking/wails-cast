@@ -74,6 +74,10 @@ export function GetHistory() {
   return window['go']['main']['App']['GetHistory']();
 }
 
+export function ListModels(arg1) {
+  return window['go']['main']['App']['ListModels'](arg1);
+}
+
 export function GetMediaFiles(arg1) {
   return window['go']['main']['App']['GetMediaFiles'](arg1);
 }

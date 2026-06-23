@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -702,6 +703,90 @@ func (a *App) ApplyRemoteAPISettings(enabled bool, port int, token string) error
 		a.httpServer.Stop()
 	}
 	return nil
+}
+
+// ListModels returns available model IDs for the given provider.
+// For "openai-compat" it queries GET {baseURL}/v1/models using the configured
+// credentials.  If the endpoint is unreachable or no credentials are set it
+// falls back to a small curated list so the UI always has options.
+// For "opencode" (or anything else) it returns the curated list of supported
+// model IDs with the current default first.
+// This method never returns an error; problems are handled gracefully.
+func (a *App) ListModels(provider string) ([]string, error) {
+	switch provider {
+	case ai.ProviderOpenAICompat:
+		settings := a.settingsStore.Get()
+		models, err := listOpenAICompatModels(settings.OpenAICompatBaseURL, settings.OpenAICompatAPIKey)
+		if err != nil || len(models) == 0 {
+			// Graceful fallback: return a small curated list
+			return []string{
+				"gpt-4o",
+				"gpt-4o-mini",
+				"gpt-4-turbo",
+				"gpt-3.5-turbo",
+				"llama3.2",
+				"llama3.1",
+				"mistral",
+				"phi4",
+			}, nil
+		}
+		return models, nil
+	default:
+		// "opencode" – curated list, current default first
+		return []string{
+			"deepseek-v4-flash",
+			"deepseek-v4",
+			"claude-fable-5",
+			"claude-opus-4-8",
+			"claude-opus-4-7",
+			"claude-opus-4-6",
+			"claude-sonnet-4-6",
+			"claude-haiku-4-5",
+			"gpt-4o",
+			"gpt-4o-mini",
+		}, nil
+	}
+}
+
+// listOpenAICompatModels calls GET {baseURL}/v1/models and returns model IDs.
+func listOpenAICompatModels(baseURL, apiKey string) ([]string, error) {
+	if baseURL == "" || apiKey == "" {
+		return nil, fmt.Errorf("no credentials")
+	}
+
+	req, err := http.NewRequest(http.MethodGet, strings.TrimRight(baseURL, "/")+"/v1/models", nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Authorization", "Bearer "+apiKey)
+
+	client := &http.Client{Timeout: 5 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("status %s", resp.Status)
+	}
+
+	var result struct {
+		Data []struct {
+			ID string `json:"id"`
+		} `json:"data"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return nil, err
+	}
+
+	models := make([]string, 0, len(result.Data))
+	for _, m := range result.Data {
+		if m.ID != "" {
+			models = append(models, m.ID)
+		}
+	}
+	return models, nil
 }
 
 // GetRemoteAPIAddress returns the listening address of the remote API server,

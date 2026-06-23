@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import { ref, watch } from "vue";
+import { ref, watch, reactive } from "vue";
 import { useSettingsStore } from "../stores/settings";
 import { useConfirm } from "../composables/useConfirm";
+import { ListModels } from "../../wailsjs/go/main/App";
 import {
   Settings as SettingsIcon,
   Search,
@@ -55,6 +56,27 @@ const localSettings = ref({ ...settingsStore.settings });
 // Active category for navigation
 const activeCategory = ref<string>("subtitles");
 
+// Dynamic model options cache: keyed by provider value
+const dynamicModelOptions = reactive<Record<string, string[]>>({});
+const dynamicModelLoading = reactive<Record<string, boolean>>({});
+
+/**
+ * Loads model options for a given provider and caches them.
+ * The cache key is the provider value so switching back doesn't re-fetch.
+ */
+async function loadDynamicOptions(provider: string) {
+  if (dynamicModelOptions[provider] !== undefined) return; // already loaded
+  dynamicModelLoading[provider] = true;
+  try {
+    const models = await ListModels(provider);
+    dynamicModelOptions[provider] = models ?? [];
+  } catch {
+    dynamicModelOptions[provider] = [];
+  } finally {
+    dynamicModelLoading[provider] = false;
+  }
+}
+
 const scrollToCategory = (categoryId: string) => {
   activeCategory.value = categoryId;
   const element = document.getElementById(`category-${categoryId}`);
@@ -63,13 +85,26 @@ const scrollToCategory = (categoryId: string) => {
   }
 };
 
-// Watch for modal opening to create a fresh copy
+// Watch for modal opening to create a fresh copy and pre-fetch models
 watch(showModal, (isOpen) => {
   if (isOpen) {
     localSettings.value = { ...settingsStore.settings };
     activeCategory.value = "subtitles";
+    // Pre-fetch dynamic models for current provider
+    const provider = (localSettings.value as any).llmProvider ?? "opencode";
+    loadDynamicOptions(provider);
   }
 });
+
+// When provider changes, load models for the new provider
+watch(
+  () => (localSettings.value as any).llmProvider as string,
+  (newProvider) => {
+    if (newProvider) {
+      loadDynamicOptions(newProvider);
+    }
+  }
+);
 
 const handleReset = async () => {
   await confirm({
@@ -253,7 +288,7 @@ const getIconComponent = (iconName: string) => {
                         :step="setting.step || 1"
                       />
                     </div>
-                    <!-- Select Dropdown -->
+                    <!-- Static Select Dropdown -->
                     <select
                       v-else-if="setting.type === 'select'"
                       :id="setting.key"
@@ -268,6 +303,41 @@ const getIconComponent = (iconName: string) => {
                         {{ option.label }}
                       </option>
                     </select>
+                    <!-- Dynamic Select Dropdown (model picker) -->
+                    <template v-else-if="setting.type === 'dynamic-select'">
+                      <select
+                        :id="setting.key"
+                        v-model="localSettings[setting.key]"
+                        class="min-w-60"
+                        :disabled="dynamicModelLoading[(localSettings as any)[setting.dynamicOptionsProvider ?? 'llmProvider'] ?? 'opencode']"
+                      >
+                        <!--
+                          Always include the current value so it shows even
+                          if it is not in the loaded list (e.g. a custom model
+                          the user typed previously). The :key ensures Vue
+                          de-duplicates if it's already in the list.
+                        -->
+                        <option
+                          v-if="localSettings[setting.key] && !(dynamicModelOptions[(localSettings as any)[setting.dynamicOptionsProvider ?? 'llmProvider'] ?? 'opencode'] ?? []).includes(localSettings[setting.key] as string)"
+                          :value="localSettings[setting.key]"
+                        >
+                          {{ localSettings[setting.key] }}
+                        </option>
+                        <option
+                          v-for="model in dynamicModelOptions[(localSettings as any)[setting.dynamicOptionsProvider ?? 'llmProvider'] ?? 'opencode'] ?? []"
+                          :key="model"
+                          :value="model"
+                        >
+                          {{ model }}
+                        </option>
+                      </select>
+                      <span
+                        v-if="dynamicModelLoading[(localSettings as any)[setting.dynamicOptionsProvider ?? 'llmProvider'] ?? 'opencode']"
+                        class="text-xs text-gray-400 ml-2"
+                      >
+                        Loading…
+                      </span>
+                    </template>
                   </div>
                   <p class="setting-description">{{ setting.description }}</p>
                 </div>
@@ -326,6 +396,3 @@ const getIconComponent = (iconName: string) => {
 </template>
 
 <style scoped src="./settings.css"></style>
-Save" class="btn-done">
-<Save class="w-4 h-4" />
-Sav
