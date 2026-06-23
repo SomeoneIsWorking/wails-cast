@@ -13,6 +13,28 @@ import {
 import { main } from "../../wailsjs/go/models";
 import { useToast } from "vue-toastification";
 import { useSettingsStore } from "./settings";
+import { useTranslationStore } from "./translation";
+
+// These are event payloads (emitted via wails events, not bound-method return
+// types), so wails does not generate them in models.ts — define them locally so
+// they survive binding regeneration.
+export interface SeasonTranslateProgress {
+  showName: string;
+  seasonName: string;
+  targetLanguage: string;
+  totalEpisodes: number;
+  currentEpisode: number;
+  status: string;
+  message: string;
+}
+
+export interface LibraryIdentifyProgress {
+  total: number;
+  current: number;
+  showName: string;
+  status: string;
+  message: string;
+}
 
 export const useLibraryStore = defineStore("library", () => {
   const toast = useToast();
@@ -21,15 +43,15 @@ export const useLibraryStore = defineStore("library", () => {
   const scanResult = ref<main.LibraryScanResult | null>(null);
   const isScanning = ref(false);
   const isTranslating = ref(false);
-  const translateProgress = ref<main.SeasonTranslateProgress | null>(null);
+  const translateProgress = ref<SeasonTranslateProgress | null>(null);
   const isIdentifying = ref(false);
-  const identifyProgress = ref<main.LibraryIdentifyProgress | null>(null);
+  const identifyProgress = ref<LibraryIdentifyProgress | null>(null);
   // organize state
   const organizePlan = ref<main.OrganizeMove[]>([]);
   const isPreviewing = ref(false);
   const isOrganizing = ref(false);
 
-  EventsOn("library:identify:progress", (p: main.LibraryIdentifyProgress) => {
+  EventsOn("library:identify:progress", (p: LibraryIdentifyProgress) => {
     identifyProgress.value = p;
     if (p.status === "done") {
       isIdentifying.value = false;
@@ -40,8 +62,16 @@ export const useLibraryStore = defineStore("library", () => {
     }
   });
 
-  EventsOn("library:translate:progress", (p: main.SeasonTranslateProgress) => {
+  // Tracks the last in-progress episode index so we can reset the live stream
+  // buffer whenever the season translation advances to a new episode.
+  let lastTranslateEpisode = 0;
+
+  EventsOn("library:translate:progress", (p: SeasonTranslateProgress) => {
     translateProgress.value = p;
+    if (p.currentEpisode && p.currentEpisode !== lastTranslateEpisode) {
+      lastTranslateEpisode = p.currentEpisode;
+      useTranslationStore().resetStream();
+    }
     if (p.status === "done") {
       isTranslating.value = false;
       toast.success(`Season translation complete!`);
@@ -90,6 +120,8 @@ export const useLibraryStore = defineStore("library", () => {
     }
     isTranslating.value = true;
     translateProgress.value = null;
+    lastTranslateEpisode = 0;
+    useTranslationStore().resetStream();
     try {
       await TranslateSeason(showName, seasonName, episodePaths, targetLanguage);
     } catch (err: any) {
