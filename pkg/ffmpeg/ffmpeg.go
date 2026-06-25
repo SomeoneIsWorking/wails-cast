@@ -28,6 +28,8 @@ type TranscodeOptions struct {
 type SubtitleTranscodeOptions struct {
 	Path     string
 	FontSize int
+	Bold     bool
+	Italic   bool
 }
 
 // TranscodeSegment transcodes a segment with optional 100ms wait to avoid wasted work during rapid seeking
@@ -142,7 +144,14 @@ func buildTranscodeArgs(input *mix.FileOrBuffer, output *mix.TargetFileOrBuffer,
 
 // buildSubtitleFilter builds the subtitle filter string for ffmpeg
 func buildSubtitleFilter(subtitle *SubtitleTranscodeOptions) string {
-	return fmt.Sprintf("subtitles='%s':force_style='FontSize=%d'", subtitle.Path, subtitle.FontSize)
+	style := fmt.Sprintf("FontSize=%d", subtitle.FontSize)
+	if subtitle.Bold {
+		style += ",Bold=1"
+	}
+	if subtitle.Italic {
+		style += ",Italic=1"
+	}
+	return fmt.Sprintf("subtitles='%s':force_style='%s'", subtitle.Path, style)
 }
 
 // GetVideoDuration gets the duration of a video file using ffprobe

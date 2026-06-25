@@ -10,12 +10,14 @@ import FileSelector from "./FileSelector.vue";
 import { qualityOptions } from "@/data/qualityOptions";
 import { OpenMediaFolder } from "../../wailsjs/go/main/App";
 import TrackDownloader from "./TrackDownloader.vue";
+import { isRemoteActive } from "@/services/source";
 
 const castStore = useCastStore();
 const translationStore = useTranslationStore();
 const toast = useToast();
 
 const trackInfo = computed(() => castStore.trackInfo);
+const isRemote = computed(() => isRemoteActive());
 
 const isLoading = ref(false);
 const showTranslationModal = ref(false);
@@ -75,6 +77,23 @@ const isTranslating = computed(
             {{ isLoading ? "Casting..." : "Start Casting" }}
           </button>
         </div>
+        <!-- Remote cast target (only when playing a remote source's item) -->
+        <template v-if="isRemote">
+          <label>Cast to:</label>
+          <select
+            v-model="castStore.remoteTargetHost"
+            class="w-full bg-gray-700 text-white rounded-md p-2"
+          >
+            <option
+              v-for="d in castStore.remoteDevices"
+              :key="d.host"
+              :value="d.host"
+            >
+              {{ d.host === "local" ? d.name + " (remote host)" : d.name }}
+            </option>
+          </select>
+        </template>
+
         <!-- Video Track Selection -->
         <label>Video Track:</label>
         <div>

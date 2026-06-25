@@ -31,6 +31,12 @@ export namespace main {
 	    Index: number;
 	    Language: string;
 	}
+	export interface CastInstance {
+	    name: string;
+	    host: string;
+	    port: number;
+	    url: string;
+	}
 	export interface Device {
 	    name: string;
 	    type: string;
@@ -100,6 +106,27 @@ export namespace main {
 	    volume: number;
 	    muted: boolean;
 	}
+	export interface RemoteDevice {
+	    name: string;
+	    host: string;
+	    port: number;
+	    uuid: string;
+	}
+	export interface RemotePlayOptions {
+	    videoTrack: number;
+	    audioTrack: number;
+	    subtitlePath: string;
+	    quality?: string;
+	}
+	export interface SeasonTranslateProgress {
+	    showName: string;
+	    seasonName: string;
+	    targetLanguage: string;
+	    totalEpisodes: number;
+	    currentEpisode: number;
+	    status: string;
+	    message: string;
+	}
 	export interface Settings {
 	    subtitleBurnIn: boolean;
 	    ignoreClosedCaptions: boolean;
@@ -110,6 +137,9 @@ export namespace main {
 	    llmBaseURL: string;
 	    defaultQuality: string;
 	    subtitleFontSize: number;
+	    subtitleDelaySeconds: number;
+	    subtitleBold: boolean;
+	    subtitleItalic: boolean;
 	    maxOutputWidth: number;
 	    translatePromptTemplate: string;
 	    maxSubtitleSamples: number;
@@ -119,10 +149,25 @@ export namespace main {
 	    remoteApiEnabled: boolean;
 	    remoteApiPort: number;
 	    remoteApiToken: string;
+	    qbtURL: string;
+	    qbtUser: string;
+	    qbtPass: string;
+	    qbtSavePath: string;
 	}
 	export interface SubtitleDisplayItem {
 	    Path: string;
 	    Label: string;
+	}
+	export interface TorrentStatus {
+	    hash: string;
+	    name: string;
+	    progress: number;
+	    state: string;
+	    dlspeed: number;
+	    eta: number;
+	    size: number;
+	    content_path: string;
+	    save_path: string;
 	}
 	export interface VideoTrackDisplayItem {
 	    Index: number;
@@ -135,6 +180,13 @@ export namespace main {
 	    SubtitleTracks: SubtitleDisplayItem[];
 	    Path: string;
 	    NearSubtitle: string;
+	}
+	
+	export interface translateStatus {
+	    inProgress: boolean;
+	    language: string;
+	    files: string[];
+	    error: string;
 	}
 
 }
@@ -152,6 +204,9 @@ export namespace options {
 	    BurnIn: boolean;
 	    FontSize: number;
 	    IgnoreClosedCaptions: boolean;
+	    DelaySeconds: number;
+	    Bold: boolean;
+	    Italic: boolean;
 	}
 
 }

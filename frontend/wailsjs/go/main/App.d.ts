@@ -22,6 +22,8 @@ export function DeleteAllVideoCache():Promise<void>;
 
 export function DeleteTranscodedCache():Promise<void>;
 
+export function DiscoverCastInstances():Promise<Array<main.CastInstance>>;
+
 export function DiscoverDevices():Promise<Array<main.Device>>;
 
 export function Export():Promise<main.AppExports>;
@@ -71,6 +73,44 @@ export function Pause():Promise<void>;
 export function PreviewOrganize(arg1:main.LibraryScanResult):Promise<Array<main.OrganizeMove>>;
 
 export function ProcessPastedTranslation(arg1:string,arg2:string,arg3:string):Promise<Array<string>>;
+
+export function RemoteAddTorrent(arg1:string,arg2:string,arg3:string):Promise<void>;
+
+export function RemoteControl(arg1:string,arg2:string,arg3:string,arg4:number):Promise<main.PlaybackState>;
+
+export function RemoteDevices(arg1:string,arg2:string):Promise<Array<main.RemoteDevice>>;
+
+export function RemoteIdentify(arg1:string,arg2:string,arg3:main.LibraryScanResult):Promise<main.LibraryScanResult>;
+
+export function RemoteLibrary(arg1:string,arg2:string):Promise<Array<main.LibraryItem>>;
+
+export function RemoteLibraryTree(arg1:string,arg2:string):Promise<main.LibraryScanResult>;
+
+export function RemoteOrganizeExecute(arg1:string,arg2:string,arg3:Array<main.OrganizeMove>):Promise<void>;
+
+export function RemoteOrganizePreview(arg1:string,arg2:string,arg3:main.LibraryScanResult):Promise<Array<main.OrganizeMove>>;
+
+export function RemotePing(arg1:string,arg2:string):Promise<boolean>;
+
+export function RemotePlay(arg1:string,arg2:string,arg3:string,arg4:string,arg5:main.RemotePlayOptions):Promise<main.PlaybackState>;
+
+export function RemoteSeasonCancel(arg1:string,arg2:string):Promise<void>;
+
+export function RemoteSeasonStatus(arg1:string,arg2:string):Promise<main.SeasonTranslateProgress>;
+
+export function RemoteState(arg1:string,arg2:string):Promise<main.PlaybackState>;
+
+export function RemoteTorrents(arg1:string,arg2:string):Promise<Array<main.TorrentStatus>>;
+
+export function RemoteTrackInfo(arg1:string,arg2:string,arg3:string):Promise<main.TrackDisplayInfo>;
+
+export function RemoteTranslateFile(arg1:string,arg2:string,arg3:string,arg4:string):Promise<void>;
+
+export function RemoteTranslateSeason(arg1:string,arg2:string,arg3:string,arg4:string,arg5:Array<string>,arg6:string):Promise<void>;
+
+export function RemoteTranslateStatus(arg1:string,arg2:string):Promise<main.translateStatus>;
+
+export function RemoteUpdateSubtitle(arg1:string,arg2:string,arg3:options.SubtitleCastOptions):Promise<void>;
 
 export function RemoveFromHistory(arg1:string):Promise<void>;
 

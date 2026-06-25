@@ -37,17 +37,26 @@ func FoBToWebTT(file *mix.FileOrBuffer) (*subtitles.WebVTTJson, error) {
 	}
 }
 
-func ProcessSubtitles(input *mix.FileOrBuffer, target *mix.TargetFileOrBuffer, ignoreClosedCaptions bool) (*mix.FileOrBuffer, error) {
-	if !ignoreClosedCaptions {
+func ProcessSubtitles(input *mix.FileOrBuffer, target *mix.TargetFileOrBuffer, ignoreClosedCaptions bool, delaySeconds float64, bold, italic bool) (*mix.FileOrBuffer, error) {
+	// Fast path: nothing to transform, return the input untouched.
+	if !ignoreClosedCaptions && delaySeconds == 0 && !bold && !italic {
 		return input, nil
 	}
 
-	// Apply IgnoreClosedCaptions option if requested
+	// Parse so we can apply IgnoreClosedCaptions, the timing offset and styling.
 	subtitles, err := FoBToWebTT(input)
 	if err != nil {
 		return nil, err
 	}
-	subtitles = subtitles.RemoveClosedCaptions()
+	if ignoreClosedCaptions {
+		subtitles = subtitles.RemoveClosedCaptions()
+	}
+	if delaySeconds != 0 {
+		subtitles = subtitles.Shift(delaySeconds)
+	}
+	if bold || italic {
+		subtitles = subtitles.Style(bold, italic)
+	}
 	webvttString := subtitles.ToWebVTTString()
 	if target.IsBuffer {
 		return mix.Buffer([]byte(webvttString)), nil
