@@ -14,12 +14,14 @@ import {
   FolderCheck,
   Eye,
   X,
+  Radio,
+  Monitor,
+  Magnet,
 } from "lucide-vue-next";
 import { useLibraryStore } from "@/stores/library";
 import { useCastStore } from "@/stores/cast";
 import { useSettingsStore } from "@/stores/settings";
 import { useTranslationStore } from "@/stores/translation";
-import { GetTrackDisplayInfo } from "../../wailsjs/go/main/App";
 import LoadingIcon from "./LoadingIcon.vue";
 import { useToast } from "vue-toastification";
 import { main } from "../../wailsjs/go/models";
@@ -61,11 +63,14 @@ const showOrganizeModal = ref(false);
 // ─── Lifecycle ───────────────────────────────────────────────────────────────
 
 onMounted(async () => {
-  // If settings have a remembered library root and we haven't scanned yet, scan it.
-  if (!libraryStore.scanResult && settingsStore.settings?.libraryRoot) {
-    await libraryStore.scan(settingsStore.settings.libraryRoot);
+  // Discover remote sources in the background, and load the active source's tree.
+  libraryStore.discoverSources();
+  if (!libraryStore.scanResult) {
+    await libraryStore.rescan();
   }
 });
+
+const isRemoteBrowse = computed(() => libraryStore.browseSource.kind === "remote");
 
 // ─── Computed ────────────────────────────────────────────────────────────────
 
@@ -111,14 +116,15 @@ function isSeasonExpanded(show: main.LibraryShow, season: main.LibrarySeason) {
 // ─── Actions ──────────────────────────────────────────────────────────────────
 
 async function playEpisode(ep: main.LibraryEpisode) {
-  if (!castStore.selectedDevice) {
+  // Local playback needs a device picked in the Devices tab; remote playback
+  // picks a target from the remote's own devices in Cast Options.
+  if (!isRemoteBrowse.value && !castStore.selectedDevice) {
     toast.warning("No device selected. Go to the Devices tab first.");
     return;
   }
   loadingEpisode.value = ep.path;
   try {
-    const trackInfo = await GetTrackDisplayInfo(ep.path);
-    castStore.setTrackInfo(trackInfo);
+    await castStore.prepareEpisode(ep.path, libraryStore.browseSource);
     emit("options");
   } catch (err: any) {
     toast.error(`Failed to load track info: ${err?.message || err}`);
@@ -152,7 +158,7 @@ async function startTranslate() {
   if (episode) {
     // Single-episode translation via the shared translation store.
     try {
-      await translationStore.start(episode.path, lang);
+      await translationStore.start(episode.path, lang, libraryStore.browseSource);
     } catch (err: any) {
       toast.error(`Failed to start translation: ${err?.message || err}`);
     }
@@ -178,7 +184,7 @@ watch(
   () => translationStore.activePath,
   (now, prev) => {
     if (prev && !now && rootPath.value) {
-      libraryStore.scan(rootPath.value);
+      libraryStore.rescan();
     }
   }
 );
@@ -188,7 +194,7 @@ watch(
   () => libraryStore.isTranslating,
   (now, prev) => {
     if (prev && !now && rootPath.value) {
-      libraryStore.scan(rootPath.value);
+      libraryStore.rescan();
     }
   }
 );
@@ -227,9 +233,7 @@ async function confirmOrganize() {
   showOrganizeModal.value = false;
   await libraryStore.executeOrganize();
   // Re-scan to reflect moved files.
-  if (rootPath.value) {
-    await libraryStore.scan(rootPath.value);
-  }
+  await libraryStore.rescan();
 }
 
 function cancelOrganize() {
@@ -241,15 +245,48 @@ function cancelOrganize() {
 <template>
   <div class="library-view h-full flex flex-col">
 
+    <!-- Source bar: This Mac + discovered remotes -->
+    <div class="flex items-center gap-2 mb-3 flex-wrap">
+      <span class="text-xs text-gray-500 uppercase tracking-wider mr-1">Source</span>
+      <button
+        v-for="src in libraryStore.sources"
+        :key="src.kind === 'local' ? 'local' : src.base"
+        @click="libraryStore.selectSource(src)"
+        class="text-xs px-3 py-1.5 rounded-full border transition-colors"
+        :class="
+          (libraryStore.browseSource.base === src.base && libraryStore.browseSource.kind === src.kind)
+            ? 'bg-blue-600/40 border-blue-500 text-white'
+            : 'bg-gray-800 border-gray-700 text-gray-300 hover:bg-gray-700'
+        "
+        :title="src.kind === 'remote' ? src.base : 'Local library'"
+      >
+        <component :is="src.kind === 'remote' ? Radio : Monitor" class="w-3.5 h-3.5 inline mr-1 -mt-0.5" />
+        {{ src.name }}
+      </button>
+      <button
+        @click="libraryStore.discoverSources()"
+        class="text-xs p-1.5 rounded-full bg-gray-800 border border-gray-700 hover:bg-gray-700"
+        :disabled="libraryStore.isDiscoveringSources"
+        title="Rediscover remote instances"
+      >
+        <RefreshCw class="w-3.5 h-3.5" :class="{ 'animate-spin': libraryStore.isDiscoveringSources }" />
+      </button>
+    </div>
+
     <!-- Toolbar -->
     <div class="flex items-center gap-3 mb-4 flex-wrap">
-      <button @click="libraryStore.pickAndScan()" class="btn-primary" :disabled="libraryStore.isScanning">
+      <button
+        v-if="!isRemoteBrowse"
+        @click="libraryStore.pickAndScan()"
+        class="btn-primary"
+        :disabled="libraryStore.isScanning"
+      >
         <FolderOpen class="w-4 h-4" />
         {{ rootPath ? "Change Folder" : "Select Library Folder" }}
       </button>
       <button
         v-if="rootPath"
-        @click="libraryStore.scan(rootPath)"
+        @click="libraryStore.rescan()"
         class="btn-secondary"
         :disabled="libraryStore.isScanning"
         title="Rescan"
@@ -280,6 +317,26 @@ function cancelOrganize() {
         Organize
       </button>
       <span v-if="rootPath" class="text-gray-400 text-sm truncate max-w-xs">{{ rootPath }}</span>
+    </div>
+
+    <!-- Magnet input (remote sources send to that host's qBittorrent) -->
+    <div v-if="isRemoteBrowse" class="flex items-center gap-2 mb-4">
+      <Magnet class="w-4 h-4 text-purple-400 shrink-0" />
+      <input
+        v-model="libraryStore.magnet"
+        placeholder="Paste a magnet link to download into this library…"
+        @keyup.enter="libraryStore.sendMagnet()"
+        class="flex-1 bg-gray-700 text-white rounded-md p-2 text-sm"
+      />
+      <button
+        @click="libraryStore.sendMagnet()"
+        :disabled="libraryStore.magnetBusy || !libraryStore.magnet.trim()"
+        class="btn-primary text-sm"
+      >
+        <LoadingIcon v-if="libraryStore.magnetBusy" class="w-4 h-4" />
+        <Magnet v-else class="w-4 h-4" />
+        Send
+      </button>
     </div>
 
     <!-- Season batch-translate progress banner -->
@@ -452,6 +509,14 @@ function cancelOrganize() {
                     View live
                   </button>
                 </template>
+                <!-- Per-episode download progress (item is part of an active torrent) -->
+                <span
+                  v-if="libraryStore.torrentForPath(ep.path)"
+                  class="text-xs text-amber-300 shrink-0 flex items-center gap-1"
+                  title="Downloading via torrent"
+                >
+                  ↓ {{ ((libraryStore.torrentForPath(ep.path)!.progress) * 100).toFixed(0) }}%
+                </span>
                 <!-- Per-episode translate button (hidden while any translation runs) -->
                 <button
                   v-else-if="!anyTranslating"

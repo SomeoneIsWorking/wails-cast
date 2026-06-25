@@ -34,6 +34,10 @@ export function DeleteTranscodedCache() {
   return window['go']['main']['App']['DeleteTranscodedCache']();
 }
 
+export function DiscoverCastInstances() {
+  return window['go']['main']['App']['DiscoverCastInstances']();
+}
+
 export function DiscoverDevices() {
   return window['go']['main']['App']['DiscoverDevices']();
 }
@@ -132,6 +136,82 @@ export function PreviewOrganize(arg1) {
 
 export function ProcessPastedTranslation(arg1, arg2, arg3) {
   return window['go']['main']['App']['ProcessPastedTranslation'](arg1, arg2, arg3);
+}
+
+export function RemoteAddTorrent(arg1, arg2, arg3) {
+  return window['go']['main']['App']['RemoteAddTorrent'](arg1, arg2, arg3);
+}
+
+export function RemoteControl(arg1, arg2, arg3, arg4) {
+  return window['go']['main']['App']['RemoteControl'](arg1, arg2, arg3, arg4);
+}
+
+export function RemoteDevices(arg1, arg2) {
+  return window['go']['main']['App']['RemoteDevices'](arg1, arg2);
+}
+
+export function RemoteIdentify(arg1, arg2, arg3) {
+  return window['go']['main']['App']['RemoteIdentify'](arg1, arg2, arg3);
+}
+
+export function RemoteLibrary(arg1, arg2) {
+  return window['go']['main']['App']['RemoteLibrary'](arg1, arg2);
+}
+
+export function RemoteLibraryTree(arg1, arg2) {
+  return window['go']['main']['App']['RemoteLibraryTree'](arg1, arg2);
+}
+
+export function RemoteOrganizeExecute(arg1, arg2, arg3) {
+  return window['go']['main']['App']['RemoteOrganizeExecute'](arg1, arg2, arg3);
+}
+
+export function RemoteOrganizePreview(arg1, arg2, arg3) {
+  return window['go']['main']['App']['RemoteOrganizePreview'](arg1, arg2, arg3);
+}
+
+export function RemotePing(arg1, arg2) {
+  return window['go']['main']['App']['RemotePing'](arg1, arg2);
+}
+
+export function RemotePlay(arg1, arg2, arg3, arg4, arg5) {
+  return window['go']['main']['App']['RemotePlay'](arg1, arg2, arg3, arg4, arg5);
+}
+
+export function RemoteSeasonCancel(arg1, arg2) {
+  return window['go']['main']['App']['RemoteSeasonCancel'](arg1, arg2);
+}
+
+export function RemoteSeasonStatus(arg1, arg2) {
+  return window['go']['main']['App']['RemoteSeasonStatus'](arg1, arg2);
+}
+
+export function RemoteState(arg1, arg2) {
+  return window['go']['main']['App']['RemoteState'](arg1, arg2);
+}
+
+export function RemoteTorrents(arg1, arg2) {
+  return window['go']['main']['App']['RemoteTorrents'](arg1, arg2);
+}
+
+export function RemoteTrackInfo(arg1, arg2, arg3) {
+  return window['go']['main']['App']['RemoteTrackInfo'](arg1, arg2, arg3);
+}
+
+export function RemoteTranslateFile(arg1, arg2, arg3, arg4) {
+  return window['go']['main']['App']['RemoteTranslateFile'](arg1, arg2, arg3, arg4);
+}
+
+export function RemoteTranslateSeason(arg1, arg2, arg3, arg4, arg5, arg6) {
+  return window['go']['main']['App']['RemoteTranslateSeason'](arg1, arg2, arg3, arg4, arg5, arg6);
+}
+
+export function RemoteTranslateStatus(arg1, arg2) {
+  return window['go']['main']['App']['RemoteTranslateStatus'](arg1, arg2);
+}
+
+export function RemoteUpdateSubtitle(arg1, arg2, arg3) {
+  return window['go']['main']['App']['RemoteUpdateSubtitle'](arg1, arg2, arg3);
 }
 
 export function RemoveFromHistory(arg1) {

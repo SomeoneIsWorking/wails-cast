@@ -3,6 +3,7 @@ package stream
 import (
 	"context"
 	"wails-cast/pkg/mix"
+	"wails-cast/pkg/options"
 )
 
 // StreamHandler defines the interface for handling media streams
@@ -23,4 +24,8 @@ type StreamHandler interface {
 	// ServeSubtitles returns the subtitle file in WebVTT format
 	// Returns the subtitle content as string and any error encountered
 	ServeSubtitles(ctx context.Context) (*mix.FileOrBuffer, error)
+
+	// UpdateSubtitleOptions replaces the subtitle options used for live
+	// rendering (path, font size, style, timing offset) without recasting.
+	UpdateSubtitleOptions(opts options.SubtitleCastOptions)
 }

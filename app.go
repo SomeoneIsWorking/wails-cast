@@ -194,6 +194,9 @@ func (a *App) CastToDevice(deviceIp string, fileNameOrUrl string, castOptions *o
 			BurnIn:               settings.SubtitleBurnIn,
 			FontSize:             settings.SubtitleFontSize,
 			IgnoreClosedCaptions: settings.IgnoreClosedCaptions,
+			DelaySeconds:         settings.SubtitleDelaySeconds,
+			Bold:                 settings.SubtitleBold,
+			Italic:               settings.SubtitleItalic,
 		},
 		VideoTrack:       castOptions.VideoTrack,
 		AudioTrack:       castOptions.AudioTrack,
@@ -258,8 +261,12 @@ func (a *App) CastToDevice(deviceIp string, fileNameOrUrl string, castOptions *o
 		logger.Info("Hosting stream without casting", "url", a.getMediaURL())
 		a.mu.Lock()
 		a.playbackState.Status = "PLAYING"
+		a.playbackState.CurrentTime = 0
+		state := a.playbackState
 		a.mu.Unlock()
 		a.historyStore.Add(fileNameOrUrl, name, castOptions)
+		// Notify the desktop UI (and any remote clients) of the new state.
+		events.Emit("playback:state", state)
 		return &a.playbackState, nil
 	}
 
@@ -303,6 +310,14 @@ func (a *App) CastToDevice(deviceIp string, fileNameOrUrl string, castOptions *o
 	if options.Subtitle.Path != "none" && !settings.SubtitleBurnIn {
 		a.sendSubtitles(fmt.Sprintf("http://%s:%d/subtitles.vtt", a.localIp, a.port))
 	}
+
+	a.mu.Lock()
+	a.playbackState.Status = "PLAYING"
+	a.playbackState.CurrentTime = 0
+	state := a.playbackState
+	a.mu.Unlock()
+	// Notify the desktop UI (and any remote clients) of the new state.
+	events.Emit("playback:state", state)
 
 	return &a.playbackState, nil
 }
@@ -350,21 +365,41 @@ func findSubtitleFile(videoPath string) string {
 // SeekTo seeks to a specific time
 func (a *App) SeekTo(seekTime float64) error {
 	// Send seek command to Chromecast
-	err := a.App.SeekToTime(float32(seekTime))
-	if err != nil {
-		logger.Error("Seek failed", "error", err)
-		return err
+	if a.App != nil {
+		err := a.App.SeekToTime(float32(seekTime))
+		if err != nil {
+			logger.Error("Seek failed", "error", err)
+			return err
+		}
 	}
+
+	a.mu.Lock()
+	a.playbackState.CurrentTime = seekTime
+	state := a.playbackState
+	a.mu.Unlock()
+	events.Emit("playback:state", state)
 
 	logger.Info("Seek successful", "time", seekTime)
 	return nil
 }
 
-// UpdateSubtitleSettings updates subtitle settings for current media without recasting
+// UpdateSubtitleSettings updates subtitle settings for current media without
+// recasting. It pushes the new options (path, font size, bold/italic style and
+// timing offset) into the live stream handler, clears the transcode cache and
+// re-seeks so burn-in changes take effect. For external (non-burn-in)
+// subtitles it also re-sends the VTT URL so the receiver swaps in the freshly
+// shifted/styled subtitle track.
 func (a *App) UpdateSubtitleSettings(options options.SubtitleCastOptions) error {
-	// Update subtitle path on server (clears cache)
+	// Update subtitle path + full options on the live handler (clears cache).
 	a.mediaServer.SetSubtitlePath(options.Path)
+	a.mediaServer.UpdateSubtitleOptions(options)
 	a.App.Update()
+
+	// For external subtitles, re-send the VTT so the player reloads it with the
+	// new timing offset / style applied. The receiver auto-replaces the track.
+	if options.Path != "none" && !options.BurnIn {
+		a.sendSubtitles(fmt.Sprintf("http://%s:%d/subtitles.vtt", a.localIp, a.port))
+	}
 
 	currentTime := a.playbackState.CurrentTime
 	return a.App.SeekToTime(float32(currentTime))
@@ -422,21 +457,31 @@ func (a *App) GetDownloadStatus(url string, mediaType string, track int) (*remot
 
 // Pause pauses current playback
 func (a *App) Pause() error {
-	err := a.App.Pause()
-	if err != nil {
-		return err
+	if a.App != nil {
+		if err := a.App.Pause(); err != nil {
+			return err
+		}
 	}
-
+	a.mu.Lock()
+	a.playbackState.Status = "PAUSED"
+	state := a.playbackState
+	a.mu.Unlock()
+	events.Emit("playback:state", state)
 	return nil
 }
 
 // Unpause resumes current playback
 func (a *App) Unpause() error {
-	err := a.App.Unpause()
-	if err != nil {
-		return err
+	if a.App != nil {
+		if err := a.App.Unpause(); err != nil {
+			return err
+		}
 	}
-
+	a.mu.Lock()
+	a.playbackState.Status = "PLAYING"
+	state := a.playbackState
+	a.mu.Unlock()
+	events.Emit("playback:state", state)
 	return nil
 }
 

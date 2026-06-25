@@ -165,6 +165,8 @@ func (this *RemoteHandler) transcodeSegment(ctx context.Context, input *mix.File
 		subtitle = &ffmpeg.SubtitleTranscodeOptions{
 			Path:     path,
 			FontSize: this.Options.Subtitle.FontSize,
+			Bold:     this.Options.Subtitle.Bold,
+			Italic:   this.Options.Subtitle.Italic,
 		}
 	}
 
@@ -237,6 +239,12 @@ func (this *RemoteHandler) serveFile(w http.ResponseWriter, path string, content
 	w.Write(data)
 }
 
+// UpdateSubtitleOptions replaces the live subtitle options (path, font size,
+// style, timing offset) so subsequent subtitle/segment serving uses them.
+func (this *RemoteHandler) UpdateSubtitleOptions(opts options.SubtitleCastOptions) {
+	this.Options.Subtitle = opts
+}
+
 // ServeSubtitles returns the subtitle file in WebVTT format
 func (this *RemoteHandler) ServeSubtitles(ctx context.Context) (*mix.FileOrBuffer, error) {
 	if this.Options.Subtitle.Path == "none" || this.Options.Subtitle.BurnIn {
@@ -251,7 +259,12 @@ func (this *RemoteHandler) getSubtitles(target *mix.TargetFileOrBuffer) (*mix.Fi
 	if err != nil {
 		return nil, fmt.Errorf("failed to read subtitles: %w", err)
 	}
-	return ProcessSubtitles(subtitles, target, this.Options.Subtitle.IgnoreClosedCaptions)
+	// When burning in, bold/italic are applied by libass (force_style), so we
+	// don't also bake <b>/<i> tags into the VTT. For external subtitles the
+	// custom receiver renders the VTT, so we style it here.
+	bold := this.Options.Subtitle.Bold && !this.Options.Subtitle.BurnIn
+	italic := this.Options.Subtitle.Italic && !this.Options.Subtitle.BurnIn
+	return ProcessSubtitles(subtitles, target, this.Options.Subtitle.IgnoreClosedCaptions, this.Options.Subtitle.DelaySeconds, bold, italic)
 }
 
 func (this *RemoteHandler) readSubtitles(target *mix.TargetFileOrBuffer) (*mix.FileOrBuffer, error) {

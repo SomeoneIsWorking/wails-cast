@@ -64,6 +64,40 @@ func (dd *DeviceDiscovery) DiscoverStream() error {
 	return nil
 }
 
+// DiscoverSync runs a blocking mDNS discovery and returns the cast devices it
+// finds within the given timeout. Unlike DiscoverStream (which emits events for
+// the Wails frontend) this is suitable for synchronous callers such as the
+// remote HTTP API.
+func (dd *DeviceDiscovery) DiscoverSync(timeout time.Duration) []Device {
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+
+	castEntryChan, err := castdns.DiscoverCastDNSEntries(ctx, nil)
+	if err != nil {
+		logger.Error("DiscoverSync failed to start", "error", err)
+		return nil
+	}
+
+	var devices []Device
+	seen := map[string]bool{}
+	for entry := range castEntryChan {
+		if entry.UUID != "" && seen[entry.UUID] {
+			continue
+		}
+		seen[entry.UUID] = true
+		devices = append(devices, Device{
+			Name:    entry.DeviceName,
+			Type:    "Chromecast",
+			Host:    entry.AddrV4.String(),
+			Port:    entry.Port,
+			Address: entry.AddrV4.String(),
+			URL:     fmt.Sprintf("http://%s:%d", entry.AddrV4.String(), entry.Port),
+			UUID:    entry.UUID,
+		})
+	}
+	return devices
+}
+
 // GetLocalIP returns the local IP address
 func (dd *DeviceDiscovery) GetLocalIP() string {
 	addrs, err := net.InterfaceAddrs()

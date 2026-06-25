@@ -7,6 +7,7 @@ import {
 } from "../../wailsjs/go/main/App";
 import { useToast } from "vue-toastification";
 import { useCastStore } from "./cast";
+import type { Source } from "@/services/source";
 
 export const useTranslationStore = defineStore("translation", () => {
   const isTranslating = ref(false);
@@ -56,13 +57,67 @@ export const useTranslationStore = defineStore("translation", () => {
     toast.info("Translation cancelled");
   });
 
-  async function start(path: string, language: string) {
+  // When a remote single-file translation is running we poll status (no live
+  // stream is delivered over HTTP).
+  let remotePoll: number | null = null;
+  let activeRemote: Source | null = null;
+  function stopRemotePoll() {
+    if (remotePoll !== null) {
+      clearInterval(remotePoll);
+      remotePoll = null;
+    }
+  }
+
+  async function start(path: string, language: string, source?: Source) {
     streamContent.value = "";
     translatedFiles.value = [];
     targetLanguage.value = language;
     isTranslating.value = true;
     isCancelling.value = false;
     activePath.value = path;
+    activeRemote = source && source.kind === "remote" ? source : null;
+
+    if (activeRemote) {
+      const { RemoteTranslateFile, RemoteTranslateStatus } = await import(
+        "../../wailsjs/go/main/App"
+      );
+      const { base, token } = activeRemote;
+      try {
+        await RemoteTranslateFile(base, token, path, language);
+      } catch (e) {
+        isTranslating.value = false;
+        activePath.value = null;
+        throw e;
+      }
+      stopRemotePoll();
+      remotePoll = window.setInterval(async () => {
+        try {
+          const st = await RemoteTranslateStatus(base, token);
+          if (!st.inProgress) {
+            stopRemotePoll();
+            isTranslating.value = false;
+            activePath.value = null;
+            if (st.error) {
+              toast.error(`Translation failed: ${st.error}`);
+            } else {
+              translatedFiles.value = st.files || [];
+              if (st.files && st.files.length > 0) {
+                const castStore = useCastStore();
+                if (castStore.castOptions) {
+                  castStore.castOptions.SubtitleType = "external";
+                  castStore.castOptions.SubtitlePath = st.files[0];
+                }
+              }
+              toast.success("Translated subtitle(s) completed!");
+            }
+          }
+        } catch {
+          /* transient */
+        }
+      }, 1500);
+      return;
+    }
+
     try {
       await TranslateExportedSubtitles(path, language);
     } catch (e) {
@@ -75,6 +130,14 @@ export const useTranslationStore = defineStore("translation", () => {
   async function cancel() {
     if (!isTranslating.value) return;
     isCancelling.value = true;
+    if (activeRemote) {
+      // No remote single-file cancel endpoint; stop watching and let it finish.
+      stopRemotePoll();
+      isTranslating.value = false;
+      isCancelling.value = false;
+      activePath.value = null;
+      return;
+    }
     await CancelTranslation();
   }
 

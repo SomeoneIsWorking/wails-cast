@@ -7,6 +7,7 @@ import (
 	"time"
 	"wails-cast/pkg/events"
 	"wails-cast/pkg/inhibitor"
+	"wails-cast/pkg/options"
 	"wails-cast/pkg/stream"
 )
 
@@ -61,6 +62,19 @@ func (s *Server) SetSubtitlePath(path string) {
 
 	if path != "" {
 		logger.Info("Subtitle path set", "path", path)
+	}
+}
+
+// UpdateSubtitleOptions forwards new subtitle options (path, font size, style,
+// timing offset) to the live stream handler so subsequent subtitle/segment
+// serving reflects them without recasting.
+func (s *Server) UpdateSubtitleOptions(opts options.SubtitleCastOptions) {
+	s.mu.RLock()
+	handler := s.streamHandler
+	s.mu.RUnlock()
+
+	if handler != nil {
+		handler.UpdateSubtitleOptions(opts)
 	}
 }
 

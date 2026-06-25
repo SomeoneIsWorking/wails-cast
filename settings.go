@@ -32,6 +32,10 @@ func getDefaultSettings() Settings {
 		RemoteAPIEnabled:           false,
 		RemoteAPIPort:              9999,
 		RemoteAPIToken:             "",
+		QbtURL:                     "http://127.0.0.1:8080",
+		QbtUser:                    "admin",
+		QbtPass:                    "",
+		QbtSavePath:                "",
 	}
 }
 
@@ -57,8 +61,16 @@ type Settings struct {
 	// For "opencode", the fixed ai.OpenCodeBaseURL is used instead.
 	LLMBaseURL string `json:"llmBaseURL"`
 
-	DefaultQuality          string `json:"defaultQuality"`
-	SubtitleFontSize        int    `json:"subtitleFontSize"`
+	DefaultQuality   string `json:"defaultQuality"`
+	SubtitleFontSize int    `json:"subtitleFontSize"`
+
+	// SubtitleDelaySeconds shifts subtitle timing for the current playback.
+	// Positive = subtitles appear later, negative = earlier.
+	SubtitleDelaySeconds float64 `json:"subtitleDelaySeconds"`
+	// SubtitleBold / SubtitleItalic style rendered subtitles.
+	SubtitleBold   bool `json:"subtitleBold"`
+	SubtitleItalic bool `json:"subtitleItalic"`
+
 	MaxOutputWidth          int    `json:"maxOutputWidth"`
 	TranslatePromptTemplate string `json:"translatePromptTemplate"`
 	MaxSubtitleSamples      int    `json:"maxSubtitleSamples"`
@@ -72,6 +84,14 @@ type Settings struct {
 	RemoteAPIEnabled bool   `json:"remoteApiEnabled"`
 	RemoteAPIPort    int    `json:"remoteApiPort"`
 	RemoteAPIToken   string `json:"remoteApiToken"` // empty = no auth required
+
+	// qBittorrent integration (used by the instance that owns the library, e.g.
+	// the fedora host). The remote API's /torrent/* endpoints proxy magnet links
+	// to qBittorrent's Web API and report download progress.
+	QbtURL      string `json:"qbtURL"`      // qBittorrent Web UI base URL
+	QbtUser     string `json:"qbtUser"`     // Web UI username
+	QbtPass     string `json:"qbtPass"`     // Web UI password
+	QbtSavePath string `json:"qbtSavePath"` // download dir; empty = LibraryRoot
 }
 
 // legacySettings is used during load to migrate old field names to the new

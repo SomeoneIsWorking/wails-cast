@@ -340,6 +340,60 @@ func (w *WebVTTJson) RemoveClosedCaptions() *WebVTTJson {
 	return &WebVTTJson{Entries: out}
 }
 
+// Shift returns a clone with every cue moved in time by offset seconds.
+// Positive offset makes subtitles appear later, negative makes them earlier.
+// Since entries store timing as relative delays (with the first entry's delay
+// being its absolute start time), we only need to adjust the first entry's
+// delay; the rest follow automatically. Absolute cue times are clamped at 0 so
+// a large negative offset never produces negative timestamps.
+func (w *WebVTTJson) Shift(offset float64) *WebVTTJson {
+	if w == nil {
+		return nil
+	}
+	if offset == 0 || len(w.Entries) == 0 {
+		return w
+	}
+
+	out := make([]SubtitleEntry, len(w.Entries))
+	copy(out, w.Entries)
+
+	// The first entry's delay is its absolute start time; clamp at 0.
+	newStart := out[0].Delay + offset
+	if newStart < 0 {
+		newStart = 0
+	}
+	out[0].Delay = newStart
+
+	return &WebVTTJson{Entries: out}
+}
+
+// Style returns a clone where each cue's text is wrapped in WebVTT <b>/<i>
+// tags so the custom receiver renders the subtitles bold and/or italic. This is
+// receiver-independent: any WebVTT-compliant renderer honors these tags.
+func (w *WebVTTJson) Style(bold, italic bool) *WebVTTJson {
+	if w == nil {
+		return nil
+	}
+	if !bold && !italic {
+		return w
+	}
+
+	out := make([]SubtitleEntry, len(w.Entries))
+	copy(out, w.Entries)
+	for i := range out {
+		t := out[i].Text
+		if italic {
+			t = "<i>" + t + "</i>"
+		}
+		if bold {
+			t = "<b>" + t + "</b>"
+		}
+		out[i].Text = t
+	}
+
+	return &WebVTTJson{Entries: out}
+}
+
 // parseTimestamp converts HH:MM:SS.mmm or MM:SS.mmm to seconds
 func parseTimestamp(timestamp string) (float64, error) {
 	parts := strings.Split(timestamp, ":")
