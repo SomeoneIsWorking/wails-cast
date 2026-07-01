@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	lua "github.com/yuin/gopher-lua"
@@ -22,6 +23,8 @@ import (
 
 const (
 	WaitAfterManifestFound = 2 * time.Second
+
+	browserUserAgent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.0 Safari/605.1.15"
 )
 
 type ExtractedSubtitleTrack struct {
@@ -47,272 +50,45 @@ type PlaylistExtractionResult struct {
 	Manifest string
 }
 
+type interceptRule struct {
+	pattern string
+	handler lua.LValue
+}
+
 // Extract navigates to the page and extracts the HLS stream.
-// It first looks for a Lua script in {configDir}/scripts/{domain}.lua.
-// If found, uses headless browser with Lua automation.
-// Otherwise, uses headful browser with generic request interception.
+//
+// It first looks for a Lua script in {configDir}/scripts/ whose match_patterns
+// match the URL. Whether or not a script is found, the same core extraction
+// runs: a headless (scripted) or headful (generic) browser drives the page, a
+// hijack router captures the manifest body and the *real* request headers the
+// browser used (Referer/Origin/Cookie), and VTT subtitle tracks are collected.
+//
+// A matching Lua script only augments this with automation: block_urls,
+// intercepts (pull the HLS URL out of a non-HLS response body), and on_ready
+// (page interaction). Each of those defaults to the generic behavior when the
+// script omits it.
 func Extract(pageURL string) (*ExtractResult, error) {
 	scriptPath := findScript(pageURL)
 	if scriptPath != "" {
 		fmt.Printf("Found Lua script: %s\n", scriptPath)
-		return extractWithScript(pageURL, scriptPath)
+	} else {
+		fmt.Println("No Lua script found, using generic extraction")
 	}
-	fmt.Println("No Lua script found, using headful extraction")
-	return extractGeneric(pageURL)
+	return extract(pageURL, scriptPath)
 }
 
-func extractWithScript(pageURL string, scriptPath string) (*ExtractResult, error) {
+func extract(pageURL string, scriptPath string) (*ExtractResult, error) {
+	scripted := scriptPath != ""
+
 	path, _ := launcher.LookPath()
-	u := launcher.New().Bin(path).Headless(true).MustLaunch()
+	// Scripted extractions automate the play interaction, so they run headless.
+	// Without a script a human may need to click play, so run headful.
+	u := launcher.New().Bin(path).Headless(scripted).MustLaunch()
 	browser := rod.New().ControlURL(u).MustConnect()
 	defer browser.MustClose()
 
 	page := browser.MustPage("")
-	page.MustSetUserAgent(&proto.NetworkSetUserAgentOverride{
-		UserAgent: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.0 Safari/605.1.15",
-	})
-	page.MustEvalOnNewDocument(`
-		HTMLMediaElement.prototype.canPlayType = function(type) {
-			if (type && (type.includes('video') || type.includes('audio'))) return 'probably'; return '';
-		};
-		if (window.MediaSource) {
-			MediaSource.isTypeSupported = function(type) {
-				if (type && (type.includes('video') || type.includes('audio'))) return true; return false;
-			};
-		}
-	`)
-
-	L := lua.NewState()
-	defer L.Close()
-
-	registerFuncs(L, page)
-
-	if err := L.DoFile(scriptPath); err != nil {
-		return nil, fmt.Errorf("load script: %w", err)
-	}
-
-	var blockURLs []string
-	if tbl := L.GetGlobal("block_urls"); tbl != lua.LNil {
-		if t, ok := tbl.(*lua.LTable); ok {
-			t.ForEach(func(_, value lua.LValue) {
-				blockURLs = append(blockURLs, lua.LVAsString(value))
-			})
-		}
-	}
-
-	type interceptRule struct {
-		pattern string
-		handler lua.LValue
-	}
-	var intercepts []interceptRule
-	if tbl := L.GetGlobal("intercepts"); tbl != lua.LNil {
-		if t, ok := tbl.(*lua.LTable); ok {
-			t.ForEach(func(_, value lua.LValue) {
-				if rule, ok := value.(*lua.LTable); ok {
-					p := rule.RawGetString("pattern")
-					h := rule.RawGetString("handler")
-					intercepts = append(intercepts, interceptRule{
-						pattern: lua.LVAsString(p),
-						handler: h,
-					})
-				}
-			})
-		}
-	}
-
-	var hlsURL string
-
-	router := page.HijackRequests()
-	router.MustAdd("*", func(ctx *rod.Hijack) {
-		reqURL := ctx.Request.URL().String()
-
-		for _, b := range blockURLs {
-			if strings.Contains(reqURL, b) {
-				ctx.Response.SetHeader("Content-Type", "application/javascript")
-				ctx.Response.SetBody("// blocked")
-				return
-			}
-		}
-
-		for _, rule := range intercepts {
-			if strings.Contains(reqURL, rule.pattern) {
-				client := &http.Client{
-					Transport:     &http.Transport{DisableKeepAlives: true},
-					CheckRedirect: func(req *http.Request, via []*http.Request) error { return http.ErrUseLastResponse },
-				}
-				if err := ctx.LoadResponse(client, true); err != nil {
-					ctx.ContinueRequest(&proto.FetchContinueRequest{})
-					return
-				}
-				body := ctx.Response.Body()
-
-				L.Push(rule.handler)
-				L.Push(lua.LString(reqURL))
-				L.Push(lua.LString(body))
-				if err := L.PCall(2, 1, nil); err == nil {
-					result := L.Get(-1)
-					L.Pop(1)
-					if result != lua.LNil {
-						hlsURL = lua.LVAsString(result)
-						fmt.Printf("Lua intercept returned HLS URL: %s\n", hlsURL)
-					}
-				}
-				return
-			}
-		}
-
-		ctx.ContinueRequest(&proto.FetchContinueRequest{})
-	})
-	go router.Run()
-
-	page.EnableDomain(proto.NetworkEnable{})
-	cdpWait := page.EachEvent(func(e *proto.NetworkResponseReceived) bool {
-		ct := e.Response.MIMEType
-		if hlsURL == "" && (strings.Contains(ct, "application/vnd.apple.mpegurl") ||
-			strings.Contains(ct, "application/x-mpegURL") ||
-			strings.Contains(ct, "mpegurl")) {
-			hlsURL = e.Response.URL
-			fmt.Printf("CDP detected HLS: %s (CT: %s)\n", hlsURL, ct)
-			return true
-		}
-		return false
-	})
-	go cdpWait()
-
-	fmt.Printf("Navigating to %s...\n", pageURL)
-	page.MustNavigate(pageURL)
-	time.Sleep(2 * time.Second)
-	fmt.Printf("Page loaded. Title: %s\n", page.MustInfo().Title)
-
-	onReady := L.GetGlobal("on_ready")
-	if onReady != lua.LNil {
-		L.Push(onReady)
-		if err := L.PCall(0, 0, nil); err != nil {
-			fmt.Printf("Lua on_ready error: %v\n", err)
-		}
-	}
-
-	fmt.Println("Waiting for HLS URL...")
-	deadline := time.Now().Add(30 * time.Second)
-	for time.Now().Before(deadline) {
-		if hlsURL != "" {
-			break
-		}
-		time.Sleep(200 * time.Millisecond)
-	}
-
-	if hlsURL == "" {
-		return nil, fmt.Errorf("timeout waiting for HLS URL")
-	}
-
-	fmt.Printf("Loading HLS manifest: %s\n", hlsURL)
-	client := &http.Client{Timeout: 15 * time.Second}
-	req, _ := http.NewRequest("GET", hlsURL, nil)
-	req.Header.Set("User-Agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.0 Safari/605.1.15")
-	// Use the HLS URL's own origin as referer (matches the domain the content is served from)
-	if parsedHLS, err := url.Parse(hlsURL); err == nil {
-		req.Header.Set("Referer", parsedHLS.Scheme+"://"+parsedHLS.Host+"/")
-		req.Header.Set("Origin", parsedHLS.Scheme+"://"+parsedHLS.Host)
-	}
-	resp, err := client.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("load manifest: %w", err)
-	}
-	defer resp.Body.Close()
-	manifestBytes, _ := io.ReadAll(resp.Body)
-
-	parsedURL, _ := url.Parse(hlsURL)
-	result := &ExtractResult{
-		URL:      parsedURL,
-		Title:    page.MustInfo().Title,
-		Manifest: string(manifestBytes),
-		Cookies:  make(map[string]string),
-		Headers:  make(map[string]string),
-	}
-	for _, c := range resp.Cookies() {
-		result.Cookies[c.Name] = c.Value
-	}
-	result.Headers["User-Agent"] = req.UserAgent()
-	result.Headers["Referer"] = req.Header.Get("Referer")
-	result.Headers["Origin"] = req.Header.Get("Origin")
-
-	fmt.Printf("Manifest loaded: %d bytes\n", len(manifestBytes))
-	return result, nil
-}
-
-func extractGeneric(pageURL string) (*ExtractResult, error) {
-	path, _ := launcher.LookPath()
-	u := launcher.New().Bin(path).Headless(false).MustLaunch()
-	browser := rod.New().ControlURL(u).MustConnect()
-	defer browser.MustClose()
-
-	page := browser.MustPage("")
-
-	var result = &ExtractResult{}
-	var manifestFound bool
-	subtitleURLs := make(map[string]bool)
-
-	router := page.HijackRequests()
-	router.MustAdd("*", func(ctx *rod.Hijack) {
-		err := ctx.LoadResponse(http.DefaultClient, true)
-		if err != nil {
-			return
-		}
-		contentType := ctx.Response.Headers().Get("Content-Type")
-		if !manifestFound {
-			if strings.Contains(contentType, "application/vnd.apple.mpegurl") ||
-				strings.Contains(contentType, "application/x-mpegURL") {
-				reqURL := ctx.Request.URL()
-				fmt.Printf("Found HLS stream: %s (Content-Type: %s)\n", reqURL, contentType)
-				manifestContent := ctx.Response.Body()
-				fmt.Printf("Manifest content length: %d bytes\n", len(manifestContent))
-				cookies := make(map[string]string)
-				cookieHeader := ctx.Request.Header("Cookie")
-				if cookieHeader != "" {
-					for cookie := range strings.SplitSeq(cookieHeader, "; ") {
-						parts := strings.SplitN(cookie, "=", 2)
-						if len(parts) == 2 {
-							cookies[parts[0]] = parts[1]
-						}
-					}
-				}
-				headers := make(map[string]string)
-				for _, h := range []string{"User-Agent", "Referer", "Origin"} {
-					if v := ctx.Request.Header(h); v != "" {
-						headers[h] = v
-					}
-				}
-				result.Cookies = cookies
-				result.Headers = headers
-				result.URL = reqURL
-				result.Manifest = manifestContent
-				manifestFound = true
-			}
-		}
-		if strings.Contains(strings.ToLower(contentType), "text/vtt") {
-			reqURL := ctx.Request.URL().String()
-			if subtitleURLs[reqURL] {
-				return
-			}
-			subtitleURLs[reqURL] = true
-			subtitleContent := ctx.Response.Body()
-			label := ""
-			if p, err := url.Parse(reqURL); err == nil {
-				parts := strings.Split(p.Path, "/")
-				label = strings.TrimSuffix(parts[len(parts)-1], ".vtt")
-			}
-			result.Subtitles = append(result.Subtitles, ExtractedSubtitleTrack{
-				URL:     reqURL,
-				Content: subtitleContent,
-				Label:   label,
-			})
-		}
-	})
-	go router.Run()
-
-	page.MustSetUserAgent(&proto.NetworkSetUserAgentOverride{
-		UserAgent: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.0 Safari/605.1.15",
-	})
+	page.MustSetUserAgent(&proto.NetworkSetUserAgentOverride{UserAgent: browserUserAgent})
 	page.MustEvalOnNewDocument(`
 		HTMLMediaElement.prototype.canPlayType = function(type) {
 			if (type && (type.includes('video') || type.includes('audio'))) return 'probably';
@@ -326,52 +102,251 @@ func extractGeneric(pageURL string) (*ExtractResult, error) {
 		}
 	`)
 
+	// Lua automation (only when a script matched). Everything below defaults to
+	// generic behavior when the corresponding global is absent.
+	var (
+		L          *lua.LState
+		blockURLs  []string
+		intercepts []interceptRule
+		onReady    lua.LValue = lua.LNil
+	)
+	if scripted {
+		L = lua.NewState()
+		defer L.Close()
+		registerFuncs(L, page)
+		if err := L.DoFile(scriptPath); err != nil {
+			return nil, fmt.Errorf("load script: %w", err)
+		}
+		if tbl, ok := L.GetGlobal("block_urls").(*lua.LTable); ok {
+			tbl.ForEach(func(_, v lua.LValue) { blockURLs = append(blockURLs, lua.LVAsString(v)) })
+		}
+		if tbl, ok := L.GetGlobal("intercepts").(*lua.LTable); ok {
+			tbl.ForEach(func(_, v lua.LValue) {
+				if rule, ok := v.(*lua.LTable); ok {
+					intercepts = append(intercepts, interceptRule{
+						pattern: lua.LVAsString(rule.RawGetString("pattern")),
+						handler: rule.RawGetString("handler"),
+					})
+				}
+			})
+		}
+		onReady = L.GetGlobal("on_ready")
+	}
+
+	// Shared capture state, guarded by mu (hijack handlers run concurrently).
+	var (
+		mu            sync.Mutex
+		manifestFound bool
+		hlsURL        string
+		manifestBody  string // captured inline; empty means "fetch hlsURL below"
+		capReferer    string
+		capOrigin     string
+		capCookie     string
+		subtitleSeen  = map[string]bool{}
+		subtitles     []ExtractedSubtitleTrack
+	)
+
+	client := &http.Client{Timeout: 20 * time.Second}
+
+	router := page.HijackRequests()
+	router.MustAdd("*", func(ctx *rod.Hijack) {
+		reqURL := ctx.Request.URL().String()
+
+		// block_urls (Lua): replace matching requests with an empty JS file.
+		for _, b := range blockURLs {
+			if strings.Contains(reqURL, b) {
+				ctx.Response.SetHeader("Content-Type", "application/javascript")
+				ctx.Response.SetBody("// blocked")
+				return
+			}
+		}
+
+		// Fetch the response server-side so we can inspect its body/headers.
+		if err := ctx.LoadResponse(client, true); err != nil {
+			ctx.ContinueRequest(&proto.FetchContinueRequest{})
+			return
+		}
+		contentType := ctx.Response.Headers().Get("Content-Type")
+
+		mu.Lock()
+		defer mu.Unlock()
+
+		// Lua intercepts: a handler may pull the HLS URL out of a non-HLS body
+		// (e.g. a JSON API, or an embed page's HTML). It returns the URL, which
+		// we fetch further below. We do NOT capture this request's Referer: the
+		// intercepted request is not the manifest request, so its referer isn't
+		// the manifest's. The fetch below defaults to the m3u8's own origin.
+		if !manifestFound {
+			for _, rule := range intercepts {
+				if !strings.Contains(reqURL, rule.pattern) {
+					continue
+				}
+				L.Push(rule.handler)
+				L.Push(lua.LString(reqURL))
+				L.Push(lua.LString(ctx.Response.Body()))
+				if err := L.PCall(2, 1, nil); err == nil {
+					res := L.Get(-1)
+					L.Pop(1)
+					if res != lua.LNil {
+						hlsURL = lua.LVAsString(res)
+						manifestFound = true
+						fmt.Printf("Lua intercept returned HLS URL: %s\n", hlsURL)
+					}
+				}
+				break
+			}
+		}
+
+		// Default detection: capture the manifest body and the real headers the
+		// browser used. This is the correct Referer — the m3u8's own origin is
+		// often wrong (embed on domain A, CDN on domain B gated by Referer: A).
+		if !manifestFound && (strings.Contains(contentType, "application/vnd.apple.mpegurl") ||
+			strings.Contains(contentType, "application/x-mpegURL") ||
+			strings.Contains(contentType, "mpegurl")) {
+			hlsURL = reqURL
+			manifestBody = ctx.Response.Body()
+			capReferer = ctx.Request.Header("Referer")
+			capOrigin = ctx.Request.Header("Origin")
+			capCookie = ctx.Request.Header("Cookie")
+			manifestFound = true
+			fmt.Printf("Found HLS stream: %s (Content-Type: %s, Referer: %s)\n", hlsURL, contentType, capReferer)
+		}
+
+		// Subtitles (VTT), collected regardless of scripted/generic.
+		if strings.Contains(strings.ToLower(contentType), "text/vtt") && !subtitleSeen[reqURL] {
+			subtitleSeen[reqURL] = true
+			label := ""
+			if p, err := url.Parse(reqURL); err == nil {
+				parts := strings.Split(p.Path, "/")
+				label = strings.TrimSuffix(parts[len(parts)-1], ".vtt")
+			}
+			subtitles = append(subtitles, ExtractedSubtitleTrack{
+				URL:     reqURL,
+				Content: ctx.Response.Body(),
+				Label:   label,
+			})
+		}
+	})
+	go router.Run()
+
 	fmt.Printf("Navigating to %s...\n", pageURL)
 	page.MustNavigate(pageURL)
 	page.MustWaitLoad()
 	fmt.Printf("Page loaded. Title: %s\n", page.MustInfo().Title)
 
-	// Try common play button selectors
-	for _, sel := range []string{"#play-video", ".play-button", ".video-play-button"} {
-		el, err := page.Timeout(3 * time.Second).Element(sel)
-		if err == nil {
-			fmt.Printf("Clicking play button: %s\n", sel)
-			box := el.MustShape().Box()
-			page.Mouse.MustMoveTo(box.X+box.Width/2, box.Y+box.Height/2)
-			page.Mouse.MustDown("left")
-			page.Mouse.MustUp("left")
-			time.Sleep(2 * time.Second)
-			break
+	// Interaction: run the Lua on_ready if present, otherwise the generic
+	// best-effort click of common play-button selectors.
+	if onReady != lua.LNil {
+		L.Push(onReady)
+		if err := L.PCall(0, 0, nil); err != nil {
+			fmt.Printf("Lua on_ready error: %v\n", err)
 		}
-	}
-
-	done := make(chan struct{})
-	go func() {
-		for range time.NewTicker(100 * time.Millisecond).C {
-			if manifestFound {
-				select {
-				case <-done:
-					return
-				default:
-					close(done)
-					return
-				}
+	} else {
+		for _, sel := range []string{"#play-video", ".play-button", ".video-play-button"} {
+			el, err := page.Timeout(3 * time.Second).Element(sel)
+			if err == nil {
+				fmt.Printf("Clicking play button: %s\n", sel)
+				box := el.MustShape().Box()
+				page.Mouse.MustMoveTo(box.X+box.Width/2, box.Y+box.Height/2)
+				page.Mouse.MustDown("left")
+				page.Mouse.MustUp("left")
+				time.Sleep(2 * time.Second)
+				break
 			}
 		}
-	}()
-
-	fmt.Println("Waiting for video URL...")
-	select {
-	case <-done:
-	case <-time.After(5 * time.Minute):
 	}
 
-	if !manifestFound {
-		return nil, fmt.Errorf("timeout waiting for video URL")
+	// Wait for the manifest. Headful/generic waits longer for a manual click.
+	timeout := 30 * time.Second
+	if !scripted {
+		timeout = 5 * time.Minute
+	}
+	fmt.Println("Waiting for HLS URL...")
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		mu.Lock()
+		found := manifestFound
+		mu.Unlock()
+		if found {
+			break
+		}
+		time.Sleep(200 * time.Millisecond)
 	}
 
-	result.Title = page.MustInfo().Title
-	return result, nil
+	// Snapshot the captured values.
+	mu.Lock()
+	found := manifestFound
+	sHlsURL, sBody, sRef, sOrg, sCookie := hlsURL, manifestBody, capReferer, capOrigin, capCookie
+	sSubs := append([]ExtractedSubtitleTrack(nil), subtitles...)
+	mu.Unlock()
+
+	if !found {
+		return nil, fmt.Errorf("timeout waiting for HLS URL")
+	}
+
+	cookies := map[string]string{}
+
+	// An intercept returned only a URL — fetch it now, carrying the real
+	// Referer/Origin/Cookie from the request that revealed it (falling back to
+	// the m3u8's own origin only if we captured nothing).
+	if sBody == "" {
+		fmt.Printf("Loading HLS manifest: %s\n", sHlsURL)
+		req, _ := http.NewRequest("GET", sHlsURL, nil)
+		req.Header.Set("User-Agent", browserUserAgent)
+		if sRef != "" {
+			req.Header.Set("Referer", sRef)
+			if sOrg != "" {
+				req.Header.Set("Origin", sOrg)
+			}
+		} else if parsed, err := url.Parse(sHlsURL); err == nil {
+			req.Header.Set("Referer", parsed.Scheme+"://"+parsed.Host+"/")
+			req.Header.Set("Origin", parsed.Scheme+"://"+parsed.Host)
+		}
+		if sCookie != "" {
+			req.Header.Set("Cookie", sCookie)
+		}
+		resp, err := client.Do(req)
+		if err != nil {
+			return nil, fmt.Errorf("load manifest: %w", err)
+		}
+		defer resp.Body.Close()
+		b, _ := io.ReadAll(resp.Body)
+		sBody = string(b)
+		for _, c := range resp.Cookies() {
+			cookies[c.Name] = c.Value
+		}
+		sRef = req.Header.Get("Referer")
+		sOrg = req.Header.Get("Origin")
+	}
+
+	// Cookies from the captured request Cookie header.
+	if sCookie != "" {
+		for _, cookie := range strings.Split(sCookie, "; ") {
+			parts := strings.SplitN(cookie, "=", 2)
+			if len(parts) == 2 {
+				cookies[parts[0]] = parts[1]
+			}
+		}
+	}
+
+	headers := map[string]string{"User-Agent": browserUserAgent}
+	if sRef != "" {
+		headers["Referer"] = sRef
+	}
+	if sOrg != "" {
+		headers["Origin"] = sOrg
+	}
+
+	parsedURL, _ := url.Parse(sHlsURL)
+	fmt.Printf("Manifest loaded: %d bytes\n", len(sBody))
+	return &ExtractResult{
+		URL:       parsedURL,
+		Title:     page.MustInfo().Title,
+		Manifest:  sBody,
+		Cookies:   cookies,
+		Headers:   headers,
+		Subtitles: sSubs,
+	}, nil
 }
 
 // findScript scans all Lua scripts for match_patterns matching the URL.
