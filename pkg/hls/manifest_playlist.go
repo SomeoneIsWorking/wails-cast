@@ -17,6 +17,32 @@ func ParseManifestPlaylist(content string) (*ManifestPlaylist, error) {
 	return playlist.Manifest, nil
 }
 
+// ParseManifest parses the top-level manifest returned by an extractor.
+// Most sites return a real master playlist (#EXT-X-STREAM-INF / #EXT-X-MEDIA),
+// but some serve a bare media (track) playlist with segments directly (e.g.
+// fastplay.mom's master.txt). In that case we synthesize a single-variant
+// master whose video track points back at the same URL — an empty relative
+// reference resolves to the manifest URL (see TrackResolver.trackUrl) — so the
+// rest of the pipeline can treat every stream uniformly.
+func ParseManifest(content string) (*ManifestPlaylist, error) {
+	if parsePlaylistType(content) == PlaylistTypeTrack {
+		// Validate it's a real playlist before wrapping.
+		if _, err := ParseTrackPlaylist(content); err != nil {
+			return nil, err
+		}
+		return &ManifestPlaylist{
+			VideoTracks: []VideoTrack{{
+				URI:       &url.URL{}, // resolves to the manifest URL itself
+				Bandwidth: 4000000,
+				Index:     0,
+			}},
+			AudioTracks:    []AudioTrack{},
+			SubtitleTracks: []SubtitleTrack{},
+		}, nil
+	}
+	return ParseManifestPlaylist(content)
+}
+
 // ParseTrackPlaylist parses a track (media) playlist
 func ParseTrackPlaylist(content string) (*TrackPlaylist, error) {
 	playlist, err := parsePlaylist(content, PlaylistTypeTrack)
