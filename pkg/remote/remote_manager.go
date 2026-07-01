@@ -97,7 +97,7 @@ func (m *RemoteManager) GetMedia(url string) (*MediaManager, error) {
 		if err != nil {
 			return nil, err
 		}
-		manifest, err = hls.ParseManifestPlaylist(string(bytes))
+		manifest, err = hls.ParseManifest(string(bytes))
 		if err != nil {
 			return nil, err
 		}
@@ -133,7 +133,7 @@ func (*RemoteManager) doExtraction(url *u.URL) (*ExtractionData, *hls.ManifestPl
 		return nil, nil, err
 	}
 
-	manifest, err := hls.ParseManifestPlaylist(extraction.Manifest)
+	manifest, err := hls.ParseManifest(extraction.Manifest)
 	if err != nil {
 		return nil, nil, err
 	}
