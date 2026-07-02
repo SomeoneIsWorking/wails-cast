@@ -21,13 +21,23 @@ fyne package -os android -appID io.wailscast.remote
 
 Requires:
 - `fyne` CLI: `go install fyne.io/tools/cmd/fyne@latest`
-- Android SDK + NDK. Install Android Studio, then in *SDK Manager → SDK Tools*
-  tick **NDK (Side by side)** and **CMake**.
+- Android SDK + NDK. On macOS with Homebrew:
+  ```
+  brew install --cask android-commandlinetools
+  export ANDROID_HOME="$HOME/Library/Android/sdk"
+  yes | sdkmanager --sdk_root="$ANDROID_HOME" --licenses
+  sdkmanager --sdk_root="$ANDROID_HOME" --install \
+    "platform-tools" "platforms;android-34" \
+    "build-tools;34.0.0" "ndk;29.0.14206865"
+  ```
 - Export env before running `fyne package`:
   ```
   export ANDROID_HOME="$HOME/Library/Android/sdk"
   export ANDROID_NDK_HOME="$ANDROID_HOME/ndk/$(ls $ANDROID_HOME/ndk | tail -1)"
   ```
+
+The produced APK is debug-signed. For a release build, pass
+`-release` and sign the output with `apksigner`.
 
 Package for iOS (macOS + Xcode required):
 
