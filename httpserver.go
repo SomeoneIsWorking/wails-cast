@@ -46,6 +46,7 @@ import (
 
 	"wails-cast/pkg/events"
 	"wails-cast/pkg/options"
+	"wails-cast/pkg/castapi"
 )
 
 // mdnsService is the mDNS/Bonjour service type the desktop advertises so the
@@ -57,12 +58,7 @@ const mdnsService = "_wailscast._tcp"
 // ----------------------------------------------------------------------------
 
 // LibraryItem is the shape returned to remote clients for a single media item.
-type LibraryItem struct {
-	ID       string `json:"id"`
-	Name     string `json:"name"`
-	Path     string `json:"path"`
-	Duration int    `json:"duration,omitempty"` // seconds, 0 if unknown
-}
+type LibraryItem = castapi.LibraryItem
 
 // LibraryLister is the interface the HTTP server uses to list library items.
 // The Library feature (being built in a parallel worktree) should implement

@@ -18,24 +18,12 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"wails-cast/pkg/castapi"
 )
 
 // TorrentStatus is the subset of a qBittorrent torrent we expose to clients.
-type TorrentStatus struct {
-	Hash     string  `json:"hash"`
-	Name     string  `json:"name"`
-	Progress float64 `json:"progress"` // 0.0–1.0
-	State    string  `json:"state"`    // qBittorrent state string, e.g. "downloading"
-	DlSpeed  int64   `json:"dlspeed"`  // bytes/sec
-	Eta      int64   `json:"eta"`      // seconds (8640000 = unknown/infinity)
-	Size     int64   `json:"size"`     // total bytes
-	// ContentPath is the absolute path to the torrent's content on disk (the
-	// file for single-file torrents, the root folder otherwise). SavePath is the
-	// download directory. Both let clients map a torrent to library episodes so
-	// in-progress downloads can show per-episode progress.
-	ContentPath string `json:"content_path"`
-	SavePath    string `json:"save_path"`
-}
+type TorrentStatus = castapi.TorrentStatus
 
 // qbtClient is a session-aware qBittorrent Web API client.
 type qbtClient struct {
