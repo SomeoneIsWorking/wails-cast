@@ -16,102 +16,28 @@ import (
 
 	"wails-cast/pkg/ai"
 	"wails-cast/pkg/events"
+	"wails-cast/pkg/castapi"
 )
 
 // ─── Organize types ──────────────────────────────────────────────────────────
 
-// OrganizeMove is a single planned file operation (video + optional subtitle
-// directory) returned by PreviewOrganize.
-type OrganizeMove struct {
-	// Absolute paths before and after the move.
-	SrcVideo  string `json:"srcVideo"`
-	DstVideo  string `json:"dstVideo"`
-	// Non-empty when a sibling subtitle directory exists and will be moved.
-	SrcSubDir string `json:"srcSubDir"`
-	DstSubDir string `json:"dstSubDir"`
-	// Human-readable description shown in the UI.
-	Description string `json:"description"`
-}
+type OrganizeMove = castapi.OrganizeMove
 
-// LibraryIdentifyProgress is emitted on "library:identify:progress".
-type LibraryIdentifyProgress struct {
-	// Total shows being identified.
-	Total int `json:"total"`
-	// 1-based index of the show being processed right now.
-	Current int `json:"current"`
-	// Name of the show currently being identified.
-	ShowName string `json:"showName"`
-	// "running" | "done" | "error"
-	Status  string `json:"status"`
-	Message string `json:"message"`
-}
+type LibraryIdentifyProgress = castapi.LibraryIdentifyProgress
 
 // ─── Data model ─────────────────────────────────────────────────────────────
 
-// LibraryEpisode represents a single episode file.
-type LibraryEpisode struct {
-	// Absolute path to the video file.
-	Path string `json:"path"`
-	// Human-readable name derived from the file name (SxxExx style).
-	Name string `json:"name"`
-	// Season/episode numbers parsed from the filename (0 = unknown).
-	Season  int `json:"season"`
-	Episode int `json:"episode"`
-	// Whether a subtitle directory already exists next to the video file
-	// (true once embedded subtitles have been extracted — not the same as
-	// having a translation).
-	HasSubtitles bool `json:"hasSubtitles"`
-	// Translated is true when a subtitle for the default target language exists
-	// (i.e. the file <subtitleDir>/<DefaultTargetLanguage>.vtt is present).
-	Translated bool `json:"translated"`
-	// EpisodeName is the official episode title from TMDB (empty if unidentified).
-	EpisodeName string `json:"episodeName"`
-	// Identified is true when TMDB metadata was successfully fetched.
-	Identified bool `json:"identified"`
-}
+type LibraryEpisode = castapi.LibraryEpisode
 
-// LibrarySeason represents one season folder (or a flat group of episodes
-// that share the same season number).
-type LibrarySeason struct {
-	Name     string           `json:"name"`
-	Number   int              `json:"number"`
-	Episodes []LibraryEpisode `json:"episodes"`
-}
+type LibrarySeason = castapi.LibrarySeason
 
-// LibraryShow represents a TV show (or movie folder).
-type LibraryShow struct {
-	Name    string          `json:"name"`
-	Path    string          `json:"path"`
-	Seasons []LibrarySeason `json:"seasons"`
-	// TMDB / external IDs — populated after IdentifyLibrary is called.
-	TMDBID int    `json:"tmdbId"`
-	IMDBID string `json:"imdbId"`
-	// Year is the first-air-date year from TMDB.
-	Year int `json:"year"`
-	// Identified is true when TMDB metadata was successfully fetched.
-	Identified bool `json:"identified"`
-}
+type LibraryShow = castapi.LibraryShow
 
-// LibraryScanResult is the full result returned by ScanLibrary.
-type LibraryScanResult struct {
-	RootPath string        `json:"rootPath"`
-	Shows    []LibraryShow `json:"shows"`
-}
+type LibraryScanResult = castapi.LibraryScanResult
 
 // ─── Season-batch translation ────────────────────────────────────────────────
 
-// SeasonTranslateProgress is emitted on event "library:translate:progress".
-type SeasonTranslateProgress struct {
-	ShowName       string `json:"showName"`
-	SeasonName     string `json:"seasonName"`
-	TargetLanguage string `json:"targetLanguage"`
-	TotalEpisodes  int    `json:"totalEpisodes"`
-	// 1-based index of the episode currently being translated (0 = not started).
-	CurrentEpisode int `json:"currentEpisode"`
-	// "running" | "done" | "cancelled" | "error"
-	Status  string `json:"status"`
-	Message string `json:"message"`
-}
+type SeasonTranslateProgress = castapi.SeasonTranslateProgress
 
 // ─── Regexp helpers ──────────────────────────────────────────────────────────
 
