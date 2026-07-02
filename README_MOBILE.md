@@ -24,7 +24,7 @@ Requires:
 - Android SDK + NDK. On macOS with Homebrew:
   ```
   brew install --cask android-commandlinetools
-  export ANDROID_HOME="$HOME/Library/Android/sdk"
+  export ANDROID_HOME=/opt/homebrew/share/android-commandlinetools
   yes | sdkmanager --sdk_root="$ANDROID_HOME" --licenses
   sdkmanager --sdk_root="$ANDROID_HOME" --install \
     "platform-tools" "platforms;android-34" \
@@ -32,7 +32,7 @@ Requires:
   ```
 - Export env before running `fyne package`:
   ```
-  export ANDROID_HOME="$HOME/Library/Android/sdk"
+  export ANDROID_HOME=/opt/homebrew/share/android-commandlinetools
   export ANDROID_NDK_HOME="$ANDROID_HOME/ndk/$(ls $ANDROID_HOME/ndk | tail -1)"
   ```
 
