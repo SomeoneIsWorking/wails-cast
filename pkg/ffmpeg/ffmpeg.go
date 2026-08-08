@@ -299,10 +299,14 @@ func GetMediaTrackInfo(mediaPath string) (*hls.ManifestPlaylist, error) {
 			})
 			audioIdx++
 		case "subtitle":
+			name := stream.Tags.Title
+			if name == "" {
+				name = hls.LanguageName(stream.Tags.Language)
+			}
 			info.SubtitleTracks = append(info.SubtitleTracks, hls.SubtitleTrack{
 				Index:    subtitleIdx,
 				Language: stream.Tags.Language,
-				Name:     stream.Tags.Title,
+				Name:     name,
 			})
 			subtitleIdx++
 		}

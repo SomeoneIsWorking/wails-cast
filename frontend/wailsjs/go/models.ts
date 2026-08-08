@@ -1,32 +1,5 @@
-export namespace ffmpeg {
+export namespace castapi {
 	
-	export interface FFmpegInfo {
-	    ffmpegInstalled: boolean;
-	    ffprobeInstalled: boolean;
-	    ffmpegVersion: string;
-	    ffprobeVersion: string;
-	    ffmpegPath: string;
-	    ffprobePath: string;
-	}
-
-}
-
-export namespace folders {
-	
-	export interface CacheStats {
-	    totalSize: number;
-	    transcodedSize: number;
-	    rawSegmentsSize: number;
-	    metadataSize: number;
-	}
-
-}
-
-export namespace main {
-	
-	export interface AppExports {
-	    DownloadStatus: remote.DownloadStatus;
-	}
 	export interface AudioTracksDisplayItem {
 	    Index: number;
 	    Language: string;
@@ -36,21 +9,6 @@ export namespace main {
 	    host: string;
 	    port: number;
 	    url: string;
-	}
-	export interface Device {
-	    name: string;
-	    type: string;
-	    url: string;
-	    address: string;
-	    host: string;
-	    port: number;
-	    uuid: string;
-	}
-	export interface HistoryItem {
-	    path: string;
-	    name: string;
-	    timestamp: string;
-	    castOptions?: options.CastOptions;
 	}
 	export interface LibraryEpisode {
 	    path: string;
@@ -95,6 +53,12 @@ export namespace main {
 	    dstSubDir: string;
 	    description: string;
 	}
+	export interface PlayOptions {
+	    videoTrack: number;
+	    audioTrack: number;
+	    subtitlePath: string;
+	    quality?: string;
+	}
 	export interface PlaybackState {
 	    status: string;
 	    mediaPath: string;
@@ -112,12 +76,6 @@ export namespace main {
 	    port: number;
 	    uuid: string;
 	}
-	export interface RemotePlayOptions {
-	    videoTrack: number;
-	    audioTrack: number;
-	    subtitlePath: string;
-	    quality?: string;
-	}
 	export interface SeasonTranslateProgress {
 	    showName: string;
 	    seasonName: string;
@@ -126,33 +84,6 @@ export namespace main {
 	    currentEpisode: number;
 	    status: string;
 	    message: string;
-	}
-	export interface Settings {
-	    subtitleBurnIn: boolean;
-	    ignoreClosedCaptions: boolean;
-	    defaultTranslationLanguage: string;
-	    llmProvider: string;
-	    llmApiKey: string;
-	    llmModel: string;
-	    llmBaseURL: string;
-	    defaultQuality: string;
-	    subtitleFontSize: number;
-	    subtitleDelaySeconds: number;
-	    subtitleBold: boolean;
-	    subtitleItalic: boolean;
-	    maxOutputWidth: number;
-	    translatePromptTemplate: string;
-	    maxSubtitleSamples: number;
-	    noTranscodeCache: boolean;
-	    libraryRoot: string;
-	    tmdbApiKey: string;
-	    remoteApiEnabled: boolean;
-	    remoteApiPort: number;
-	    remoteApiToken: string;
-	    qbtURL: string;
-	    qbtUser: string;
-	    qbtPass: string;
-	    qbtSavePath: string;
 	}
 	export interface SubtitleDisplayItem {
 	    Path: string;
@@ -181,7 +112,80 @@ export namespace main {
 	    Path: string;
 	    NearSubtitle: string;
 	}
+
+}
+
+export namespace ffmpeg {
 	
+	export interface FFmpegInfo {
+	    ffmpegInstalled: boolean;
+	    ffprobeInstalled: boolean;
+	    ffmpegVersion: string;
+	    ffprobeVersion: string;
+	    ffmpegPath: string;
+	    ffprobePath: string;
+	}
+
+}
+
+export namespace folders {
+	
+	export interface CacheStats {
+	    totalSize: number;
+	    transcodedSize: number;
+	    rawSegmentsSize: number;
+	    metadataSize: number;
+	}
+
+}
+
+export namespace main {
+	
+	export interface AppExports {
+	    DownloadStatus: remote.DownloadStatus;
+	}
+	export interface Device {
+	    name: string;
+	    type: string;
+	    url: string;
+	    address: string;
+	    host: string;
+	    port: number;
+	    uuid: string;
+	}
+	export interface HistoryItem {
+	    path: string;
+	    name: string;
+	    timestamp: string;
+	    castOptions?: options.CastOptions;
+	}
+	export interface Settings {
+	    subtitleBurnIn: boolean;
+	    ignoreClosedCaptions: boolean;
+	    defaultTranslationLanguage: string;
+	    llmProvider: string;
+	    llmApiKey: string;
+	    llmModel: string;
+	    llmBaseURL: string;
+	    defaultQuality: string;
+	    subtitleFontSize: number;
+	    subtitleDelaySeconds: number;
+	    subtitleBold: boolean;
+	    subtitleItalic: boolean;
+	    maxOutputWidth: number;
+	    translatePromptTemplate: string;
+	    maxSubtitleSamples: number;
+	    noTranscodeCache: boolean;
+	    libraryRoot: string;
+	    tmdbApiKey: string;
+	    remoteApiEnabled: boolean;
+	    remoteApiPort: number;
+	    remoteApiToken: string;
+	    qbtURL: string;
+	    qbtUser: string;
+	    qbtPass: string;
+	    qbtSavePath: string;
+	}
 	export interface translateStatus {
 	    inProgress: boolean;
 	    language: string;
