@@ -75,3 +75,5 @@ MIT License - see LICENSE file for details
 ## Contributing
 
 Contributions are welcome! Please feel free to submit a Pull Request.
+
+Built with AI assistance (Claude and other LLMs).
